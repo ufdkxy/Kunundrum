@@ -1,7 +1,9 @@
 # Kunundrum — Current State, Verification, Known Issues, Next Work
 
-**Status date:** 2026-11-11  
+**Status date:** 2026-11-12 (baseline text dated 2026-11-11; see the update note below)  
 **Scope:** three user-supplied source archives; no external repository or private full catalog was available. This is a source-based baseline, **not** a claim that the packaged browser app or screenshot recognition has been end-to-end tested. See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).
+
+> **Update 2026-11-12 (repository state, docs-only change; no app change, no version bump).** The source now lives in the Git repository `ufdkxy/kunundrum` (branch `main`, `APP_VERSION = '3.0.3'` in `app.js`, the single source of truth read by the footer). The repository root contains `index.html`, so **WEB-001** (missing entry point) and **BUILD-001** (unsynchronized version labels) below describe the original ZIP baseline and are addressed in the repository by the files and the single-sourced version. This was established by inspecting the checked-out files only: the browser app was **not** launched or tested, and the other findings below (WEB-002, PARSE-001..003, MECH-*, SOLVER-*, TEST-*) were **not** re-checked and remain open as written. Recommended-sequence step 1 (single authoritative repository) is done; the layout is flat (app files at the root, `Solver/` and `Kunundrum_screenshot_parser/` alongside) rather than the suggested `web/`, `parser/`, `solver/` split.
 
 ## 1. Snapshot
 
