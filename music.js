@@ -33,8 +33,9 @@
     const playing = requested && !audio.paused;
     icon.innerHTML = playing ? icons.pause : icons.play;
     button.setAttribute('aria-pressed', String(playing));
-    button.setAttribute('aria-label', playing ? 'Pause music' : 'Play music');
-    button.title = `${playing ? 'Pause' : 'Play'} music · ${tracks[index].replaceAll('_', ' ')}`;
+    const text = `${playing ? 'Pause' : 'Play'} music (M)`;
+    button.setAttribute('aria-label', text);
+    button.title = text;
   }
 
   const OFF_KEY = 'kunundrum-music-off';
@@ -44,7 +45,7 @@
   const gestureEvents = ['pointerdown', 'keydown'];
   let armed = false;
   function onGesture(event) {
-    if (button.contains(event.target)) return; // The toggle handles its own click.
+    if (button.contains(event.target) || (event.type === 'keydown' && event.key.toLowerCase() === 'm')) return; // The toggle and the M shortcut handle themselves.
     void play();
   }
   function arm() {
@@ -76,6 +77,13 @@
     }
     label();
   }
+
+  document.addEventListener('keydown', event => {
+    if (event.key.toLowerCase() !== 'm' || event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+    if (document.querySelector('dialog[open]') || event.target.isContentEditable || event.target.closest('input,textarea,select')) return;
+    event.preventDefault();
+    button.click();
+  });
 
   button.addEventListener('click', () => {
     if (requested && !audio.paused) {

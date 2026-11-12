@@ -384,7 +384,7 @@ function renderMeta() {
   const completed=$('completion-inline');
   completed.textContent=isComplete(state())?(isAccepted(state())?'Complete':'Complete · score ≤ 0 is not accepted') : '';
   completed.className=`completion-inline${isComplete(state())?isAccepted(state())?' done':' unaccepted':''}`;
-  $('board-hint').innerHTML=isComplete(state())?(isAccepted(state())?'':'The original game requires score ≥ 1.'):`<span class="mouse-mini" aria-hidden="true"></span><span aria-hidden="true">/</span>${busy?'Moving…':'Arrow keys: move'}`;
+  $('board-hint').innerHTML=isComplete(state())?(isAccepted(state())?'':'The original game requires score ≥ 1.'):(busy||isPlaying?'Moving...':`<span class="mouse-mini" aria-hidden="true"></span><span aria-hidden="true">/</span>Arrow keys: move`);
 }
 function updateResetControl() {
   $('reset').disabled=isPlaying||(!busy&&!pendingMove&&frames.length===1&&cursor===0&&!$('solution-input').value);
@@ -399,7 +399,6 @@ function renderControls() {
   $('sel-dot').style.setProperty('--ball-color',ball?PALETTE[ball.color]:'#73808a');
   $('undo').disabled=playbackLocked||cursor===0||cursor!==frames.length-1;
   updateResetControl();
-  $('copy-route').disabled=playbackLocked||cursor===0;
   for (const id of ['open-levels','open-help','open-board-data','open-share','toggle-coords','toggle-trace']) $(id).disabled=isPlaying;
   $('replay-first').disabled=playbackLocked||cursor===0;
   $('replay-back').disabled=playbackLocked||cursor===0;
@@ -683,7 +682,7 @@ function setDataTab(tab) {
   $('board-input-label').textContent=tab==='json'?'BOARD JSON':'BOARD CODE OR LINK';
   $('board-input').value=tab==='json'?JSON.stringify(board,null,2):'';
   $('board-input').placeholder=tab==='json'?'Edit the board definition…':'Paste a K3. board code or a shared link…';
-  $('board-data-help').textContent=tab==='json'?'Loading starts a new run.':'Paste a board or replay code.';
+  $('board-data-help').textContent=tab==='json'?'Loading starts a new run. Validated before loading.':'Paste a board or replay code. Validated before loading.';
   showError('board-error');
 }
 function importBoard() {
@@ -717,7 +716,7 @@ $('load-solution').addEventListener('click',()=>loadSolution($('solution-input')
 $('use-example').addEventListener('click',()=>{if(board.solution)loadSolution(board.solution);});
 $('solution-input').addEventListener('input',()=>{if(isPlaying)return;showError('replay-error');updateResetControl();persist();});
 $('solution-input').addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();loadSolution(event.target.value);}});
-$('copy-route').addEventListener('click',()=>copyText(getNotation(cursor),'Route notation copied.'));
+$('copy-route').addEventListener('click',()=>{const text=getNotation(cursor);if(!text){toast('No moves to copy yet.');return;}copyText(text,'Route notation copied.');});
 $('move-history').addEventListener('click',event=>{if(busy||isPlaying)return;const target=event.target.closest('[data-jump]');if(target)goTo(Number(target.dataset.jump));});
 $('toggle-coords').addEventListener('click',()=>{if(busy||isPlaying)return;settings.coordinates=!settings.coordinates;renderBoard();renderControls();persist();});
 $('toggle-trace').addEventListener('click',()=>{if(busy||isPlaying)return;settings.trail=!settings.trail;renderBoard();renderControls();persist();});
@@ -730,7 +729,6 @@ $('open-share').addEventListener('click',()=>{shareRun=false;renderShare();openD
 $('share-board').addEventListener('click',()=>{shareRun=false;renderShare();});
 $('share-replay').addEventListener('click',()=>{shareRun=true;renderShare();});
 $('copy-share').addEventListener('click',()=>copyText($('share-url').value,OFFLINE?'Portable board/replay code copied.':'Replay link copied.'));
-$('copy-code').addEventListener('click',()=>copyText(encodeBoard(board),'Portable board code copied.'));
 $('share-url').addEventListener('click',event=>event.target.select());
 $('open-board-data').addEventListener('click',()=>{setDataTab('code');openDialog('board-dialog');});
 $('import-from-levels').addEventListener('click',()=>{$('levels-dialog').close();setDataTab('code');openDialog('board-dialog');});
