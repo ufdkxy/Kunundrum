@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.3'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.4'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -384,7 +384,7 @@ function renderMeta() {
   const completed=$('completion-inline');
   completed.textContent=isComplete(state())?(isAccepted(state())?'Complete':'Complete · score ≤ 0 is not accepted') : '';
   completed.className=`completion-inline${isComplete(state())?isAccepted(state())?' done':' unaccepted':''}`;
-  $('board-hint').innerHTML=isComplete(state())?(isAccepted(state())?'':'The original game requires score ≥ 1.'):`<span class="mouse-mini" aria-hidden="true"></span><span aria-hidden="true">/</span>${busy?'Moving…':'Arrow keys: move.'}`;
+  $('board-hint').innerHTML=isComplete(state())?(isAccepted(state())?'':'The original game requires score ≥ 1.'):`<span class="mouse-mini" aria-hidden="true"></span><span aria-hidden="true">/</span>${busy?'Moving…':'Arrow keys: move'}`;
 }
 function updateResetControl() {
   $('reset').disabled=isPlaying||(!busy&&!pendingMove&&frames.length===1&&cursor===0&&!$('solution-input').value);

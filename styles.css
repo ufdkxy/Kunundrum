@@ -428,7 +428,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 
     .compact-layout .site-header { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); min-height:0; gap:12px; padding:8px max(24px,calc((100vw - 1392px)/2)); }
     .compact-layout .header-identity { display:flex; align-items:center; gap:16px; min-width:0; }
-    .compact-layout .brand { flex-shrink:0; gap:9px; font-size:16px; }
+    .compact-layout .brand { flex-shrink:0; gap:9px; font-size:19px; }
     .compact-layout .brand-mark { width:30px; height:30px; padding:6px; gap:3px; border-radius:8px; }
     .compact-layout .level-heading { min-width:0; max-width:280px; gap:6px; padding:5px 0; }
     .compact-layout .level-heading h1 { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:18px; line-height:1.2; letter-spacing:-.4px; }
