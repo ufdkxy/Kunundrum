@@ -79,8 +79,8 @@ JavaScript K3 encoder, including a board with an embedded solution. Unlike the
 app's JavaScript encoder, the Python serializer **does not simulate a saved
 solution**: replay/check it in Replay Lab before relying on it.
 
-`encode_k3.js`, `engine.js`, and `codec.js` are bundled for optional independent
-cross-checking, but they are not part of the required execution path.
+`encode_k3.js` loads the repository's shared `engine.js` and `codec.js` (repo root) for optional independent
+cross-checking; it is not part of the required execution path.
 
 ## Improvements since v0.2
 

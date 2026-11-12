@@ -37,7 +37,7 @@ A prebuilt **Linux x86-64** `kunsolve-linux-x86_64` is included for convenience.
 cat board-code.txt | ./kunsolve -
 ```
 
-The sample `levels.js` is the v3.0.1 catalog. To use an updated app catalog, copy your current `levels.js` over it or provide `--catalog /path/to/levels.js`.
+The solver reads `levels.js` from the current directory by default. In this repository the catalog and the shared `engine.js`/`codec.js` live in the repo root (not in `Solver/`); pass `--catalog ../levels.js` when running from `Solver/`.
 
 Options:
 

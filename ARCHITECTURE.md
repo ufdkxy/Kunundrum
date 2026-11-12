@@ -8,7 +8,7 @@
 | `parser/` | Offline screenshot recognition and Python K3 writer | `parse.py`, `encode_k3.py` |
 | `Solver/` | Native exact optimal solver | `solver.cpp`, `Makefile`, `tests/*.js` |
 
-**Source-of-truth policy:** `engine.js` defines gameplay; `codec.js` defines the browser's K2/K3 implementation; `solver.cpp` independently implements transitions and binary I/O; `parse.py` supplies candidate board data requiring human review. The copies of `engine.js` and `codec.js` in the repository root, `Solver/` and `parser/` are **byte-identical** (checked 2026-11-12). Preserve their parity when updating them.
+**Source-of-truth policy:** `engine.js` defines gameplay; `codec.js` defines the browser's K2/K3 implementation; `solver.cpp` independently implements transitions and binary I/O; `parse.py` supplies candidate board data requiring human review. `engine.js` and `codec.js` exist **once**, in the repository root; the solver tests and `parser/encode_k3.js` load them from there, so there is no copy to keep in sync.
 
 ## 1. Overall data flow
 

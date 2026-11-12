@@ -4,7 +4,7 @@
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
-const root = __dirname;
+const root = path.join(__dirname, '..'); // shared engine.js/codec.js live in the repo root
 const source = fs.readFileSync(path.join(root, 'engine.js'), 'utf8') + '\n' +
                fs.readFileSync(path.join(root, 'codec.js'), 'utf8') + '\n' +
                'globalThis.__kunundrum = { Core, Codec };';

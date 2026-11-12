@@ -1,6 +1,6 @@
 'use strict';
 const {spawnSync}=require('child_process'),fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('assert');
-const base=path.join(__dirname,'..'),c={TextEncoder,TextDecoder,Uint8Array,URL,URLSearchParams,atob,btoa};vm.createContext(c);for(const f of ['engine.js','codec.js'])vm.runInContext(fs.readFileSync(path.join(base,f),'utf8'),c);
+const base=path.join(__dirname,'..'),repo=path.join(base,'..'),c={TextEncoder,TextDecoder,Uint8Array,URL,URLSearchParams,atob,btoa};vm.createContext(c);for(const f of ['engine.js','codec.js'])vm.runInContext(fs.readFileSync(path.join(repo,f),'utf8'),c);
 const codec=vm.runInContext('Codec',c);let rng=123456789;const rand=n=>{rng=(1664525*rng+1013904223)>>>0;return rng%n;};
 function execute(code,algorithm){const p=spawnSync(path.join(base,'kunsolve'),[code,'--algorithm',algorithm,'--quiet','--seconds','6','--max-states','200000','--no-code'],{encoding:'utf8',timeout:9000});const status=p.stdout.match(/^(OPTIMAL|UNSOLVABLE|INCONCLUSIVE|SOLUTION FOUND)/m)?.[1];const slides=+(p.stdout.match(/^Slides: (\d+)/m)?.[1]??-1);if(!status)throw Error('bad '+p.stderr);return {status,slides,code:p.stdout};}
 let checked=0, skipped=0;for(let k=0;k<100;k++){

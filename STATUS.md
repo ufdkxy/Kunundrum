@@ -12,11 +12,11 @@
 | Level catalog | `levels.js` | **7 starter entries only** (6.6, 7.1, 7.3, 7.4, 7.6, 7.10, 8.1); not the complete private catalog. |
 | Screenshot parser | `parser/` (v0.4) | Python/OpenCV parser, manual overrides, review image, diagnostics, pure-Python K3 encoder, arrow templates. No screenshot test corpus in the repo. |
 | Native solver | `Solver/` (v0.2, switch-aware) | C++17 CLI: exact forward and bidirectional BFS, certified `OPTIMAL`/`INCONCLUSIVE` outcomes, K3 solution export, JS cross-verification tests. No WASM/browser integration. |
-| Shared rules/codec | `engine.js`, `codec.js` | Identical copies in repo root, `Solver/` and `parser/` (checked 2026-11-12). Keep parity. |
+| Shared rules/codec | `engine.js`, `codec.js` (repo root) | Single copy, used directly by the web app, `Solver/tests/*.js` and `parser/encode_k3.js`. |
 
 ## 2. Last verification
 
-**Solver and codec, 2026-11-11** (g++ 14.2.0, Node 22.16.0; run against the original ZIP sources, not re-run since the move into the repo): `make`, then `node tests/random-compare.js` (50/50), `node tests/random-switch.js` (100/100, 0 skipped) and `node tests/verify.js` (10 end-to-end cases) all passed. K3 round trip: all 7 catalog entries re-encoded by `parser/encode_k3.py` matched `Codec.encodeBoard` byte for byte.
+**Solver and codec, 2026-11-11** (g++ 14.2.0, Node 22.16.0, original ZIP sources). **Re-run 2026-11-12 from the repo** (Node 22.23.4, shared root `engine.js`/`codec.js`/`levels.js`): `verify.js` 10 cases, `random-compare.js` 50/50 and `random-switch.js` 100/100 all passed: `make`, then `node tests/random-compare.js` (50/50), `node tests/random-switch.js` (100/100, 0 skipped) and `node tests/verify.js` (10 end-to-end cases) all passed. K3 round trip: all 7 catalog entries re-encoded by `parser/encode_k3.py` matched `Codec.encodeBoard` byte for byte.
 
 Certified optimal slide counts (`verify.js`): 6.6 → 18, 7.1 → 15, 7.4 → 27, 7.6 → 20, 7.10 → 27, 8.1 → 18. Level 7.3 is not in `verify.js`; no optimality claim for it. `Solver/README.md` still says 7.4 is inconclusive at 1.5M states; the actual test run certified it, so trust the test output.
 
