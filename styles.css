@@ -153,8 +153,6 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .score-adjust { color: #87ba9f; font-size: 9px; }
 .history-chip.active { background: #244037; border-color: #9dccb9; }
 .history-chip.active .move-number { color: #a8c7b9; }
-.history-chip.future { opacity: .38; }
-.history-chip.future:hover { opacity: .85; }
 .timeline-bottom { display: flex; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid #22323e; color: #617987; font-size: 9px; }
 #cursor-label { color: #8ba0ac; }
 .board-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 19px; padding: 16px 2px; color: #708795; font-size: 10px; }

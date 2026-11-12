@@ -1,7 +1,9 @@
 'use strict';
 
 // The music library is intentionally user-supplied and is never bundled.
-// Browsers require a user gesture before audio playback, so start paused.
+// Music tries to autoplay on load. Browsers usually block that until the page
+// has been interacted with, so a blocked attempt is retried on the first gesture.
+// A manual pause is remembered (localStorage) so it is respected on reload.
 (() => {
   const tracks = [
     'ame_en_peine',
@@ -35,14 +37,42 @@
     button.title = `${playing ? 'Pause' : 'Play'} music · ${tracks[index].replaceAll('_', ' ')}`;
   }
 
+  const OFF_KEY = 'kunundrum-music-off';
+  const readOff = () => { try { return localStorage.getItem(OFF_KEY) === '1'; } catch (e) { return false; } };
+  const writeOff = off => { try { off ? localStorage.setItem(OFF_KEY, '1') : localStorage.removeItem(OFF_KEY); } catch (e) { /* storage unavailable */ } };
+
+  const gestureEvents = ['pointerdown', 'keydown'];
+  let armed = false;
+  function onGesture(event) {
+    if (button.contains(event.target)) return; // The toggle handles its own click.
+    void play();
+  }
+  function arm() {
+    if (armed) return;
+    armed = true;
+    gestureEvents.forEach(name => document.addEventListener(name, onGesture, true));
+  }
+  function disarm() {
+    if (!armed) return;
+    armed = false;
+    gestureEvents.forEach(name => document.removeEventListener(name, onGesture, true));
+  }
+
   async function play() {
     requested = true;
     try {
       await audio.play();
+      disarm();
     } catch (error) {
-      // Missing files or blocked playback should not interrupt the puzzle.
       requested = false;
-      button.title = 'Music unavailable — check the Music/ folder';
+      if (error && error.name === 'NotAllowedError') {
+        arm(); // Blocked until the user interacts; try again on the next gesture.
+      } else if (error && error.name !== 'AbortError') {
+        // Missing files should not interrupt the puzzle.
+        button.title = 'Music unavailable — check the Music/ folder';
+        label();
+        return;
+      }
     }
     label();
   }
@@ -50,9 +80,12 @@
   button.addEventListener('click', () => {
     if (requested && !audio.paused) {
       requested = false;
+      writeOff(true);
+      disarm();
       audio.pause();
       label();
     } else {
+      writeOff(false);
       void play();
     }
   });
@@ -71,4 +104,5 @@
     button.title = 'Music unavailable — check the Music/ folder';
   });
   label();
+  if (!readOff()) void play();
 })();
