@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.2'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.3'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -437,7 +437,7 @@ function renderHistory() {
   const keepScroll=$('move-history').scrollTop;
   $('move-history').innerHTML=frames.slice(1).map((frame,index)=>{
     const n=index+1,record=frame.record,adjustment=record.scoreDelta-1;
-    return `<button class="history-chip${n===cursor?' active':''}" data-jump="${n}" style="--ball-color:${PALETTE[record.ballId[0]]}" title="Move ${n}: ${escape(formatMove(record))}. Score ${frame.state.score}. ${escape(frame.events.join(' '))}" aria-label="Go to move ${n}: ${escape(formatMove(record))}, score ${frame.state.score}" ${n===cursor?'aria-current="step"':''} ${busy||isPlaying?'disabled':''}><span class="move-number">${n}</span><span class="move-code">${record.ballId}${GLYPHS[record.direction]}${record.choices.map(d=>`<small>↱${GLYPHS[d]}</small>`).join('')}</span>${adjustment?`<span class="score-adjust">${adjustment>0?'+':'−'}${Math.abs(adjustment)}</span>`:''}</button>`;
+    return `<button class="history-chip${n===cursor?' active':''}" data-jump="${n}" style="--ball-color:${PALETTE[record.ballId[0]]}" title="Move ${n}: ${escape(formatMove(record))}. Score ${frame.state.score}. ${escape(frame.events.join(' '))}" aria-label="Go to move ${n}: ${escape(formatMove(record))}, score ${frame.state.score}" ${n===cursor?'aria-current="step"':''}><span class="move-number">${n}</span><span class="move-code">${record.ballId}${GLYPHS[record.direction]}${record.choices.map(d=>`<small>↱${GLYPHS[d]}</small>`).join('')}</span>${adjustment?`<span class="score-adjust">${adjustment>0?'+':'−'}${Math.abs(adjustment)}</span>`:''}</button>`;
   }).join('');
   $('move-history').scrollTop=keepScroll;
   revealActiveMove();
