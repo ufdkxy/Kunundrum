@@ -44,7 +44,9 @@ function putProps(){
 }
 function refresh(){
  if(E.active&&document.activeElement!==$('editor-title'))$('editor-title').value=E.draft.title;
- $('edit-mode-button').textContent=E.active?'Play':'Edit';
+ $('edit-mode-label').textContent=E.active?'Play':'Edit';
+ $('edit-mode-icon-edit').hidden=E.active;
+ $('edit-mode-icon-play').hidden=!E.active;
  $('edit-mode-button').setAttribute('aria-pressed',String(E.active));
  document.body.classList.toggle('edit-mode',E.active);
  for(const id of ['open-levels','open-board-data','open-share'])$(id).disabled=E.active;
