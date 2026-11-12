@@ -591,8 +591,8 @@ body.edit-mode #board-stage.editor-grabbing .editor-floating-tile{cursor:grabbin
 #board-hint:empty { display:none; }
 
 /* Vertically compact layout: version under the brand, one control strip, history beside the board. */
-.brand-text { display:flex; flex-direction:column; justify-content:center; line-height:1.05; }
-.brand-version { margin-top:2px; color:var(--muted); font:9px/1 var(--mono); letter-spacing:.6px; }
+.brand-text { display:flex; align-items:baseline; gap:7px; }
+.brand-version { color:var(--muted); font:9px/1 var(--mono); letter-spacing:.6px; }
 .compact-layout .play-layout { align-items:stretch; gap:12px 16px; }
 .compact-layout .control-column { display:flex; flex-direction:column; align-items:stretch; gap:10px; min-height:0; }
 .compact-layout .control-panel { padding:10px; }
