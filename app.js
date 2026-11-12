@@ -8,9 +8,11 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.1.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.2.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
-if (versionLabel) versionLabel.textContent = APP_VERSION;
+if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
+const brandLink = document.querySelector('.brand');
+if (brandLink) brandLink.title = 'Kunundrum v' + APP_VERSION;
 const PALETTE = { R: '#df3047', G: '#39ff24', B: '#6fe8ff', Y: '#fff15c' };
 const GLYPHS = { u: '↑', d: '↓', l: '←', r: '→' };
 const ICON_PATHS = {
@@ -382,7 +384,7 @@ function renderMeta() {
   const completed=$('completion-inline');
   completed.textContent=isComplete(state())?(isAccepted(state())?'Complete':'Complete · score ≤ 0 is not accepted') : '';
   completed.className=`completion-inline${isComplete(state())?isAccepted(state())?' done':' unaccepted':''}`;
-  $('board-hint').innerHTML=isComplete(state())?(isAccepted(state())?'':'The original game requires score ≥ 1.'):`<span class="mouse-mini" aria-hidden="true"></span>${busy?'Moving…':'Arrow keys: move.'}`;
+  $('board-hint').innerHTML=isComplete(state())?(isAccepted(state())?'':'The original game requires score ≥ 1.'):`<span class="mouse-mini" aria-hidden="true"></span><span aria-hidden="true">/</span>${busy?'Moving…':'Arrow keys: move.'}`;
 }
 function updateResetControl() {
   $('reset').disabled=isPlaying||(!busy&&!pendingMove&&frames.length===1&&cursor===0&&!$('solution-input').value);
@@ -392,11 +394,9 @@ function renderControls() {
   const ball=current.balls.find(b=>b.id===selected);
   const playbackLocked=busy||isPlaying;
   const routeComplete=frames.length>1&&isComplete(frames[frames.length-1].state);
-  $('ball-picker').innerHTML=current.balls.map(b=>`<button class="ball-chip${b.id===selected?' active':''}${b.locked?' locked':''}" data-select="${b.id}" style="--ball-color:${PALETTE[b.color]}" aria-label="Select ${COLOR_NAMES[b.color]} ${b.id}${b.locked?', docked':''}" aria-pressed="${b.id===selected}" ${b.locked||playbackLocked?'disabled':''}><span class="color-dot">${b.locked?icon('check'):''}</span><span class="ball-id">${b.id}</span></button>`).join('');
   $('selected-name').textContent=ball?`${COLOR_NAMES[ball.color]}${ball.id.length>1?' '+ball.id.slice(1):''}${ball.locked?' docked':' selected'}`:'All balls docked';
   $('selected-position').textContent=ball?pos(ball):'';
-  $('dpad-center').style.setProperty('--ball-color',ball?PALETTE[ball.color]:'#73808a');
-  document.querySelectorAll('[data-direction]').forEach(el=>{el.disabled=playbackLocked||!ball||ball.locked;});
+  $('sel-dot').style.setProperty('--ball-color',ball?PALETTE[ball.color]:'#73808a');
   $('undo').disabled=playbackLocked||cursor===0||cursor!==frames.length-1;
   updateResetControl();
   $('copy-route').disabled=playbackLocked||cursor===0;
@@ -698,8 +698,6 @@ function clearLocation(){try{history.replaceState(null,'',location.pathname);}ca
 
 // Controls use one delegated listener each so rendering snapshots cannot multiply handlers.
 document.querySelector('.skip-link').addEventListener('click',event=>{event.preventDefault();$('board-stage').focus();$('board-stage').scrollIntoView({block:'start'});});
-$('ball-picker').addEventListener('click',event=>{const button=event.target.closest('[data-select]');if(button)selectBall(button.dataset.select);});
-document.querySelectorAll('[data-direction]').forEach(button=>button.addEventListener('click',()=>makeMove(selected,button.dataset.direction)));
 $('undo').addEventListener('click',deleteLastMove);
 $('reset').addEventListener('click',resetRun);
 $('replay-first').addEventListener('click',()=>goTo(0));

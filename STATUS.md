@@ -2,13 +2,14 @@
 
 *Living document: keep it current, delete resolved items instead of appending history (Git has the history). See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-**Last updated:** 2026-11-12 · **App version:** `APP_VERSION = '3.1.0'` in `app.js` (single source; the footer reads it). Bump it with every app change.
+**Last updated:** 2026-11-12 · **App version:** `APP_VERSION = '3.2.0'` in `app.js` (single source; shown under the brand name, top left, and as its tooltip). Bump it with every app change.
 
 ## 1. Components
 
 | Component | Location | State |
 | --- | --- | --- |
 | Browser Replay Lab / editor | repo root (`index.html`, `app.js`, `editor.js`, …) | Engine, rendering, replay, editor, K2/K3 read, K3 export, share links, local catalog and music source exist. **Not browser-tested in any review so far.** |
+| Page layout | `index.html`, `styles.css` (end of file) | Vertically compact, no page scroll on desktop: board + bottom bar (view toggles, selected ball and position, hint `mouse / Arrow keys: move.`) left; right column = Undo/Reset/speed row, transport row (start, prev, autoplay, next, end), Move history, Replay-a-solution input. Ball-picker, d-pad and footer were removed: select by clicking/tapping a ball or R/G/B/Y, move by drag/swipe or arrow keys. Narrow screens stack the column under the board. |
 | Puzzle picker | `app.js` `renderLevelCards`, `index.html` `#levels-dialog` | Left chapter bar (1–30, from the `a` in `a.b`, with n/10 counts); selecting a chapter shows its `a.b` previews on the right. Opens on the current level's chapter. Mobile: bar becomes a horizontal strip. |
 | Level catalog | `levels.js` | **7 starter entries only** (6.6, 7.1, 7.3, 7.4, 7.6, 7.10, 8.1); not the complete private catalog. |
 | Screenshot parser | `parser/` (v0.4) | Python/OpenCV parser, manual overrides, review image, diagnostics, pure-Python K3 encoder, arrow templates. No screenshot test corpus in the repo. |

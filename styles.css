@@ -447,16 +447,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
     .compact-layout .header-actions { justify-self:end; gap:8px; }
     .compact-layout .header-actions .quiet-button { padding:7px 8px; font-size:11px; }
     .compact-layout .header-actions .primary-button { min-height:34px; padding:7px 12px; font-size:11px; }
-    .compact-layout .workspace { max-width:1440px; padding:10px 24px 20px; }
-    .compact-layout .control-panel > .history-controls { margin:0 0 16px; padding:0 0 16px; border-bottom:1px solid #263943; display:grid; grid-template-columns:1fr 1fr; }
-    .compact-layout .control-panel > .ball-picker { margin-top:0; }
-    .compact-layout .control-panel > .replay-transport.four-step-transport { width:100%; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; padding-top:12px; margin-top:12px; }
-    .compact-layout .four-step-transport #replay-play { grid-column:1 / 4; min-width:0; width:100%; min-height:40px; display:flex; align-items:center; justify-content:center; gap:8px; }
-    .compact-layout .four-step-transport #replay-speed { grid-column:4; width:100%; min-width:0; min-height:40px; }
-    .compact-layout .four-step-transport .icon-button { width:100%; min-width:0; min-height:40px; }
-    .compact-layout .four-step-transport .icon-button svg { width:18px; height:18px; }
-    .compact-layout .history-controls .secondary-button { min-width:0; padding:9px 6px; gap:5px; font-size:11px; }
-    .compact-layout .history-controls kbd { display:none; }
+    .compact-layout .workspace { max-width:1440px; padding:10px 24px 8px; }
     .compact-layout .board-bottom { min-height:34px; padding:6px 12px; flex-wrap:wrap; gap:4px 14px; }
     .compact-layout .board-bottom > .replay-transport { display:none; }
     .compact-layout .board-view-controls { display:flex; align-items:center; gap:14px; flex:0 0 auto; }
@@ -493,7 +484,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
       .compact-layout .score-stat { display:flex; align-items:center; gap:7px; }
       .compact-layout .stat-label { margin:0; }
       .compact-layout .score-stat strong { font-size:22px; }
-      .compact-layout .workspace { padding:8px 18px 18px; }
+      .compact-layout .workspace { padding:8px 18px 8px; }
     }
     @media (max-width:640px) {
       .compact-layout .site-header { padding:7px 12px; gap:5px 8px; }
@@ -503,7 +494,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
       .compact-layout .header-actions { gap:4px; }
       .compact-layout .header-actions .quiet-button, .compact-layout .header-actions .primary-button { width:32px; height:32px; min-height:32px; padding:6px; gap:0; }
       .compact-layout .header-actions button > span:not([data-icon]) { display:none; }
-      .compact-layout .workspace { padding:6px 10px 16px; }
+      .compact-layout .workspace { padding:6px 10px 8px; }
       .compact-layout .board-bottom { padding-left:9px; padding-right:9px; gap:4px 10px; }
       .compact-layout .board-view-controls { gap:10px; }
       .compact-layout #board-stage { padding:4px; }
@@ -600,3 +591,33 @@ body.edit-mode #board-stage.editor-grabbing .editor-floating-tile{cursor:grabbin
 #music-icon svg { display:block; width:16px; height:16px; }
 #music-audio { display:none; }
 #board-hint:empty { display:none; }
+
+/* Vertically compact layout: version under the brand, one control strip, history beside the board. */
+.brand-text { display:flex; flex-direction:column; justify-content:center; line-height:1.05; }
+.brand-version { margin-top:2px; color:var(--muted); font:9px/1 var(--mono); letter-spacing:.6px; }
+.compact-layout .play-layout { align-items:stretch; gap:12px 16px; }
+.compact-layout .control-column { display:flex; flex-direction:column; align-items:stretch; gap:10px; min-height:0; }
+.compact-layout .control-panel { padding:10px; }
+.compact-layout .control-panel .history-controls { display:grid; grid-template-columns:1fr 1fr 74px; gap:6px; margin:0; padding:0; border:0; }
+.compact-layout .control-panel .secondary-button { min-height:34px; min-width:0; padding:6px 8px; gap:6px; font-size:11px; }
+.compact-layout .control-panel #replay-speed { min-width:0; width:100%; min-height:34px; font-size:11px; }
+.compact-layout .control-panel .replay-transport { display:flex; align-items:center; gap:6px; margin:6px 0 0; padding:0; border:0; }
+.compact-layout .control-panel .replay-transport .icon-button { flex:0 0 38px; width:38px; min-width:0; height:34px; min-height:34px; padding:6px; }
+.compact-layout .control-panel .replay-transport .icon-button svg { width:15px; height:15px; }
+.compact-layout .control-panel .replay-transport .play-button { flex:1 1 auto; min-width:0; width:auto; min-height:34px; font-size:11px; }
+.compact-layout .timeline-panel { flex:1 1 0; min-height:96px; margin:0; padding:10px 12px; display:flex; flex-direction:column; overflow:hidden; }
+.compact-layout .timeline-panel .section-heading h2 { font-size:12px; }
+.compact-layout .move-history { flex:1 1 0; min-height:0; max-height:none; align-content:flex-start; padding:8px 0 0; gap:5px; }
+.compact-layout .history-empty { padding:0; font-size:11px; }
+.compact-layout .history-empty > [data-icon] { width:28px; height:28px; }
+.compact-layout .replay-panel { padding:10px 12px; }
+.compact-layout .replay-panel .section-heading { margin-bottom:6px; }
+.compact-layout .replay-panel .input-label { display:none; }
+.compact-layout .notation-input { min-height:48px; padding:7px 10px; }
+.compact-layout .solution-actions { margin-top:6px; }
+.selected-info { display:inline-flex; align-items:center; gap:7px; margin:0; font-size:10px; color:#b3c4cd; white-space:nowrap; }
+.selected-info .mono { color:#7894a3; }
+.sel-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--ball-color, #73808a); box-shadow:0 0 8px color-mix(in srgb, var(--ball-color, #73808a) 45%, transparent); }
+body.edit-mode .selected-info { display:none; }
+#board-hint { gap:5px; }
+@media (max-width:900px) { .compact-layout .control-column { flex-direction:column; } .compact-layout .timeline-panel { flex:0 0 auto; min-height:120px; } }
