@@ -372,11 +372,13 @@ string codeWithSolution(const Board&b,const vector<LabeledMove>& path){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open levels.js: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0)return trim(line.substr(prefix.size()));}throw runtime_error("level not found: "+id);}
+static const char* SOLVER_VERSION="0.2"; // Solver's own version, independent of the web app's APP_VERSION.
 int main(int argc,char**argv){
  try{
   Limits lim;string input,level,catalog="levels.js";bool wantK3=true;
   for(int i=1;i<argc;i++){string a=argv[i];auto value=[&](){if(++i>=argc)throw runtime_error("missing argument for "+a);return string(argv[i]);};
-   if(a=="--help"||a=="-h"){cout<<"Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional] [--max-states N] [--seconds N] [--max-choices N] [--quiet]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: optimal slide sequence, score and K3 code including solution.\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 1 error.\n";return 0;}
+   if(a=="--version"){cout<<"kunsolve v"<<SOLVER_VERSION<<"\n";return 0;}
+   if(a=="--help"||a=="-h"){cout<<"Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional] [--max-states N] [--seconds N] [--max-choices N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: optimal slide sequence, score and K3 code including solution.\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 1 error.\n";return 0;}
    else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states")lim.maxStates=stoull(value());else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-choices")lim.maxChoices=stoi(value());else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantK3=false;else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
   }
   if(input.empty()&&level.empty())throw runtime_error("missing board code/file or --level");

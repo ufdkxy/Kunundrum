@@ -2,7 +2,7 @@
 
 *Living document: keep it current, delete resolved items instead of appending history (Git has the history). See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-**Last updated:** 2026-11-12 · **App version:** `APP_VERSION = '3.3.7'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change.
+**Last updated:** 2026-11-12 · **App version:** `APP_VERSION = '3.3.6'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
 
 ## 1. Components
 
@@ -12,7 +12,7 @@
 | Page layout | `index.html`, `styles.css` (end of file) | Vertically compact, no page scroll on desktop: board + bottom bar (view toggles, selected ball and position, hint `mouse / Arrow keys: move.`) left; right column = Undo/Reset/speed row, transport row (standard five buttons: start, prev, autoplay, next, end); speed menu sits right-aligned in the Undo/Reset row; the route position tracker (n / m) lives in the Move history heading, Move history, Replay-a-solution input. Ball-picker, d-pad and footer were removed: select by clicking/tapping a ball or R/G/B/Y, move by drag/swipe or arrow keys. Narrow screens stack the column under the board. |
 | Puzzle picker | `app.js` `renderLevelCards`, `index.html` `#levels-dialog` | Left chapter bar (1–30, from the `a` in `a.b`, with n/10 counts); selecting a chapter shows its `a.b` previews on the right. Opens on the current level's chapter. Mobile: bar becomes a horizontal strip. |
 | Level catalog | `levels.js` | **7 starter entries only** (6.6, 7.1, 7.3, 7.4, 7.6, 7.10, 8.1); not the complete private catalog. |
-| Screenshot parser | `parser/` (v0.4) | Python/OpenCV parser, manual overrides, review image, diagnostics, pure-Python K3 encoder, arrow templates. No screenshot test corpus in the repo. |
+| Screenshot parser | `parser/` (v0.5) | Python/OpenCV parser, manual overrides, review image, diagnostics, pure-Python K3 encoder, arrow templates. No screenshot test corpus in the repo. |
 | Native solver | `Solver/` (v0.2, switch-aware) | C++17 CLI: exact forward and bidirectional BFS, certified `OPTIMAL`/`INCONCLUSIVE` outcomes, K3 solution export, JS cross-verification tests. No WASM/browser integration. |
 | Shared rules/codec | `engine.js`, `codec.js` (repo root) | Single copy, used directly by the web app, `Solver/tests/*.js` and `parser/encode_k3.js`. |
 

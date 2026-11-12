@@ -1,4 +1,4 @@
-# Kunundrum native C++ solver — prototype 0.2
+# Kunundrum native C++ solver — prototype 0.2 (`SOLVER_VERSION` in `solver.cpp`, `kunsolve --version`; independent of the web app)
 
 A dependency-free C++17 exact search engine for the **K2/K3 Kunundrum board format**. The solver accepts a board code (or a file containing one), searches for a minimum-slide solution, checks the resulting path against its simulator, and exports a new K3 code with the solution embedded.
 

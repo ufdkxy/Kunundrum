@@ -5,6 +5,7 @@ Requires numpy and opencv-python. See README.md. Screen coordinates are
 converted to bottom-left-origin, one-based game coordinates.
 """
 from __future__ import annotations
+PARSER_VERSION = '0.5'  # Parser's own version, independent of the web app's APP_VERSION.
 import argparse
 import json
 import math
@@ -554,6 +555,7 @@ def parse_one(path,out,grid,templates,overrides,write_codes):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__,formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--version',action='version',version='Kunundrum parser v'+PARSER_VERSION)
     ap.add_argument('images',nargs='+',type=Path,help='Screenshots or directories')
     ap.add_argument('-o','--output',type=Path,default=Path('parsed'))
     ap.add_argument('--grid',help='Override detection: LEFT,TOP,CELL,COLS,ROWS (image pixels)')

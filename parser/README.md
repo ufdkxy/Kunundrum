@@ -1,4 +1,4 @@
-# Kunundrum Screenshot Parser v0.4
+# Kunundrum Screenshot Parser v0.5
 
 Offline Python/OpenCV screenshot-to-K3 converter. **Node.js is not required.**
 
@@ -102,6 +102,11 @@ warnings. Eight retained warnings for missing switch mapping / hexagon values.
 This is not a guarantee of 100% correctness on unseen screenshots; always
 inspect the annotated review images, particularly for partially covered cells,
 new sprites, and nonstandard scaling.
+
+## Changes in v0.5
+
+- A board with exactly one switch assigns all gates and teleports to it; no mapping warning.
+- Version is `PARSER_VERSION` in `parse.py` (`parse.py --version`), independent of the web app.
 
 ## Changes in v0.4
 
