@@ -625,3 +625,5 @@ body.edit-mode .selected-info { display:none; }
 @media (max-width:900px) { .compact-layout .control-column { flex-direction:column; } .compact-layout .timeline-panel { flex:0 0 auto; min-height:120px; } }
 
 .move-tracker { margin-left:6px; color:#8fb0a4; font:12px var(--mono); letter-spacing:.4px; font-weight:400; }
+
+.replay-transport button svg, .history-controls button svg { pointer-events:none; }

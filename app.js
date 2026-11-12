@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.1'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.2'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -406,7 +406,7 @@ function renderControls() {
   $('replay-next').disabled=playbackLocked||cursor>=frames.length-1;
   $('replay-last').disabled=playbackLocked||cursor>=frames.length-1;
   $('replay-play').disabled=!isPlaying&&(busy||!routeComplete);
-  $('replay-play').innerHTML=icon(isPlaying?'pause':'play');
+  { const playBtn=$('replay-play'), want=isPlaying?'pause':'play'; if(playBtn.dataset.icon!==want){ playBtn.dataset.icon=want; playBtn.innerHTML=icon(want); } }
   $('replay-play').title = `${isPlaying?'Pause':isComplete(current)?'Replay again':'Autoplay route'} (Space)`;
   $('replay-play').setAttribute('aria-label', $('replay-play').title);
   $('replay-speed').disabled=isPlaying;
@@ -418,6 +418,15 @@ function renderControls() {
   $('use-example').title=board.solution?'Load the saved solution from the start':'No saved solution for this board.';
   for(const [id,on] of [['toggle-coords',settings.coordinates],['toggle-outline',settings.outline],['toggle-trace',settings.trail]]) {$(id).classList.toggle('active',on);$(id).setAttribute('aria-pressed',String(on));}
 }
+function revealActiveMove() {
+  const box=$('move-history');
+  if(cursor===0){box.scrollTop=0;return;}
+  const active=box.querySelector('.active');
+  if(!active)return;
+  const b=box.getBoundingClientRect(), a=active.getBoundingClientRect(), pad=8;
+  if(a.top<b.top+pad) box.scrollTop-= (b.top+pad)-a.top;
+  else if(a.bottom>b.bottom-pad) box.scrollTop+= a.bottom-(b.bottom-pad);
+}
 function renderHistory() {
   const count=frames.length-1;
   if ($('cursor-label')) $('cursor-label').textContent=cursor?`Move ${cursor} of ${count} · score ${state().score}`:'At the start';
@@ -425,15 +434,13 @@ function renderHistory() {
     $('move-history').innerHTML='<div class="history-empty"><span>No moves.</span></div>';
     return;
   }
+  const keepScroll=$('move-history').scrollTop;
   $('move-history').innerHTML=frames.slice(1).map((frame,index)=>{
     const n=index+1,record=frame.record,adjustment=record.scoreDelta-1;
     return `<button class="history-chip${n===cursor?' active':''}" data-jump="${n}" style="--ball-color:${PALETTE[record.ballId[0]]}" title="Move ${n}: ${escape(formatMove(record))}. Score ${frame.state.score}. ${escape(frame.events.join(' '))}" aria-label="Go to move ${n}: ${escape(formatMove(record))}, score ${frame.state.score}" ${n===cursor?'aria-current="step"':''} ${busy||isPlaying?'disabled':''}><span class="move-number">${n}</span><span class="move-code">${record.ballId}${GLYPHS[record.direction]}${record.choices.map(d=>`<small>↱${GLYPHS[d]}</small>`).join('')}</span>${adjustment?`<span class="score-adjust">${adjustment>0?'+':'−'}${Math.abs(adjustment)}</span>`:''}</button>`;
   }).join('');
-  const active=$('move-history').querySelector('.active');
-  if(active) {
-    const box=$('move-history');
-    if(active.offsetTop>box.scrollTop+box.clientHeight-42||active.offsetTop<box.scrollTop) box.scrollTop=Math.max(0,active.offsetTop-box.offsetTop-20);
-  }
+  $('move-history').scrollTop=keepScroll;
+  revealActiveMove();
 }
 function render() {renderMeta();renderBoard();renderControls();renderHistory();}
 
@@ -791,6 +798,16 @@ document.addEventListener('keydown',event=>{
     if(available.length){event.preventDefault();const index=available.findIndex(ball=>ball.id===selected);selectBall(available[(index+1)%available.length].id);}
   }
 });
+
+// After mouse use of the side/bottom controls, hand keyboard focus back to the board
+// (keyboard activation keeps focus where it is; the replay textarea is exempt).
+const returnFocusToBoard=()=>{ if(!window.KunEditor?.active) $('board-stage').focus({preventScroll:true}); };
+document.querySelector('.control-column').addEventListener('click',event=>{ if(event.detail>0&&event.target.closest('button')) returnFocusToBoard(); });
+document.querySelector('.board-bottom').addEventListener('click',event=>{ if(event.detail>0&&event.target.closest('button')) returnFocusToBoard(); });
+let selectByMouse=false;
+$('replay-speed').addEventListener('pointerdown',()=>{selectByMouse=true;});
+$('replay-speed').addEventListener('keydown',()=>{selectByMouse=false;});
+$('replay-speed').addEventListener('change',()=>{ if(selectByMouse){selectByMouse=false;returnFocusToBoard();} });
 
 window.KunundrumHost = {
   getBoard:()=>JSON.parse(JSON.stringify(board)),
