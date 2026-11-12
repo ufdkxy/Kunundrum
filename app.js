@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.0.3'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.1.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = APP_VERSION;
 const PALETTE = { R: '#df3047', G: '#39ff24', B: '#6fe8ff', Y: '#fff15c' };
@@ -619,11 +619,34 @@ function loadSolution(text) {
 
 function openDialog(id) {stopPlayback();if(!$(id).open)$(id).showModal();}
 function closeDialog(dialog) {dialog.close();if(dialog.id==='rotate-dialog'){pendingMove=null;renderBoard();}}
-function renderLevelCards() {
-  $('level-cards').innerHTML=LEVELS.map(level=>{
-    const best=bestScores[level.id];
-    return `<button class="level-card${currentPresetId===level.id?' active':''}" data-level="${escape(level.id)}"><div class="level-preview" style="grid-row:auto">${renderSvg(level,createInitialState(level),{mini:true})}</div><div class="level-card-title" style="align-self:center"><strong>${escape(level.title)}</strong><span>${best?`${icon('check')} ${best.score}`:level.width+' × '+level.height}</span></div></button>`;
+const levelParts = id => id.split('.').map(Number);
+let levelsChapter = null;
+function revealChapter() {
+  const bar = $('chapter-bar'), act = bar.querySelector('.active');
+  if (!act) return;
+  if (getComputedStyle(bar).flexDirection === 'row') bar.scrollLeft = act.offsetLeft - bar.offsetLeft - 8;
+  else bar.scrollTop = act.offsetTop - bar.offsetTop - 8;
+}
+function renderLevelCards(chapter) {
+  const byChapter = new Map();
+  for (const level of LEVELS) {
+    const [a] = levelParts(level.id);
+    if (!byChapter.has(a)) byChapter.set(a, []);
+    byChapter.get(a).push(level);
+  }
+  for (const list of byChapter.values()) list.sort((x, y) => levelParts(x.id)[1] - levelParts(y.id)[1]);
+  if (chapter == null) chapter = levelsChapter ?? levelParts(currentPresetId || LEVELS[0].id)[0];
+  levelsChapter = chapter;
+  $('chapter-bar').innerHTML = Array.from({length: 30}, (_, i) => {
+    const a = i + 1, count = byChapter.get(a)?.length || 0;
+    return `<button type="button" class="chapter-button${a === chapter ? ' active' : ''}${count ? '' : ' empty'}" data-chapter="${a}" aria-pressed="${a === chapter}"><strong>${a}</strong><span>${count}/10</span></button>`;
   }).join('');
+  revealChapter();
+  const list = byChapter.get(chapter) || [];
+  $('level-cards').innerHTML = list.length ? list.map(level => {
+    const best = bestScores[level.id];
+    return `<button class="level-card${currentPresetId===level.id?' active':''}" data-level="${escape(level.id)}"><div class="level-preview" style="grid-row:auto">${renderSvg(level,createInitialState(level),{mini:true})}</div><div class="level-card-title" style="align-self:center"><strong>${escape(level.title)}</strong><span>${best?`${icon('check')} ${best.score}`:level.width+' × '+level.height}</span></div></button>`;
+  }).join('') : `<p class="level-empty">No puzzles in chapter ${chapter} yet.</p>`;
 }
 function shareUrl() {
   const source=OFFLINE?{board}:currentPresetId?{levelId:currentPresetId}:{board};
@@ -694,7 +717,8 @@ $('move-history').addEventListener('click',event=>{if(busy||isPlaying)return;con
 $('toggle-coords').addEventListener('click',()=>{if(busy||isPlaying)return;settings.coordinates=!settings.coordinates;renderBoard();renderControls();persist();});
 $('toggle-trace').addEventListener('click',()=>{if(busy||isPlaying)return;settings.trail=!settings.trail;renderBoard();renderControls();persist();});
 $('toggle-outline').addEventListener('click',()=>{if(busy||isPlaying)return;settings.outline=!settings.outline;renderBoard();renderControls();persist();});
-$('open-levels').addEventListener('click',()=>{renderLevelCards();openDialog('levels-dialog');});
+$('open-levels').addEventListener('click',()=>{levelsChapter=null;renderLevelCards();openDialog('levels-dialog');revealChapter();});
+$('chapter-bar').addEventListener('click',event=>{const b=event.target.closest('[data-chapter]');if(b)renderLevelCards(Number(b.dataset.chapter));});
 $('level-cards').addEventListener('click',event=>{const target=event.target.closest('[data-level]');if(!target)return;const next=LEVELS.find(level=>level.id===target.dataset.level);if(next){adoptBoard(next);clearLocation();$('levels-dialog').close();}});
 $('open-help').addEventListener('click',()=>openDialog('help-dialog'));
 $('open-share').addEventListener('click',()=>{shareRun=false;renderShare();openDialog('share-dialog');});

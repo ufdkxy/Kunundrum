@@ -2,13 +2,14 @@
 
 *Living document: keep it current, delete resolved items instead of appending history (Git has the history). See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-**Last updated:** 2026-11-12 · **App version:** `APP_VERSION = '3.0.3'` in `app.js` (single source; the footer reads it). Bump it with every app change.
+**Last updated:** 2026-11-12 · **App version:** `APP_VERSION = '3.1.0'` in `app.js` (single source; the footer reads it). Bump it with every app change.
 
 ## 1. Components
 
 | Component | Location | State |
 | --- | --- | --- |
 | Browser Replay Lab / editor | repo root (`index.html`, `app.js`, `editor.js`, …) | Engine, rendering, replay, editor, K2/K3 read, K3 export, share links, local catalog and music source exist. **Not browser-tested in any review so far.** |
+| Puzzle picker | `app.js` `renderLevelCards`, `index.html` `#levels-dialog` | Left chapter bar (1–30, from the `a` in `a.b`, with n/10 counts); selecting a chapter shows its `a.b` previews on the right. Opens on the current level's chapter. Mobile: bar becomes a horizontal strip. |
 | Level catalog | `levels.js` | **7 starter entries only** (6.6, 7.1, 7.3, 7.4, 7.6, 7.10, 8.1); not the complete private catalog. |
 | Screenshot parser | `parser/` (v0.4) | Python/OpenCV parser, manual overrides, review image, diagnostics, pure-Python K3 encoder, arrow templates. No screenshot test corpus in the repo. |
 | Native solver | `Solver/` (v0.2, switch-aware) | C++17 CLI: exact forward and bidirectional BFS, certified `OPTIMAL`/`INCONCLUSIVE` outcomes, K3 solution export, JS cross-verification tests. No WASM/browser integration. |

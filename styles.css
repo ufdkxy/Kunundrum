@@ -231,7 +231,16 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .modal-heading p { margin-top: 9px; font-size: 12px; color: #8ea6b4; }
 .modal-heading > .icon-button { width: 31px; height: 31px; flex-shrink: 0; }
 .modal-bottom { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 20px; margin-top: 22px; border-top: 1px solid #293e4b; color: #7c97a6; font-size: 11px; }
-.level-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.levels-layout { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 18px; align-items: start; }
+.chapter-bar { display: flex; flex-direction: column; gap: 4px; max-height: min(60dvh, 520px); overflow-y: auto; padding-right: 6px; border-right: 1px solid #293e4b; position: sticky; top: 0; }
+.chapter-button { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; padding: 7px 10px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #9fb6c3; text-align: left; }
+.chapter-button strong { font-size: 14px; font-weight: 600; }
+.chapter-button span { font-size: 9px; color: #6b8594; }
+.chapter-button:hover { background: #1a2b35; }
+.chapter-button.empty { opacity: .45; }
+.chapter-button.active { border-color: var(--mint); background: #13222c; color: var(--text); opacity: 1; }
+.level-empty { grid-column: 1 / -1; padding: 40px 0; text-align: center; color: #7d96a5; font-size: 12px; }
+.level-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-content: start; }
 .level-card { display: block; min-width: 0; text-align: left; padding: 10px; border: 1px solid #2e4553; border-radius: 9px; background: #13222c; }
 .level-card:hover { border-color: #6b928e; background: #1a2b35; }
 .level-card.active { border-color: var(--mint); box-shadow: 0 0 0 1px #b7efd829; }
@@ -381,6 +390,9 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
   .modal-heading h2 { font-size: 22px; }
   .modal-heading p { font-size: 11px; }
   .modal-heading .eyebrow { font-size: 7px; }
+  .levels-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .chapter-bar { flex-direction: row; max-height: none; overflow-x: auto; overflow-y: hidden; padding: 0 0 8px; border-right: 0; border-bottom: 1px solid #293e4b; position: static; }
+  .chapter-button { flex-direction: column; align-items: center; gap: 1px; flex: 0 0 auto; min-width: 44px; padding: 6px 8px; }
   .level-cards { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .level-card { display: grid; grid-template-columns: 122px minmax(0, 1fr); gap: 0 13px; padding: 11px; }
   .level-preview { grid-row: span 3; height: 105px; margin-bottom: 0; }
