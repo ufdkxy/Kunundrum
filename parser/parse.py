@@ -464,16 +464,17 @@ def assemble_board(labels,geom,level,overrides):
         mapped_positions={(s['x'],s['y']) for s in switches if s['id'] in switch_info}
         for mx,my in mapped_positions:
             unresolved=[w for w in unresolved if w != f'Switch at ({mx},{my}) has unknown mapping']
-    # A board with exactly one switch has an unambiguous mapping if the only
-    # switchable objects are wall gates: toggling the switch toggles every gate.
-    # In more complex boards, preserve an explicit mapping warning.
-    if len(switches)==1 and gates and not teleports:
-        switches[0]['wallGroups']=[g['group'] for g in gates]
-        sw=switches[0]
-        unresolved=[w for w in unresolved if w != f'Switch at ({sw["x"]},{sw["y"]}) has unknown mapping']
     gate_groups=overrides.get('gateGroups',{})
     for gate in gates:
         gate['group']=gate_groups.get(gate['id'],gate['group'])
+    # A board with exactly one switch has an unambiguous mapping: it controls
+    # every switchable element (gates and teleports), so no mapping is needed.
+    # An explicit override for that switch still wins.
+    if len(switches)==1 and switches[0]['id'] not in switch_info:
+        sw=switches[0]
+        sw['wallGroups']=list(dict.fromkeys(g['group'] for g in gates))
+        sw['teleportIds']=[t['id'] for t in teleports]
+        unresolved=[w for w in unresolved if w != f'Switch at ({sw["x"]},{sw["y"]}) has unknown mapping']
     # Matching balls to goals can detect many otherwise silent classification errors.
     bc=Counter(b['color'] for b in balls)
     gc=Counter(g['color'] for g in goals)

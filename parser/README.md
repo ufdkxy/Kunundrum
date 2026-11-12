@@ -58,8 +58,8 @@ keys are screenshot basenames *without extension*, for example `8-5`.
 9.8 has four switches; all four must be supplied to clear its mapping warnings.
 `W1`, etc. are the automatically assigned gate IDs (visible in JSON). For
 multi-gate groups use `gateGroups` and set each switch's `wallGroups` to the
-chosen group identifiers. A board with one switch and gates but no teleports
-is assigned all gates automatically.
+chosen group identifiers. A board with exactly one switch is assigned all
+switchable elements (gates and teleports) automatically and needs no mapping.
 
 For a single screenshot, `fixes.json` can be an un-nested object with `cells`
 and `switches`. Other accepted labels include `outside`, `floor`, `wall`,
