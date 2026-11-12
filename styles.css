@@ -598,14 +598,15 @@ body.edit-mode #board-stage.editor-grabbing .editor-floating-tile{cursor:grabbin
 .compact-layout .play-layout { align-items:stretch; gap:12px 16px; }
 .compact-layout .control-column { display:flex; flex-direction:column; align-items:stretch; gap:10px; min-height:0; }
 .compact-layout .control-panel { padding:10px; }
-.compact-layout .control-panel .history-controls { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:0; padding:0; border:0; }
+.compact-layout .control-panel .history-controls { display:flex; align-items:center; gap:6px; margin:0; padding:0; border:0; }
 .compact-layout .control-panel .secondary-button { min-height:34px; min-width:0; padding:6px 14px; gap:6px; font-size:11px; }
-.compact-layout .control-panel #replay-speed { min-width:0; width:64px; flex:0 0 64px; min-height:34px; padding:0 4px 0 8px; font-size:11px; }
+.compact-layout .control-panel #replay-speed { min-width:0; width:64px; flex:0 0 64px; margin-left:auto; min-height:34px; padding:0 4px 0 8px; font-size:11px; }
 .compact-layout .control-panel .replay-transport { display:flex; align-items:center; gap:6px; margin:6px 0 0; padding:0; border:0; }
-.compact-layout .control-panel .replay-transport .icon-button { flex:0 0 38px; width:38px; min-width:0; height:34px; min-height:34px; padding:6px; }
+.compact-layout .control-panel .replay-transport .icon-button { flex:1 1 0; width:auto; min-width:0; height:34px; min-height:34px; padding:6px; }
 .compact-layout .control-panel .replay-transport .icon-button svg { width:16px; height:16px; }
 .compact-layout .control-panel .replay-transport .play-button svg { width:16px; height:16px; }
-.compact-layout .control-panel .replay-transport .play-button { flex:0 0 38px; width:38px; min-width:0; height:34px; min-height:34px; margin-left:auto; padding:6px; border:1px solid var(--border); background:transparent; color:#9eafb9; }
+/* autoplay: centre of the standard five-button row, same size as the others */
+.compact-layout .control-panel .replay-transport .play-button { flex:1 1 0; width:auto; min-width:0; height:34px; min-height:34px; padding:6px; border:1px solid var(--border); background:transparent; color:#9eafb9; }
 .compact-layout .control-panel .replay-transport .play-button:hover:not(:disabled) { background:#21313d; color:var(--text); border-color:#435b68; }
 .compact-layout .timeline-panel { flex:1 1 0; min-height:96px; margin:0; padding:10px 12px; display:flex; flex-direction:column; overflow:hidden; }
 .compact-layout .timeline-panel .section-heading h2 { font-size:12px; }
