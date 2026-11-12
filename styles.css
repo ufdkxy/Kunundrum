@@ -598,9 +598,9 @@ body.edit-mode #board-stage.editor-grabbing .editor-floating-tile{cursor:grabbin
 .compact-layout .play-layout { align-items:stretch; gap:12px 16px; }
 .compact-layout .control-column { display:flex; flex-direction:column; align-items:stretch; gap:10px; min-height:0; }
 .compact-layout .control-panel { padding:10px; }
-.compact-layout .control-panel .history-controls { display:flex; align-items:center; gap:6px; margin:0; padding:0; border:0; }
+.compact-layout .control-panel .history-controls { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:0; padding:0; border:0; }
 .compact-layout .control-panel .secondary-button { min-height:34px; min-width:0; padding:6px 14px; gap:6px; font-size:11px; }
-.compact-layout .control-panel #replay-speed { min-width:0; width:74px; margin-left:auto; min-height:34px; font-size:11px; }
+.compact-layout .control-panel #replay-speed { min-width:0; width:64px; flex:0 0 64px; min-height:34px; padding:0 4px 0 8px; font-size:11px; }
 .compact-layout .control-panel .replay-transport { display:flex; align-items:center; gap:6px; margin:6px 0 0; padding:0; border:0; }
 .compact-layout .control-panel .replay-transport .icon-button { flex:0 0 38px; width:38px; min-width:0; height:34px; min-height:34px; padding:6px; }
 .compact-layout .control-panel .replay-transport .icon-button svg { width:16px; height:16px; }
@@ -624,3 +624,5 @@ body.edit-mode #board-stage.editor-grabbing .editor-floating-tile{cursor:grabbin
 body.edit-mode .selected-info { display:none; }
 #board-hint { gap:5px; }
 @media (max-width:900px) { .compact-layout .control-column { flex-direction:column; } .compact-layout .timeline-panel { flex:0 0 auto; min-height:120px; } }
+
+.move-tracker { margin-left:6px; color:#8fb0a4; font:12px var(--mono); letter-spacing:.4px; font-weight:400; }
