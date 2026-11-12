@@ -8,7 +8,9 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.0.2';
+const APP_VERSION = '3.0.3'; // Single source of truth; the footer reads it.
+const versionLabel = document.getElementById('app-version');
+if (versionLabel) versionLabel.textContent = APP_VERSION;
 const PALETTE = { R: '#df3047', G: '#39ff24', B: '#6fe8ff', Y: '#fff15c' };
 const GLYPHS = { u: '↑', d: '↓', l: '←', r: '→' };
 const ICON_PATHS = {
