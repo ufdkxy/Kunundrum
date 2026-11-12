@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.5'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.6'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -564,8 +564,6 @@ function deleteLastMove() {
   frames.pop();
   cursor--;
   mode='manual';
-  // Keep a loaded route's text synchronized with its shortened history.
-  if ($('solution-input').value.trim()) $('solution-input').value = getNotation();
   clearReplayLocation();
   selected=cursor>0?selectionAfterMove(frames[cursor].record.ballId):(state().balls.find(ball=>!ball.locked)?.id||state().balls[0].id);
   render();persist();
