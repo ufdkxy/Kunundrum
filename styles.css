@@ -598,12 +598,13 @@ body.edit-mode #board-stage.editor-grabbing .editor-floating-tile{cursor:grabbin
 .compact-layout .play-layout { align-items:stretch; gap:12px 16px; }
 .compact-layout .control-column { display:flex; flex-direction:column; align-items:stretch; gap:10px; min-height:0; }
 .compact-layout .control-panel { padding:10px; }
-.compact-layout .control-panel .history-controls { display:grid; grid-template-columns:1fr 1fr 74px; gap:6px; margin:0; padding:0; border:0; }
-.compact-layout .control-panel .secondary-button { min-height:34px; min-width:0; padding:6px 8px; gap:6px; font-size:11px; }
-.compact-layout .control-panel #replay-speed { min-width:0; width:100%; min-height:34px; font-size:11px; }
+.compact-layout .control-panel .history-controls { display:flex; align-items:center; gap:6px; margin:0; padding:0; border:0; }
+.compact-layout .control-panel .secondary-button { min-height:34px; min-width:0; padding:6px 14px; gap:6px; font-size:11px; }
+.compact-layout .control-panel #replay-speed { min-width:0; width:74px; margin-left:auto; min-height:34px; font-size:11px; }
 .compact-layout .control-panel .replay-transport { display:flex; align-items:center; gap:6px; margin:6px 0 0; padding:0; border:0; }
 .compact-layout .control-panel .replay-transport .icon-button { flex:0 0 38px; width:38px; min-width:0; height:34px; min-height:34px; padding:6px; }
-.compact-layout .control-panel .replay-transport .icon-button svg { width:15px; height:15px; }
+.compact-layout .control-panel .replay-transport .icon-button svg { width:16px; height:16px; }
+.compact-layout .control-panel .replay-transport .play-button svg { width:16px; height:16px; }
 .compact-layout .control-panel .replay-transport .play-button { flex:1 1 auto; min-width:0; width:auto; min-height:34px; font-size:11px; }
 .compact-layout .timeline-panel { flex:1 1 0; min-height:96px; margin:0; padding:10px 12px; display:flex; flex-direction:column; overflow:hidden; }
 .compact-layout .timeline-panel .section-heading h2 { font-size:12px; }
@@ -616,7 +617,8 @@ body.edit-mode #board-stage.editor-grabbing .editor-floating-tile{cursor:grabbin
 .compact-layout .notation-input { min-height:48px; padding:7px 10px; }
 .compact-layout .solution-actions { margin-top:6px; }
 .selected-info { display:inline-flex; align-items:center; gap:7px; margin:0; font-size:10px; color:#b3c4cd; white-space:nowrap; }
-.selected-info .mono { color:#7894a3; }
+.selected-info .mono { color:#7894a3; display:inline-block; min-width:8ch; }
+.selected-info #selected-name { display:inline-block; min-width:17ch; }
 .sel-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--ball-color, #73808a); box-shadow:0 0 8px color-mix(in srgb, var(--ball-color, #73808a) 45%, transparent); }
 body.edit-mode .selected-info { display:none; }
 #board-hint { gap:5px; }

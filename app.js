@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.2.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.2.1'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -36,10 +36,10 @@ const ICON_PATHS = {
   'play': '<path d="m8 5 11 7-11 7Z" fill="currentColor" stroke-width="1.5"/>',
   'pause': '<path d="M8 5v14M16 5v14" stroke-width="4"/>',
   'play-circle': '<circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4Z"/>',
-  'step-back': '<path d="M17 5 7 12l10 7Z" fill="currentColor" stroke-width="1.1"/>',
-  'step-forward': '<path d="m7 5 10 7-10 7Z" fill="currentColor" stroke-width="1.1"/>',
-  'skip-first': '<path d="M3 4v16M19 5 11 12l8 7ZM12 5 4 12l8 7Z" fill="currentColor" stroke-width="1.1"/>',
-  'skip-last': '<path d="M21 4v16M5 5l8 7-8 7ZM12 5l8 7-8 7Z" fill="currentColor" stroke-width="1.1"/>',
+  'step-back': '<path d="m15 5-7 7 7 7" stroke-width="2.4"/>',
+  'step-forward': '<path d="m9 5 7 7-7 7" stroke-width="2.4"/>',
+  'skip-first': '<path d="M6 5v14M18 5l-7 7 7 7" stroke-width="2.4"/>',
+  'skip-last': '<path d="M18 5v14M6 5l7 7-7 7" stroke-width="2.4"/>',
   'save': '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z"/><path d="M7 21v-8h10v8M7 3v5h8"/>',
   'check': '<path d="m5 12 4 4L19 6"/>',
   'edit': '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
@@ -406,7 +406,7 @@ function renderControls() {
   $('replay-next').disabled=playbackLocked||cursor>=frames.length-1;
   $('replay-last').disabled=playbackLocked||cursor>=frames.length-1;
   $('replay-play').disabled=!isPlaying&&(busy||!routeComplete);
-  $('replay-play').innerHTML=`${icon(isPlaying?'pause':'play')}<span>${isPlaying?'Pause':isComplete(current)?'Replay again':'Autoplay route'}</span>`;
+  $('replay-play').innerHTML=icon(isPlaying?'pause':'play');
   $('replay-play').title = `${isPlaying?'Pause':isComplete(current)?'Replay again':'Autoplay route'} (Space)`;
   $('replay-play').setAttribute('aria-label', $('replay-play').title);
   $('replay-speed').disabled=isPlaying;
