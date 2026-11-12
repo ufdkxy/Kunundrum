@@ -2,7 +2,7 @@
 
 *Living document: keep it current, delete resolved items instead of appending history (Git has the history). See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-**Last updated:** 2026-11-12 · **App version:** `APP_VERSION = '3.3.6'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change.
+**Last updated:** 2026-11-12 · **App version:** `APP_VERSION = '3.3.7'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change.
 
 ## 1. Components
 

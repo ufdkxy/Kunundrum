@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.6'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.7'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -487,30 +487,61 @@ async function animatePath(id,path) {
   if(!element)return true;
   const pad=settings.coordinates?35:18;
   const xy=p=>({x:pad+(p.x-.5)*64,y:pad+(board.height-p.y+.5)*64});
-  const duration=Math.min(1400,Math.max(180,(path.length-1)*54))/settings.speed;
+  // Per-segment durations: slides are quick, a teleport is a ~1s fade-out / fade-in.
+  const TELEPORT_MS=1000;
+  const segments=[];for(let i=1;i<path.length;i++)segments.push(path[i].teleport?TELEPORT_MS:54);
+  const slideTotal=segments.reduce((sum,ms,i)=>sum+(path[i+1].teleport?0:ms),0);
+  const slideScale=slideTotal?Math.min(1400,Math.max(180,slideTotal))/slideTotal:1;
+  const durations=segments.map((ms,i)=>(path[i+1].teleport?ms:ms*slideScale)/settings.speed);
+  const duration=durations.reduce((sum,ms)=>sum+ms,0);
+  const svgRoot=element.ownerSVGElement;
+  const rings=[];
+  function ring(p,color){
+    if(!svgRoot)return null;
+    const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('r','20');c.setAttribute('fill','none');c.setAttribute('stroke',color);c.setAttribute('stroke-width','4');
+    c.setAttribute('transform',`translate(${p.x},${p.y})`);c.setAttribute('pointer-events','none');c.style.opacity='0';
+    svgRoot.insertBefore(c,element);rings.push(c);return c;
+  }
+  const ballColor=element.querySelector('.orb-core')?.style.stroke||'#8feeff';
   // Use the animation-frame clock from the first callback. Its timestamp can
   // precede performance.now() read while scheduling that same frame.
   let start;
+  const cleanup=()=>{rings.forEach(r=>r.remove());element.style.opacity='1';};
+  const tele=new Map();
   return new Promise(resolve=>{
     function skipAnimation(error){
       // Motion is cosmetic: commit the already-validated move without tweening
       // if rendering fails, rather than leaving the controls permanently busy.
       console.warn('Kunundrum: skipped a failed slide animation.',error);
+      cleanup();
       resolve(epoch===animationEpoch);
     }
     function frame(now){
-      if(epoch!==animationEpoch){resolve(false);return;}
+      if(epoch!==animationEpoch){cleanup();resolve(false);return;}
       try{
         if(start===undefined)start=now;
-        const fraction=Math.max(0,Math.min(1,(now-start)/duration));
-        const point=fraction*(path.length-1),index=Math.min(path.length-2,Math.floor(point)),offset=point-index;
+        const elapsed=Math.max(0,Math.min(duration,now-start));
+        let index=0,acc=0;
+        while(index<durations.length-1&&elapsed>=acc+durations[index]){acc+=durations[index];index++;}
+        const offset=durations[index]?Math.min(1,(elapsed-acc)/durations[index]):1;
         const a=xy(path[index]),z=xy(path[index+1]);
         if(path[index+1].teleport){
-          const target=offset<.5?a:z;element.setAttribute('transform',`translate(${target.x},${target.y})`);element.style.opacity=String(Math.abs(offset-.5)*2);
+          if(!tele.has(index))tele.set(index,[ring(a,ballColor),ring(z,ballColor)]);
+          const [ra,rz]=tele.get(index);
+          const ease=t=>t*t*(3-2*t);
+          let target,opacity,scale;
+          if(offset<.4){const t=ease(offset/.4);target=a;opacity=1-t;scale=1-.75*t;}
+          else if(offset<.6){target=z;opacity=0;scale=.25;}
+          else{const t=ease((offset-.6)/.4);target=z;opacity=t;scale=.25+.75*t;}
+          element.setAttribute('transform',`translate(${target.x},${target.y}) scale(${scale})`);element.style.opacity=String(opacity);
+          // Expanding ring at the departure portal while fading out, and at the arrival portal while fading in.
+          const pulse=(r,t)=>{if(!r)return;r.style.opacity=t>0&&t<1?String(.9*(1-t)):'0';r.setAttribute('r',String(20+26*t));};
+          pulse(ra,Math.min(1,offset/.5));pulse(rz,Math.max(0,(offset-.5)/.5));
         }else{
           element.setAttribute('transform',`translate(${a.x+(z.x-a.x)*offset},${a.y+(z.y-a.y)*offset})`);element.style.opacity='1';
         }
-        if(fraction===1){element.style.opacity='1';resolve(true);}else requestAnimationFrame(frame);
+        if(elapsed>=duration){cleanup();element.setAttribute('transform',`translate(${xy(path[path.length-1]).x},${xy(path[path.length-1]).y})`);resolve(true);}else requestAnimationFrame(frame);
       }catch(error){
         skipAnimation(error);
       }
