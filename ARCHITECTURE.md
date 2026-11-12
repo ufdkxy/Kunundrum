@@ -1,14 +1,14 @@
 # Kunundrum — Architecture, Data Interfaces, and Formats
 
-**Baseline:** 2026-11-11, based on the three supplied archives:
+**Components** (all in the repository root):
 
-| Archive | Component | Entry points |
+| Location | Component | Entry points |
 | --- | --- | --- |
-| `Kunundrum_v3.0.1_K3_complete.zip` | Browser Replay Lab, editor, catalog, K3 codec | `app.js`, `editor.js`, `engine.js`, `codec.js`, `catalog.js`, `levels.js`, `convert-levels.html` |
-| `Kunundrum_screenshot_parser_0.4.zip` | Offline screenshot recognition and Python K3 writer | `parse.py`, `encode_k3.py` |
-| `Kunundrum_CPP_Solver_0.2_switches.zip` | Native exact optimal solver | `solver.cpp`, `Makefile`, `tests/*.js` |
+| repo root | Browser Replay Lab, editor, catalog, K3 codec | `index.html`, `app.js`, `editor.js`, `engine.js`, `codec.js`, `catalog.js`, `levels.js`, `convert-levels.html` |
+| `parser/` | Offline screenshot recognition and Python K3 writer | `parse.py`, `encode_k3.py` |
+| `Solver/` | Native exact optimal solver | `solver.cpp`, `Makefile`, `tests/*.js` |
 
-**Source-of-truth policy:** `engine.js` defines gameplay; `codec.js` defines the browser's K2/K3 implementation; `solver.cpp` independently implements transitions and binary I/O; `parse.py` supplies candidate board data requiring human review. The copies of `engine.js` and `codec.js` in **all three archives are byte-identical** at this baseline. Preserve their parity when updating them.
+**Source-of-truth policy:** `engine.js` defines gameplay; `codec.js` defines the browser's K2/K3 implementation; `solver.cpp` independently implements transitions and binary I/O; `parse.py` supplies candidate board data requiring human review. The copies of `engine.js` and `codec.js` in the repository root, `Solver/` and `parser/` are **byte-identical** (checked 2026-11-12). Preserve their parity when updating them.
 
 ## 1. Overall data flow
 
@@ -46,7 +46,7 @@ No server or framework is required by the JavaScript sources. The native solver 
 | `convert-levels.html` | Standalone local K2/K3 catalog-to-K3 converter | file input + browser-generated `levels.js` download |
 | `favicon.svg` | Icon | static asset |
 
-Logical script dependencies: `engine.js` precedes `codec.js`; `levels.js` precedes `catalog.js`; `engine.js`/`codec.js`/`catalog.js` precede `app.js`; `app.js` creates `KunundrumHost` used by the editor. `music.js` is independent of the game mechanics. An actual page loading order **cannot be verified** because the supplied web ZIP omits `index.html`; restore the matching page rather than constructing unverified DOM markup from assumptions.
+Logical script dependencies: `engine.js` precedes `codec.js`; `levels.js` precedes `catalog.js`; `engine.js`/`codec.js`/`catalog.js` precede `app.js`; `app.js` creates `KunundrumHost` used by the editor. `music.js` is independent of the game mechanics. `index.html` loads, in order: `levels.js`, `engine.js`, `catalog.js`, `codec.js`, `app.js`, `editor.js`, `music.js` (all `defer`).
 
 ### Public engine API
 

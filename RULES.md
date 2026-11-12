@@ -1,6 +1,6 @@
 # Kunundrum — Game Rules and Notation
 
-**Baseline:** 2026-11-11. **Authority:** `engine.js` (`Core`) shared byte-for-byte by the Replay Lab v3.0.1, screenshot parser v0.4, and C++ solver v0.2 archives. This file documents the **implemented simulator**, not inferred rules of an external game. If observations disagree, record a fixture and investigate before changing mechanics.
+**Baseline:** 2026-11-11. **Authority:** `engine.js` (`Core`) shared byte-for-byte by the Replay Lab (repo root), `parser/` and `Solver/`. This file documents the **implemented simulator**, not inferred rules of an external game. If observations disagree, record a fixture and investigate before changing mechanics.
 
 ## 1. Board, coordinates, and objects
 
