@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.10'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.11'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -745,7 +745,7 @@ function importBoard() {
       if(!nextBoard)throw new Error('This link does not contain a recognized puzzle.');
     } else nextBoard=decodeBoard(input,problems);
     if(problems.length){editInvalid(nextBoard,problems);clearLocation();$('board-dialog').close();return;}
-    const prepared=share?.moves?buildReplay(nextBoard,share.moves):undefined;
+    const prepared=(share?.route||share?.moves)?buildReplay(nextBoard,share.route?decodeRoute(nextBoard,share.route):share.moves):undefined;
     adoptBoard(nextBoard,prepared,share?.at||0);
     clearLocation();$('board-dialog').close();toast(`Loaded ${nextBoard.title}.`);
   }catch(error){showError('board-error',error.message);}
@@ -870,6 +870,7 @@ window.KunundrumHost = {
   svg:draft=>renderSvg(draft,createInitialState(draft),{outlinedBallId:null}),
   stop:()=>cancelMotion(),
   play:draft=>{adoptBoard(draft);},
+  resume:()=>{render();},
 };
 function boot() {
   let saved=null;

@@ -163,20 +163,23 @@ function setMode(active){
  if(active===E.active)return;
  if(active){
   host().stop();
-  E.draft=clone(host().getBoard());E.history=[];E.future=[];E.pending=null;E.selected=null;E.tool='select';E.dirty=false;
+  E.draft=clone(host().getBoard());E.fromHost=true;E.history=[];E.future=[];E.pending=null;E.selected=null;E.tool='select';E.dirty=false;
   E.active=true;$('editor-export-code').hidden=true;setStatus('');refresh();renderDraft();
  }else{
   try{
-   const valid=Core.validateBoard(E.draft);
-   host().play(valid);
+   // The current run (board + route) survives editing until the draft is actually changed:
+   // only a draft copied from the running board with an empty undo history resumes it.
+   const unchanged=E.fromHost&&!E.history.length;
+   if(!unchanged)host().play(Core.validateBoard(E.draft));
    E.active=false;E.pending=null;E.selected=null;clearFloatingDrag();refresh();setStatus('');
+   if(unchanged)host().resume();
   }catch(err){setStatus(`Cannot test yet: ${err.message}`,true);$('editor-status').scrollIntoView({block:'nearest'});}
  }
 }
 function openDraft(draft,problems=[]){
  // Open a board that failed validation for repair; Play stays gated by validateBoard in setMode(false).
  host().stop();
- E.draft=clone(draft);E.history=[];E.future=[];E.pending=null;E.selected=null;E.tool='select';E.dirty=true;
+ E.draft=clone(draft);E.fromHost=false;E.history=[];E.future=[];E.pending=null;E.selected=null;E.tool='select';E.dirty=true;
  E.active=true;$('editor-export-code').hidden=true;refresh();
  try{renderDraft();}catch(err){setStatus(`Opened for repair, but the board cannot be drawn: ${err.message}`,true);return;}
  setStatus(problems.length?`This board is not playable yet — fix it, then press Play. ${problems.join(' ')}`:'',problems.length>0);
@@ -285,7 +288,7 @@ function updateDimensions(){
  for(const type of keys){if(type==='teleports')E.draft.teleports=E.draft.teleports.filter(p=>p.ends.every(inside));else E.draft[type]=E.draft[type].filter(inside);}
  remember(prev);refresh();renderDraft();setStatus('Grid resized. Out-of-bounds objects were removed.');
 }
-function newBoard(){E.draft=template();E.history=[];E.future=[];E.pending=null;E.selected=null;refresh();renderDraft();setStatus('New board.');}
+function newBoard(){E.draft=template();E.fromHost=false;E.history=[];E.future=[];E.pending=null;E.selected=null;refresh();renderDraft();setStatus('New board.');}
 function ensureEditing(){if(!E.active)setMode(true);}
 const panel=document.getElementById('editor-panel');
 $('edit-mode-button').addEventListener('click',()=>setMode(!E.active));

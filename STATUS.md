@@ -2,7 +2,7 @@
 
 *Living document: keep it current, delete resolved items instead of appending history (Git has the history). See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-**Last updated:** 2026-11-13 · **App version:** `APP_VERSION = '3.3.10'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. Invalid-but-readable boards (codes, links, JSON) now open in the editor with the problems listed instead of failing to load; Play stays gated by validation (`decodeBoard(code, problems)`, `validateBoard(raw, problems)`). The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
+**Last updated:** 2026-11-13 · **App version:** `APP_VERSION = '3.3.11'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. Invalid-but-readable boards (codes, links, JSON) now open in the editor with the problems listed instead of failing to load; Play stays gated by validation (`decodeBoard(code, problems)`, `validateBoard(raw, problems)`). The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
 
 ## 1. Components
 
@@ -28,7 +28,6 @@ Certified optimal slide counts (`verify.js`): 6.6 → 18, 7.1 → 15, 7.4 → 27
 
 ### P1 — to reproduce and fix
 
-- **WEB-002: Pasted `#route=` link loses its route.** `boot()` handles `shared.route`, but `importBoard()` in `app.js` only builds a replay from `share.moves`. Pasting a compact route link into Board Data loads the board without the replay. Fix without breaking `#moves=` links and add a browser regression test. *Found by source inspection (re-confirmed 2026-11-12); not browser-reproduced.*
 - **PARSE-001: Saved diagnostics omit encoding failures.** `parse.py` writes `NAME_diagnostics.json` before the automatic K3 encode, so an encode failure is only in the console. Write diagnostics after encoding or rewrite on exception.
 - **PARSE-002: Single-switch auto-mapping overrides explicit input.** In `assemble_board`, the single-switch/all-gates/no-teleports shortcut replaces `wallGroups` even when a `switches` override is supplied, and runs before `gateGroups` overrides (stale group references possible). Apply gate-group overrides first, honor explicit switch mappings, deduplicate, and validate the board before K3 output. Until then, inspect and fix the JSON by hand.
 - **PARSE-003: Zero warnings does not mean a correct transcription.** Uncertain sprites, color/goal overlays and unusual scaling can fail silently. Check every `*_review.png` against its screenshot, and add regression tests for false negatives.
@@ -50,7 +49,7 @@ Certified optimal slide counts (`verify.js`): 6.6 → 18, 7.1 → 15, 7.4 → 27
 ## 4. Next work
 
 1. Verify the browser app offline from `index.html`; restore the full private `levels.js` from the local working copy (keep the 7-entry starter for deterministic tests).
-2. Fix WEB-002 and add browser tests for `#route` and legacy `#moves` links, persisted play, editor load/save, K2→K3 conversion and rotating-arrow routes.
+2. Add browser tests for `#route` and legacy `#moves` links, persisted play, editor load/save, K2→K3 conversion and rotating-arrow routes.
 3. Build a gold-standard screenshot set (original image, reviewed JSON, `fixes.json`, review PNG) including dim/cycling arrows, mixed ball+goal sprites, disconnected regions, 9.9 (10×8) and 9.10 (12×8) at 72-px cells, switch mappings and hex values.
 4. Fix PARSE-001/002 and validate boards (`Core.validateBoard` or equivalent) before K3 emission.
 5. Re-run solver tests from `Solver/` in the repo; scale to the full catalog, storing replay-verified solutions as fixtures.
