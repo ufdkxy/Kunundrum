@@ -1,4 +1,4 @@
-# Kunundrum Screenshot Parser v0.5
+# Kunundrum Screenshot Parser v0.6
 
 Offline Python/OpenCV screenshot-to-K3 converter. **Node.js is not required.**
 
@@ -102,6 +102,22 @@ warnings. Eight retained warnings for missing switch mapping / hexagon values.
 This is not a guarantee of 100% correctness on unseen screenshots; always
 inspect the annotated review images, particularly for partially covered cells,
 new sprites, and nonstandard scaling.
+
+## Changes in v0.6
+
+- Switchable elements are recognised: a metal tile split into quadrants by a dark
+  cross is switchable. Plain = gate; with the teleport sprite on top = switchable
+  teleport (labels `teleport_R_switchable`, ...). Always-on teleports (four corner
+  arcs, bright centre dot, dim concentric circles, no metal) stay unswitchable.
+- Teleports are detected by that sprite (also white/any-colour `teleport_*`).
+  Switchable teleports get `"switchable": true` in the JSON (ignored by the engine).
+- Switches are solid discs: green with a depressed shadow = on (`switch_on`, JSON
+  `"on": true`), red = off.
+- A lone switch controls all gates and all *switchable* teleports, never always-on ones.
+  Switchable elements with no switch produce a warning.
+- Board outline/grid detection works for any level theme (red, green, ...), not only cyan.
+- Known gap: arrows in non-blue themes (red/green chevrons) are not recognised yet
+  and are misread as balls. Gate/teleport on/off (inactive) appearance is untested.
 
 ## Changes in v0.5
 
