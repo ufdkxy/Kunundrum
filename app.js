@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.9'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.10'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -166,7 +166,6 @@ let animationEpoch = 0;
 let playEpoch = 0;
 let toastTimer;
 let dataTab = 'code';
-let shareRun = false;
 let bestScores = {};
 let settings = { coordinates: false, trail: false, outline: false, speed: 1, viewDefaultsVersion: 1, outlineDefaultsVersion: 1 };
 let viewSettingsInitialized = false;
@@ -690,18 +689,32 @@ function renderLevelCards(chapter) {
     return `<button class="level-card${currentPresetId===level.id?' active':''}" data-level="${escape(level.id)}"><div class="level-preview" style="grid-row:auto">${renderSvg(level,createInitialState(level),{mini:true})}</div><div class="level-card-title" style="align-self:center"><strong>${escape(level.title)}</strong><span>${best?`${icon('check')} ${best.score}`:level.width+' × '+level.height}</span></div></button>`;
   }).join('') : `<p class="level-empty">No puzzles in chapter ${chapter} yet.</p>`;
 }
-function shareUrl() {
-  const source=OFFLINE?{board}:currentPresetId?{levelId:currentPresetId}:{board};
-  const url=makeShareUrl(OFFLINE?'https://kunundrum.invalid/':location.href,{...source,routeBoard:board,...(shareRun&&frames.length>1?{moves:getNotation(),at:cursor}:{})});
-  return OFFLINE?new URL(url).hash:url;
+// Export dialog: two independent options. "URL format" wraps the data in a link
+// (or a bare #hash when opened from a file); otherwise the output is a K3 board code.
+// "Include route" adds the current route (a K3 code embeds it as the board's saved solution).
+let shareAsUrl = !OFFLINE, shareRoute = false;
+function shareOutput(withRoute) {
+  const hasRoute = withRoute && frames.length > 1;
+  const {solution:_saved,...bareBoard} = board; // without a route, export no saved solution
+  if (shareAsUrl) {
+    const source=OFFLINE?{board:bareBoard}:currentPresetId?{levelId:currentPresetId}:{board:bareBoard};
+    const url=makeShareUrl(OFFLINE?'https://kunundrum.invalid/':location.href,{...source,routeBoard:board,...(hasRoute?{moves:getNotation(),at:cursor}:{})});
+    return OFFLINE?new URL(url).hash:url;
+  }
+  return encodeBoard(hasRoute?{...bareBoard,solution:getNotation()}:bareBoard);
 }
 function renderShare() {
-  $('share-board').classList.toggle('active',!shareRun);$('share-board').setAttribute('aria-pressed',String(!shareRun));
-  $('share-replay').classList.toggle('active',shareRun);$('share-replay').setAttribute('aria-pressed',String(shareRun));
-  $('share-url').value=shareUrl();
-  $('share-caption').textContent=OFFLINE
-    ? (shareRun&&frames.length>1 ? `Paste in Board data. ${frames.length-1} moves; starts at move ${cursor}.` : 'Paste in Board data to load the starting board.')
-    : (shareRun&&frames.length>1?`Includes all ${frames.length-1} moves and opens at move ${cursor}.`:'Opens the puzzle at its starting position.');
+  const canRoute=frames.length>1, withRoute=shareRoute&&canRoute;
+  $('share-as-url').checked=shareAsUrl;
+  $('share-include-route').checked=withRoute;
+  $('share-include-route').disabled=!canRoute;
+  let text;
+  try{text=shareOutput(withRoute);}catch(error){text='';$('share-caption').textContent=error.message;$('share-url').value='';return;}
+  $('share-url').value=text;
+  const parts=[shareAsUrl?(OFFLINE?'Portable link data; paste it in Board data.':'Opens the puzzle in this app.'):'K3 board code; paste it in Board data.'];
+  if(withRoute)parts.push(`Includes all ${frames.length-1} moves`+(shareAsUrl?` and opens at move ${cursor}.`:'.'));
+  else if(!canRoute)parts.push('Make a move to include a route.');
+  $('share-caption').textContent=parts.join(' ');
 }
 async function copyText(text,success) {
   try {await navigator.clipboard.writeText(text);toast(success);return true;}
@@ -770,10 +783,10 @@ $('open-levels').addEventListener('click',()=>{levelsChapter=null;renderLevelCar
 $('chapter-bar').addEventListener('click',event=>{const b=event.target.closest('[data-chapter]');if(b)renderLevelCards(Number(b.dataset.chapter));});
 $('level-cards').addEventListener('click',event=>{const target=event.target.closest('[data-level]');if(!target)return;const next=LEVELS.find(level=>level.id===target.dataset.level);if(next){adoptBoard(next);clearLocation();$('levels-dialog').close();}});
 $('open-help').addEventListener('click',()=>openDialog('help-dialog'));
-$('open-share').addEventListener('click',()=>{shareRun=false;renderShare();openDialog('share-dialog');});
-$('share-board').addEventListener('click',()=>{shareRun=false;renderShare();});
-$('share-replay').addEventListener('click',()=>{shareRun=true;renderShare();});
-$('copy-share').addEventListener('click',()=>copyText($('share-url').value,OFFLINE?'Portable board/replay code copied.':'Replay link copied.'));
+$('open-share').addEventListener('click',()=>{renderShare();openDialog('share-dialog');});
+$('share-as-url').addEventListener('change',event=>{shareAsUrl=event.target.checked;renderShare();});
+$('share-include-route').addEventListener('change',event=>{shareRoute=event.target.checked;renderShare();});
+$('copy-share').addEventListener('click',()=>copyText($('share-url').value,shareAsUrl?(OFFLINE?'Portable link data copied.':'Link copied.'):'K3 code copied.'));
 $('share-url').addEventListener('click',event=>event.target.select());
 $('open-board-data').addEventListener('click',()=>{setDataTab('code');openDialog('board-dialog');});
 $('import-from-levels').addEventListener('click',()=>{$('levels-dialog').close();setDataTab('code');openDialog('board-dialog');});

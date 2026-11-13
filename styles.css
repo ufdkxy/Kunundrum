@@ -265,6 +265,10 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .shortcut-grid kbd { min-width: 66px; height: 24px; font-size: 10px; }
 .help-footnote { margin-top: 24px; padding-top: 18px; border-top: 1px solid #293e4b; color: #657f8f; font-size: 10px; line-height: 1.9; }
 .share-modal { max-width: 580px; }
+.share-options { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 0 0 12px; }
+.share-check { display: flex; align-items: center; gap: 8px; color: #c1d5df; font-size: 13px; }
+.share-check input { width: auto; }
+.share-check input:disabled + * , .share-check:has(input:disabled) { opacity: .5; }
 .segmented { display: flex; gap: 4px; padding: 4px; border: 1px solid #2c424f; border-radius: 7px; background: #0d1922; }
 .segmented button { flex: 1; min-height: 34px; padding: 8px 10px; border: 1px solid transparent; border-radius: 4px; color: #7d97a7; font-size: 12px; }
 .segmented button.active { border-color: #3f5d5b; background: #213931; color: var(--mint); }
