@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.11'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.12'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -865,11 +865,33 @@ $('replay-speed').addEventListener('pointerdown',()=>{selectByMouse=true;});
 $('replay-speed').addEventListener('keydown',()=>{selectByMouse=false;});
 $('replay-speed').addEventListener('change',()=>{ if(selectByMouse){selectByMouse=false;returnFocusToBoard();} });
 
+// Leaving the editor with a changed draft: keep the route whenever it still works on the edited
+// board. Otherwise keep the longest prefix that does (validity is monotone in prefix length) and
+// leave the full original route in the solution box, so it is never silently lost.
+function adoptEdited(draft) {
+  const normalized=validateBoard(draft);
+  const total=frames.length-1,at=cursor,previousMode=mode,full=getNotation();
+  let lo=0,hi=total;
+  while(lo<hi){
+    const mid=Math.ceil((lo+hi)/2);
+    try{buildReplay(normalized,getNotation(mid));lo=mid;}catch{hi=mid-1;}
+  }
+  const prepared=lo>0?buildReplay(normalized,getNotation(lo)):undefined;
+  adoptBoard(normalized,prepared,Math.min(at,lo),false);
+  if(prepared)mode=previousMode;
+  if(lo<total){
+    const input=$('solution-input'),restored=!input.value.trim()||input.value.trim()===full;
+    if(restored)input.value=full;
+    toast(lo===0?`The route no longer works on the edited board.${restored?' It is kept in the solution box.':''}`
+      :`Route kept up to move ${lo} of ${total}; move ${lo+1} no longer works on the edited board.${restored?' The full route is in the solution box.':''}`,true);
+  }
+  persist();
+}
 window.KunundrumHost = {
   getBoard:()=>JSON.parse(JSON.stringify(board)),
   svg:draft=>renderSvg(draft,createInitialState(draft),{outlinedBallId:null}),
   stop:()=>cancelMotion(),
-  play:draft=>{adoptBoard(draft);},
+  play:draft=>{adoptEdited(draft);},
   resume:()=>{render();},
 };
 function boot() {
