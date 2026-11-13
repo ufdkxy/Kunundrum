@@ -2,7 +2,7 @@
 
 *Living document: keep it current, delete resolved items instead of appending history (Git has the history). See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-**Last updated:** 2026-11-12 · **App version:** `APP_VERSION = '3.3.6'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
+**Last updated:** 2026-11-12 · **App version:** `APP_VERSION = '3.3.8'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. Invalid-but-readable boards (codes, links, JSON) now open in the editor with the problems listed instead of failing to load; Play stays gated by validation (`decodeBoard(code, problems)`, `validateBoard(raw, problems)`). The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
 
 ## 1. Components
 

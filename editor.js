@@ -173,6 +173,14 @@ function setMode(active){
   }catch(err){setStatus(`Cannot test yet: ${err.message}`,true);$('editor-status').scrollIntoView({block:'nearest'});}
  }
 }
+function openDraft(draft,problems=[]){
+ // Open a board that failed validation for repair; Play stays gated by validateBoard in setMode(false).
+ host().stop();
+ E.draft=clone(draft);E.history=[];E.future=[];E.pending=null;E.selected=null;E.tool='select';E.dirty=true;
+ E.active=true;$('editor-export-code').hidden=true;refresh();
+ try{renderDraft();}catch(err){setStatus(`Opened for repair, but the board cannot be drawn: ${err.message}`,true);return;}
+ setStatus(problems.length?`This board is not playable yet — fix it, then press Play. ${problems.join(' ')}`:'',problems.length>0);
+}
 function find(x,y,underBall=false){
  if(!E.draft)return null;
  for(const type of (underBall?['switches','gates','arrows','hexes','goals','walls']:['balls','switches','gates','arrows','hexes','goals','walls'])){
@@ -353,6 +361,6 @@ document.addEventListener('keydown',event=>{
  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){event.preventDefault();event.stopImmediatePropagation();editorUndo(event.shiftKey);return;}
  if(event.key==='Escape'&&E.pending){E.pending=null;refresh();renderDraft();event.preventDefault();}
 },true);
-window.KunEditor={get active(){return E.active;},render:renderDraft,open:()=>setMode(true)};
+window.KunEditor={get active(){return E.active;},render:renderDraft,open:()=>setMode(true),openDraft};
 refresh();
 })();

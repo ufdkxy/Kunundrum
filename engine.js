@@ -49,16 +49,19 @@ function entries(source                         , key        )            {
   if (!Array.isArray(values) || values.length > 4096) throw new Error(`${key} must be an array of at most 4096 entries.`);
   return values;
 }
-function uniqueIds                          (values     , label        )       {
+function uniqueIds                          (values     , label        , fail        )       {
   const ids = new Set        ();
   for (const value of values) {
-    if (ids.has(value.id)) throw new Error(`Duplicate ${label} ID: ${value.id}.`);
+    if (ids.has(value.id)) fail(`Duplicate ${label} ID: ${value.id}.`);
     ids.add(value.id);
   }
 }
 
 /** Validate imported data and return only the supported, normalized version-1 fields. */
-function validateBoard(raw         )        {
+function validateBoard(raw         , problems         )        {
+  // With a `problems` array, semantic problems (as opposed to unreadable data) are
+  // collected instead of thrown, so a damaged board can still be opened for repair.
+  const fail = (message        ) => { if (problems) problems.push(message); else throw new Error(message); };
   const source = object(raw, "Board");
   if (source.version !== undefined && source.version !== 1) throw new Error("This board uses an unsupported version; expected version 1.");
   const width = integer(source.width, "Board width", 1, 32);
@@ -130,17 +133,17 @@ function validateBoard(raw         )        {
     return { ...point(item, `Hexagon ${i + 1}`), id: identifier(item.id, `Hexagon ${i + 1} ID`, `hex${i + 1}`), value: valueNumber };
   }).sort(rowOrder);
 
-  uniqueIds(gates, "gate"); uniqueIds(switches, "switch"); uniqueIds(teleports, "teleport"); uniqueIds(hexes, "hexagon");
+  uniqueIds(gates, "gate", fail); uniqueIds(switches, "switch", fail); uniqueIds(teleports, "teleport", fail); uniqueIds(hexes, "hexagon", fail);
   const groups = new Set(gates.map(g => g.group));
   const teleportIds = new Set(teleports.map(t => t.id));
   for (const sw of switches) {
-    for (const id of sw.wallGroups) if (!groups.has(id)) throw new Error(`Switch ${sw.id} refers to unknown wall group ${id}.`);
-    for (const id of sw.teleportIds) if (!teleportIds.has(id)) throw new Error(`Switch ${sw.id} refers to unknown teleport ${id}.`);
+    for (const id of sw.wallGroups) if (!groups.has(id)) fail(`Switch ${sw.id} refers to unknown wall group ${id}.`);
+    for (const id of sw.teleportIds) if (!teleportIds.has(id)) fail(`Switch ${sw.id} refers to unknown teleport ${id}.`);
   }
   const tileKinds = new Map                ();
   const occupy = (p     , name        )       => {
     const key = posKey(p), previous = tileKinds.get(key);
-    if (previous) throw new Error(`${name} overlaps ${previous} at (${p.x},${p.y}); each cell may contain one floor feature.`);
+    if (previous) { fail(`${name} overlaps ${previous} at (${p.x},${p.y}); each cell may contain one floor feature.`); return; }
     tileKinds.set(key, name);
   };
   for (const p of walls) occupy(p, "a fixed wall");
@@ -153,14 +156,14 @@ function validateBoard(raw         )        {
   const occupiedBalls = new Set        ();
   for (const b of balls) {
     const key = posKey(b);
-    if (occupiedBalls.has(key)) throw new Error(`Two balls start at (${b.x},${b.y}).`);
-    if (walls.some(w => samePos(w, b))) throw new Error(`Ball ${b.id} starts inside a fixed wall.`);
-    if (gates.some(g => g.active && samePos(g, b))) throw new Error(`Ball ${b.id} starts inside an active switchable wall.`);
+    if (occupiedBalls.has(key)) fail(`Two balls start at (${b.x},${b.y}).`);
+    if (walls.some(w => samePos(w, b))) fail(`Ball ${b.id} starts inside a fixed wall.`);
+    if (gates.some(g => g.active && samePos(g, b))) fail(`Ball ${b.id} starts inside an active switchable wall.`);
     occupiedBalls.add(key);
   }
   for (const c of COLORS) {
     if (goals.filter(g => g.color === c).length < balls.filter(b => b.color === c).length) {
-      throw new Error(`There must be at least one ${COLOR_NAMES[c].toLowerCase()} goal per ${COLOR_NAMES[c].toLowerCase()} ball.`);
+      fail(`There must be at least one ${COLOR_NAMES[c].toLowerCase()} goal per ${COLOR_NAMES[c].toLowerCase()} ball.`);
     }
   }
   const board        = {

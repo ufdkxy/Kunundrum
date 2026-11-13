@@ -169,7 +169,7 @@ function binaryBoard(board, k3 = true) {
   list(board.hexes, p => { at(p); str(p.id); uint(p.value < 0 ? -2 * p.value - 1 : 2 * p.value); });
   return new Uint8Array(bytes);
 }
-function unbinaryBoard(bytes) {
+function unbinaryBoard(bytes, problems) {
   let offset = 0;
   const strings = [];
   const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -244,8 +244,12 @@ function unbinaryBoard(bytes) {
   raw.teleports = list(() => ({id:str(),color:color(true),active:bool(),ends:[at(),at()]}));
   raw.hexes = list(() => { const p=at(),id=str(),value=uint();return {...p,id,value:value % 2 ? -(value+1)/2 : value/2}; });
   if (offset !== bytes.length) throw new Error('Unexpected data after K2/K3 board.');
-  if(solutionBytes) raw.solution=expandSolution(validateBoard(raw),solutionBytes);
-  return validateBoard(raw);
+  if(solutionBytes){
+    const own=[];const checked=validateBoard(raw,own);
+    if(own.length){if(!problems)validateBoard(raw);problems.push('The embedded solution was dropped because the board is invalid.');}
+    else raw.solution=expandSolution(checked,solutionBytes);
+  }
+  return validateBoard(raw,problems);
 }
 function encodeBoard(board       )         {
   const code = BOARD_CODE_PREFIX + toBase64Url(binaryBoard(validateBoard(board)));
@@ -253,18 +257,19 @@ function encodeBoard(board       )         {
   return code;
 }
 
-function parseJsonBoard(json        )        {
+function parseJsonBoard(json        , problems         )        {
   let raw         ;
   try {
     raw = JSON.parse(json);
   } catch {
     throw new Error("The board data is not valid JSON. Check its brackets, commas, and quotes.");
   }
-  return validateBoard(raw);
+  return validateBoard(raw, problems);
 }
 
 /** Accepts a board code, a JSON board, or a complete shared-board URL. */
-function decodeBoard(input        )        {
+/** With a `problems` array, an unreadable-but-structurally-parsable board is returned and its validity problems are listed there instead of thrown. */
+function decodeBoard(input        , problems         )        {
   if (typeof input !== "string") throw new Error("Paste a board code or JSON board.");
   let code = input.trim();
   if (!code) throw new Error("Paste a board code, board link, or JSON board first.");
@@ -280,11 +285,11 @@ function decodeBoard(input        )        {
   if (code.length > MAX_BOARD_CODE_LENGTH) {
     throw new Error("The board data is too large (maximum 32 KB).");
   }
-  if (code.startsWith("{")) return parseJsonBoard(code);
+  if (code.startsWith("{")) return parseJsonBoard(code, problems);
   if (code.startsWith('K3.') || code.startsWith('K2.')) {
     const bytes=fromBase64Url(code.slice(3));
     if(bytes[0] !== (code.startsWith('K3.')?0xB3:0xB2))throw new Error('Board code prefix and payload version disagree.');
-    return unbinaryBoard(bytes);
+    return unbinaryBoard(bytes, problems);
   }
   if (/^K\d+\./.test(code)) throw new Error('Unsupported board-code version; this player supports K2 and K3.');
   throw new Error('A board code must start with K3. (K2 imports are also supported.)');

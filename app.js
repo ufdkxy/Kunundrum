@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.6'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.8'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -718,16 +718,25 @@ function importBoard() {
   const input=$('board-input').value.trim();
   try {
     if(!input)throw new Error('Paste a board code, a shared link, or a JSON board first.');
-    let nextBoard,share;
+    let nextBoard,share;const problems=[];
     if(/^(?:https?:\/\/|[?#])/i.test(input)) {
       share=readShareUrl(input);
-      nextBoard=share.boardCode?decodeBoard(share.boardCode):LEVELS.find(level=>level.id===share.levelId);
+      nextBoard=share.boardCode?decodeBoard(share.boardCode,problems):LEVELS.find(level=>level.id===share.levelId);
       if(!nextBoard)throw new Error('This link does not contain a recognized puzzle.');
-    } else nextBoard=decodeBoard(input);
+    } else nextBoard=decodeBoard(input,problems);
+    if(problems.length){editInvalid(nextBoard,problems);clearLocation();$('board-dialog').close();return;}
     const prepared=share?.moves?buildReplay(nextBoard,share.moves):undefined;
     adoptBoard(nextBoard,prepared,share?.at||0);
     clearLocation();$('board-dialog').close();toast(`Loaded ${nextBoard.title}.`);
   }catch(error){showError('board-error',error.message);}
+}
+// A well-formed but invalid board opens in the editor (Play is gated by validation there);
+// the previous valid run stays loaded underneath.
+function editInvalid(draft,problems){
+  // At boot app.js runs before the deferred editor.js, so wait for it.
+  if(window.KunEditor)window.KunEditor.openDraft(draft,problems);
+  else window.addEventListener('DOMContentLoaded',()=>window.KunEditor.openDraft(draft,problems),{once:true});
+  toast(`${draft.title} is not playable yet; opened in the editor.`,true);
 }
 function clearLocation(){try{history.replaceState(null,'',location.pathname);}catch{}}
 
@@ -862,8 +871,10 @@ function boot() {
   try {
     const shared=readShareUrl(OFFLINE?'https://kunundrum.invalid/'+location.search+location.hash:location.href);
     if(shared.boardCode||shared.levelId||shared.moves||shared.route){
-      const next=shared.boardCode?decodeBoard(shared.boardCode):shared.levelId?LEVELS.find(level=>level.id===shared.levelId):LEVELS[0];
+      const problems=[];
+      const next=shared.boardCode?decodeBoard(shared.boardCode,problems):shared.levelId?LEVELS.find(level=>level.id===shared.levelId):LEVELS[0];
       if(!next)throw new Error(`Unknown puzzle ${shared.levelId}. Choose one from the collection.`);
+      if(problems.length){adoptBoard(LEVELS[0]);editInvalid(next,problems);return;}
       const prepared=(shared.route||shared.moves)?buildReplay(next,shared.route?decodeRoute(next,shared.route):shared.moves):undefined;
       adoptBoard(next,prepared,shared.at||0);
     }else if(saved?.board){
