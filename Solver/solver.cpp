@@ -79,7 +79,14 @@ Board parseCode(string code){code=trim(code);if(code.rfind("K3.",0)!=0&&code.rfi
 struct State{vector<uint16_t> p;vector<Byte> gate,tele,sw,hex;};
 State initial(const Board&b){State s;for(const auto& x:b.balls)s.p.push_back(x.p);s.gate=b.gateInit;s.tele=b.teleInit;s.sw=b.switchInit;s.hex.assign(b.hexes.size(),0);return s;}
 // The state is unlabelled within a color. Same-colored balls are physically interchangeable.
-string stateKey(const Board&b,const State&s,int depth){string k; k.reserve(b.n*2+s.gate.size()+s.tele.size()+s.sw.size()+s.hex.size()+8);for(int i=0;i<b.n;){int j=i;while(j<b.n&&b.balls[j].color==b.balls[i].color)j++;vector<uint16_t> temp(s.p.begin()+i,s.p.begin()+j);sort(temp.begin(),temp.end());for(auto x:temp){k.push_back(char(x&255));k.push_back(char(x>>8));}i=j;}for(auto v:s.gate)k.push_back(char(v));for(auto v:s.tele)k.push_back(char(v));/* Switch visual on/off flags do not affect transitions. */for(auto v:s.hex)k.push_back(char(v));if(!b.hexes.empty()){for(int j=0;j<4;j++)k.push_back(char((depth>>(8*j))&255));}return k;}
+string stateKey(const Board&b,const State&s,int depth){string k; k.reserve(b.n*2+s.gate.size()+s.tele.size()+s.sw.size()+s.hex.size()+8);for(int i=0;i<b.n;){int j=i;while(j<b.n&&b.balls[j].color==b.balls[i].color)j++;vector<uint16_t> temp(s.p.begin()+i,s.p.begin()+j);sort(temp.begin(),temp.end());for(auto x:temp){k.push_back(char(x&255));k.push_back(char(x>>8));}i=j;}for(auto v:s.gate)k.push_back(char(v));for(auto v:s.tele)k.push_back(char(v));/* Switch visual on/off flags do not affect transitions. */for(auto v:s.hex)k.push_back(char(v));if(!b.hexes.empty()){
+ // Hex boards: key on the score (slides so far + consumed hex values), clamped. Once the score is at least
+ // 1 - (sum of unconsumed negative hex values), no future acceptance check can fail, so all larger scores
+ // behave identically and share one key; below the cap the score still separates states exactly.
+ long long score=depth,neg=0;for(size_t i=0;i<s.hex.size();i++){if(s.hex[i])score+=b.hexes[i].value;else if(b.hexes[i].value<0)neg+=b.hexes[i].value;}
+ if(score>1-neg)score=1-neg;
+ for(int j=0;j<4;j++)k.push_back(char(((uint32_t)score>>(8*j))&255));}
+ return k;}
 struct Move{uint16_t source=0;uint8_t color=0,dir=0;string choices;};
 struct Transition{State s;Move m;};
 // Performs a complete slide for a ball found at source. Choice string contains udlr.
@@ -124,21 +131,25 @@ void successors(const Board&b,const State&s,int maxChoices,Stats&stats,const fun
  }
 }
 struct Node{State s;uint32_t parent;Move m;int depth;};
-struct SearchResult{bool solved=false,exhaustive=false,truncated=false;vector<Move> path;uint64_t states=0,transitions=0;int depth=0;string algorithm;};
-struct Limits{uint64_t maxStates=2000000;double seconds=60;int maxChoices=8;bool verbose=true;string algorithm="auto";};
+struct SearchResult{bool solved=false,exhaustive=false,truncated=false,boundProved=false;vector<Move> path;uint64_t states=0,transitions=0;int depth=0;string algorithm;};
+struct Limits{uint64_t maxStates=2000000;double seconds=60;int maxChoices=8;int maxDepth=0;/* 0 = unlimited */bool verbose=true;string algorithm="auto";};
 using Clock=chrono::steady_clock;
 struct ClockLimit{Clock::time_point start=Clock::now();double seconds;explicit ClockLimit(double s):seconds(s){} bool expired()const{return chrono::duration<double>(Clock::now()-start).count()>=seconds;}double elapsed()const{return chrono::duration<double>(Clock::now()-start).count();}};
 SearchResult forwardBFS(const Board&b,const Limits&lim,ClockLimit&timer){SearchResult out;out.algorithm="forward BFS";State s0=initial(b);vector<Node> nodes;nodes.reserve(min<uint64_t>(lim.maxStates,1000000));nodes.push_back({s0,0,{},0});unordered_map<string,uint32_t> seen;seen.reserve(min<uint64_t>(lim.maxStates,1000000));seen.emplace(stateKey(b,s0,0),0);Stats stats;int old=-1;
  if(accepted(b,s0,0)){out.solved=true;return out;}
- size_t head=0;uint32_t found=0;bool success=false,limit=false;
+ size_t head=0;uint32_t found=0;bool success=false,limit=false,depthCut=false;
  for(;head<nodes.size()&&!success;head++){
   if(nodes.size()>=lim.maxStates||timer.expired()){limit=true;break;}
   const auto& cur=nodes[head];if(cur.depth!=old){old=cur.depth;if(lim.verbose)cerr<<"forward depth "<<old<<" visited "<<seen.size()<<" elapsed "<<timer.elapsed()<<"s\n";}
   State parentState=cur.s;int dep=cur.depth;
-  successors(b,parentState,lim.maxChoices,stats,[&](Transition&& t){if(success||limit)return;string key=stateKey(b,t.s,dep+1);if(seen.count(key))return;if(nodes.size()>=lim.maxStates){limit=true;return;}uint32_t ni=nodes.size();seen.emplace(move(key),ni);nodes.push_back({move(t.s),(uint32_t)head,move(t.m),dep+1});if(accepted(b,nodes.back().s,dep+1)){success=true;found=ni;}});
+  successors(b,parentState,lim.maxChoices,stats,[&](Transition&& t){if(success||limit)return;string key=stateKey(b,t.s,dep+1);if(seen.count(key))return;
+   if(lim.maxDepth>0&&dep+1>=lim.maxDepth){ // Last allowed layer: only test acceptance. These states are never expanded, so they are not stored.
+    if(accepted(b,t.s,dep+1)){found=(uint32_t)nodes.size();nodes.push_back({move(t.s),(uint32_t)head,move(t.m),dep+1});success=true;}else depthCut=true;
+    return;}
+   if(nodes.size()>=lim.maxStates){limit=true;return;}uint32_t ni=nodes.size();seen.emplace(move(key),ni);nodes.push_back({move(t.s),(uint32_t)head,move(t.m),dep+1});if(accepted(b,nodes.back().s,dep+1)){success=true;found=ni;}});
   stats.expanded++;
  }
- out.states=seen.size();out.transitions=stats.transitions;out.truncated=stats.truncatedChoices;out.solved=success;out.exhaustive=!limit&&!success&&!stats.truncatedChoices;
+ out.states=seen.size();out.transitions=stats.transitions;out.truncated=stats.truncatedChoices;out.solved=success;out.exhaustive=!limit&&!success&&!stats.truncatedChoices&&!depthCut;out.boundProved=!limit&&!success&&!stats.truncatedChoices&&depthCut;
  if(success){out.depth=nodes[found].depth;while(found){out.path.push_back(nodes[found].m);found=nodes[found].parent;}reverse(out.path.begin(),out.path.end());}
  return out;
 }
@@ -167,7 +178,7 @@ int fastEnd(const Board&b,const State&s,int i,int d){
 }
 struct BiNode {State s;uint32_t parent;Move m;uint16_t depth;};
 SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer){
- SearchResult out;out.algorithm="bidirectional BFS";
+ SearchResult out;out.algorithm="bidirectional BFS";const int D=lim.maxDepth>0?lim.maxDepth:INT32_MAX; // D: only paths of at most D slides matter
  if(!b.staticReverse||b.goals.size()!=b.balls.size())return out;
  State start=initial(b),target=start;
  for(int c=0;c<4;c++){
@@ -212,7 +223,7 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer){
  uint64_t reverseBudget=max<uint64_t>(1,lim.maxStates/2);
  bool reverseLimited=false;
  while(revHead<reverseNodes.size()&&!timer.expired()){
-  size_t layerEnd=reverseNodes.size();if(reverseNodes[revHead].depth>=12)break;
+  size_t layerEnd=reverseNodes.size();if(reverseNodes[revHead].depth>=12||reverseNodes[revHead].depth>=D)break;
   bool finished=true;
   for(;revHead<layerEnd;revHead++){
    if(reverseNodes.size()>=reverseBudget||timer.expired()){finished=false;break;}
@@ -315,15 +326,18 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer){
   if(lim.verbose)cerr<<"forward depth "<<depth+1<<" states "<<forwardNodes.size()<<" best "<<(best==INT32_MAX?-1:best)<<" elapsed "<<timer.elapsed()<<"s\n";
   // Every path of length < best must intersect a complete reverse ball of depth R
   // at forward depth max(0,best-1-R); all forward states through depth+1 are generated.
-  if(best!=INT32_MAX&&depth+1+reverseDepth>=best-1){certified=true;break;}
+  // need = longest path length that must be covered: below the best candidate, but never beyond the depth limit D.
+  {int need=min(best==INT32_MAX?INT32_MAX:best-1,D);if(need!=INT32_MAX&&depth+1+reverseDepth>=need){certified=true;break;}}
  }
  out.states=forwardNodes.size()+reverseNodes.size();out.transitions=transitions;
- if(best!=INT32_MAX){
+ const bool forwardDone=!limited&&!timer.expired()&&head==forwardNodes.size();
+ if(best!=INT32_MAX&&best<=D){
   out.solved=true;out.depth=best;out.exhaustive=certified;vector<Move> before,after;
   uint32_t at=fMeet;while(at){before.push_back(forwardNodes[at].m);at=forwardNodes[at].parent;}reverse(before.begin(),before.end());
   at=rMeet;while(reverseNodes[at].depth>0){after.push_back(reverseNodes[at].m);at=reverseNodes[at].parent;}
   out.path=move(before);out.path.insert(out.path.end(),after.begin(),after.end());
- }else out.exhaustive=!limited&&!timer.expired()&&head==forwardNodes.size();
+ }else if(best==INT32_MAX){if(forwardDone)out.exhaustive=true;else if(certified)out.boundProved=true;}
+ else out.boundProved=certified||forwardDone; // only candidates longer than D exist: no solution within D slides
  return out;
 }
 // Convert source-position moves to the specific, stable IDs of the original labeled balls.
@@ -372,14 +386,14 @@ string codeWithSolution(const Board&b,const vector<LabeledMove>& path){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open levels.js: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0)return trim(line.substr(prefix.size()));}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.2"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.3"; // Solver's own version, independent of the web app's APP_VERSION.
 int main(int argc,char**argv){
  try{
   Limits lim;string input,level,catalog="levels.js";bool wantK3=true;
   for(int i=1;i<argc;i++){string a=argv[i];auto value=[&](){if(++i>=argc)throw runtime_error("missing argument for "+a);return string(argv[i]);};
    if(a=="--version"){cout<<"kunsolve v"<<SOLVER_VERSION<<"\n";return 0;}
-   if(a=="--help"||a=="-h"){cout<<"Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional] [--max-states N] [--seconds N] [--max-choices N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: optimal slide sequence, score and K3 code including solution.\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 1 error.\n";return 0;}
-   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states")lim.maxStates=stoull(value());else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-choices")lim.maxChoices=stoi(value());else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantK3=false;else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
+   if(a=="--help"||a=="-h"){cout<<"Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional] [--max-states N] [--seconds N] [--max-choices N] [--max-depth N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: optimal slide sequence, score and K3 code including solution.\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth (proved lower bound), 1 error.\n";return 0;}
+   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states")lim.maxStates=stoull(value());else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-choices")lim.maxChoices=stoi(value());else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantK3=false;else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
   }
   if(input.empty()&&level.empty())throw runtime_error("missing board code/file or --level");
   if(!level.empty())input=catalogCode(level,catalog);else if(input=="-"){input=string((istreambuf_iterator<char>(cin)),{});}else input=readInput(input);
@@ -400,12 +414,13 @@ int main(int argc,char**argv){
   if((lim.algorithm=="auto"&&canBi&&b.n>=3)||lim.algorithm=="bidirectional")res=bidirectional(b,lim,timer);
   else if(lim.algorithm=="auto"||lim.algorithm=="forward")res=forwardBFS(b,lim,timer);
   else throw runtime_error("unknown algorithm");
-  cout<<"Algorithm: "<<res.algorithm<<"\nStates: "<<res.states<<"\nTransitions: "<<res.transitions<<"\nElapsed: "<<timer.elapsed()<<" s\n";
+  cout<<"Algorithm: "<<res.algorithm<<"\n"<<(lim.maxDepth>0?"Depth limit: "+to_string(lim.maxDepth)+"\n":string())<<"States: "<<res.states<<"\nTransitions: "<<res.transitions<<"\nElapsed: "<<timer.elapsed()<<" s\n";
   if(res.solved){int score;auto route=labelAndVerify(b,res.path,score);bool optimal=res.exhaustive||(!res.truncated&&res.algorithm=="forward BFS");
    cout<<(optimal?"OPTIMAL":"SOLUTION FOUND (optimality not certified)")<<"\nSlides: "<<route.size()<<"\nScore: "<<score<<"\nSolution: "<<formatMoves(b,route)<<"\n";if(wantK3)cout<<"K3: "<<codeWithSolution(b,route)<<"\n";
    if(!optimal)cerr<<"WARNING: search did not complete the layers needed to certify optimality\n";
    return optimal?0:2;
   }
+  if(res.boundProved){cout<<"NO SOLUTION WITHIN "<<lim.maxDepth<<" SLIDES\nLower bound: at least "<<lim.maxDepth+1<<" slides\n";return 4;}
   cout<<(res.exhaustive?"UNSOLVABLE":"INCONCLUSIVE")<<"\n";return res.exhaustive?3:2;
  }catch(const exception&e){cerr<<"Error: "<<e.what()<<"\n";return 1;}
 }

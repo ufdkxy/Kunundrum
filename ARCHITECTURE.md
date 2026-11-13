@@ -180,26 +180,27 @@ The parser's generated K3 board is equivalent in layout to the JavaScript codec 
 Build and run:
 
 ```sh
-cd solver
+cd Solver
 make
-./kunsolve --level 8.1
+./kunsolve --level 8.1 --catalog ../levels.js
+./kunsolve --level 8.1 --catalog ../levels.js --max-depth 17   # exit 4 proves no solution of 17 slides or fewer
 ./kunsolve board-code.txt --algorithm forward --seconds 120 --max-states 3000000
 ./kunsolve 'K3....' --algorithm auto
 ```
 
-The C++17 CLI is a separate process (`solver.cpp`) with no external runtime libraries. It accepts a literal code, a file containing a code, standard input (`-`), or a catalog ID (`--level`, optional `--catalog`). Common flags are `--algorithm auto|forward|bidirectional`, `--seconds` (default 60), `--max-states` (default 2,000,000), `--max-choices` (default 8), `--quiet`, and `--no-code`.
+The C++17 CLI is a separate process (`solver.cpp`) with no external runtime libraries. It accepts a literal code, a file containing a code, standard input (`-`), or a catalog ID (`--level`, optional `--catalog`). Common flags are `--algorithm auto|forward|bidirectional`, `--seconds` (default 60), `--max-states` (default 2,000,000), `--max-choices` (default 8), `--max-depth` (default unlimited: only solutions of at most that many slides are considered), `--quiet`, and `--no-code`.
 
-- **Forward BFS:** exact move-depth search, including rotating-arrow choice branching, one-use hex values, fixed arrows, gates/switches, compatible teleports and goal locking. With hexes, the state key also tracks depth so score remains determined by a given state.
+- **Forward BFS:** exact move-depth search, including rotating-arrow choice branching, one-use hex values, fixed arrows, gates/switches, compatible teleports and goal locking. With hexes, the state key also tracks the score so far (slides + consumed hex values), clamped at `1 - (sum of unconsumed negative hex values)` above which no acceptance check can fail, so score remains determined by a given state while larger scores share one key.
 - **Bidirectional BFS:** backward predecessor generation with **forward transition revalidation**. Supports fixed arrows, static/controlled teleports and switch-controlled gate groups with blocked closing. It **does not** support rotating arrows or hexes. It additionally needs equal numbers of balls and goals and an affordable enumeration of terminal gate-group/controlled-teleport masks. `auto` chooses bidirectional mode only when feasible **and there are at least three balls**; otherwise forward mode.
 - Within a color, balls are interchangeable for search-state deduplication; solution reconstruction restores stable public ball IDs. Mutable gate, teleport and consumed-hex flags appear in search keys. The switch visual `on` flag does not determine transitions and is excluded from state deduplication.
-- Search limits may make a result **INCONCLUSIVE** (exit 2). `OPTIMAL` (exit 0) means a verified accepted shortest path; `UNSOLVABLE` (exit 3) means exhaustive proof; invalid input / unsupported forced mode exits 1. A found but uncertified solution also exits 2.
+- Search limits may make a result **INCONCLUSIVE** (exit 2). `OPTIMAL` (exit 0) means a verified accepted shortest path; `UNSOLVABLE` (exit 3) means exhaustive proof; `NO SOLUTION WITHIN N SLIDES` (exit 4, only with `--max-depth N`) means every sequence of at most N slides was covered without an accepted completion (a proved lower bound of N+1); invalid input / unsupported forced mode exits 1. A found but uncertified solution also exits 2. To certify a known L-slide solution, run with `--max-depth L-1` and expect exit 4.
 - For any solution, the C++ program re-simulates the route and exports solution notation and an updated K3 code. The JavaScript regression suite independently decodes and replays the exported code.
 
 `--max-states` caps stored search states, **not bytes or memory use**. Searches are currently single-threaded. No browser-facing WASM or worker interface exists yet.
 
 ## 7. Regression and compatibility contract
 
-Native tests (`solver/tests/`):
+Native tests (`Solver/tests/`):
 
 ```sh
 make
@@ -208,7 +209,7 @@ node tests/random-compare.js
 node tests/random-switch.js
 ```
 
-`verify.js` checks bundled catalog levels and small rotating-arrow/hex/switch fixtures by decoding the C++ output via JavaScript `Codec` and replaying it via JavaScript `Core`. The randomized suites compare C++ forward versus bidirectional outcomes (50 static cases and 100 switch cases; deterministic seeds).
+`verify.js` checks bundled catalog levels and small rotating-arrow/hex/switch fixtures by decoding the C++ output via JavaScript `Codec` and replaying it via JavaScript `Core`. The randomized suites compare C++ forward versus bidirectional outcomes (50 static cases and 100 switch cases; deterministic seeds) and check `--max-depth` at the optimum (must return `OPTIMAL`) and one below it (must return `NO SOLUTION WITHIN`).
 
 For changes to game rules, binary layout, notation, parser, or solver:
 
