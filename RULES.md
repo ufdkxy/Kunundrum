@@ -101,6 +101,13 @@ The three snippets above illustrate arrow, teleport and hexagon entries respecti
 - **Teleports:** four coloured corner arcs, a bright centre dot and dim concentric circles. Drawn on bare floor = always on (not switchable); drawn over the metal cross tile = switchable. An **inactive** teleport loses its colour (grey concentric circles on the metal tile).
 - **Switches:** solid glossy disc; red = off, green with a depressed shadow = on (display state only, see 3).
 
+## 6b. Observed mechanics not yet implemented in `engine.js`
+
+Recorded from game screenshots (e.g. level 12.6); the simulator above does **not** implement these yet.
+
+- **Wraparound walls.** White triangles marking a gap in the board outline (on an outer edge or an outline segment) are a wraparound. They behave essentially like universal teleporters: they come in **bidirectional fixed pairs**, and a ball entering one emerges from its partner. Unlike teleporters, the **heading can change**: e.g. a ball moving left into a wraparound may come out of the paired exit moving down (the exit's outward direction). Each marker's triangles indicate the side it opens on.
+- **Rotating arrows.** All red (rotating) arrows rotate **in sync** on one shared phase clock. Each rotating arrow has one of three types: **clockwise** (period 4), **counterclockwise** (period 4), or **flipping** between two opposite directions (period 2). A screenshot captures every arrow at one instant of the clock, so a board's rotating arrows are fully described by their displayed directions plus a ternary string giving each arrow's type (in reading order). This is distinct from the current engine's "rotating" arrow, where the player picks the exit; how the two relate is still to be settled.
+
 ## 7. Invariants to preserve when editing mechanics
 
 1. `Core.applyMove` is immutable: failed/incomplete moves do not modify the supplied state.
