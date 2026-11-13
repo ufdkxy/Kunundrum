@@ -25,7 +25,7 @@ Windows with MinGW-w64:
 g++ -O3 -std=c++17 -DNDEBUG solver.cpp -o kunsolve.exe
 ```
 
-A prebuilt **Linux x86-64** `kunsolve-linux-x86_64` is included for convenience, but it is **older than the source** (it predates `--version` and `--max-depth`, and is stored without the executable bit): run `make` for the current solver. There is no prebuilt Windows executable in this archive.
+A prebuilt **Linux x86-64** `kunsolve-linux-x86_64` is included for convenience: a statically linked, stripped build of the current source (check with `./kunsolve-linux-x86_64 --version`; it runs on any x86-64 Linux without libstdc++ or glibc version concerns). Rebuild it with `make release` whenever `solver.cpp` changes. There is no prebuilt Windows executable in this archive.
 
 ## Run
 

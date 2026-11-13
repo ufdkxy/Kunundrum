@@ -60,7 +60,7 @@ Stored solutions checked with `--max-depth (length − 1)` (`--max-states 300000
 - **SOLVER-008: A*/IDA* with the depth bound.** A remaining-unlocked-balls lower bound is admissible; per-ball distance with other balls removed is **not** (other balls and gates act as stoppers). With a depth limit D, hex boards can also prune states where `score + (D − depth) + (sum of unconsumed positive hexes) < 1`.
 - **SOLVER-009: Automate certification.** Read the stored solution length L from a K3 code (the first varuint of its solution bytes) and run `--max-depth L-1` by itself, optionally over a whole catalog, reporting certified / shorter-found / inconclusive.
 - **TEST-003: No differential test against the JS engine on hex/rotating/teleport boards.** `verify.js` has only fixed fixtures (and takes about 25 s), so this belongs in a new file such as `Solver/tests/random-engine.js` (same style as `random-compare.js`): small random boards with ± hexes, rotating arrows, teleports and switches; compare `kunsolve --algorithm forward` outcome and slide count against an independent JS BFS over `Core.applyMove` keyed on the full state including score, and replay every solution.
-- **BUILD-001: Prebuilt `Solver/kunsolve-linux-x86_64` is stale** (predates `--version`, v0.2 and v0.3) and is committed without the executable bit. Rebuild and commit it, or drop it, once the solver settles.
+- **BUILD-001: Keep the committed `Solver/kunsolve-linux-x86_64` current.** It is a static, stripped build (about 2 MB) made with `make release`; rebuild and commit it with every `solver.cpp` change (it currently matches v0.3).
 - **TEST-001: No parser test assets.** The v0.4 README cites 20 tested screenshots, none in the repo. Add originals, reviewed JSON and expected outputs under a test-data directory.
 - **TEST-002: No browser tests.** Cover startup, Board Data import, share links, localStorage migration, editor load/save and geometry display.
 
@@ -95,7 +95,7 @@ The parser commands are workflows, not passing tests; they need screenshots and 
 ## 6. Release gate
 
 - Browser app tested from `index.html` with an identified catalog; `APP_VERSION` bumped.
-- Rule regression tests pass; solver output replays through the original JS engine.
+- Rule regression tests pass; solver output replays through the original JS engine; `Solver/kunsolve-linux-x86_64 --version` matches `SOLVER_VERSION`.
 - K2 imports readable; K3 JS↔Python round trip unchanged; compact and legacy replay links both work.
 - Parser screenshots and reviewed outputs versioned; pending-mechanics cases never silently dropped.
 - Any new optimality claim has the solver's `OPTIMAL` certificate (or a `NO SOLUTION WITHIN L-1 SLIDES` bound, exit 4, matching a replay-verified solution of L slides) plus an independent replay; inconclusive stays inconclusive.
