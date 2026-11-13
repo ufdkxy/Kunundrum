@@ -93,6 +93,14 @@ Additional feature shapes:
 
 The three snippets above illustrate arrow, teleport and hexagon entries respectively; insert them into the appropriate arrays, **not all on top of existing features**. Validation limits include 1–32 cells per dimension, 1–128 balls, up to 4,096 entries per feature array, and valid references from switches to gate groups and teleport IDs. Duplicate feature IDs, overlapping floor features, insufficient goals by color, and initial balls inside fixed/active walls are rejected.
 
+## 6a. How features look in the game (for screenshot parsing)
+
+- **Arrows:** red chevrons are **rotating** arrows (the player picks the exit); blue chevrons are **fixed** arrows. There are no green arrows. Chevron colours do not follow the level theme.
+- **Switchable elements** (gates and some teleports) are drawn on a metal tile split into quadrants by a dark central cross. Every switchable element is controlled by exactly one switch, and every switch controls at least one element, so a board with a single switch is unambiguous.
+- **Gates:** plain grey metal = **inactive** (floor); metal with a yellow/brown striped border = **active** (acts as a wall).
+- **Teleports:** four coloured corner arcs, a bright centre dot and dim concentric circles. Drawn on bare floor = always on (not switchable); drawn over the metal cross tile = switchable. An **inactive** teleport loses its colour (grey concentric circles on the metal tile).
+- **Switches:** solid glossy disc; red = off, green with a depressed shadow = on (display state only, see 3).
+
 ## 7. Invariants to preserve when editing mechanics
 
 1. `Core.applyMove` is immutable: failed/incomplete moves do not modify the supplied state.

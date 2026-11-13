@@ -5,7 +5,7 @@ Requires numpy and opencv-python. See README.md. Screen coordinates are
 converted to bottom-left-origin, one-based game coordinates.
 """
 from __future__ import annotations
-PARSER_VERSION = '0.6'  # Parser's own version, independent of the web app's APP_VERSION.
+PARSER_VERSION = '0.7'  # Parser's own version, independent of the web app's APP_VERSION.
 import argparse
 import json
 import math
@@ -326,6 +326,37 @@ def switch_disc(patch):
     if hue<12 or hue>169:return 'switch'
     return None
 
+def striped_border(patch):
+    """Active gate: metal tile with a yellow/brown hazard-striped frame."""
+    p,hsv,xx,yy,dx,dy=_hsv96(patch)
+    H,S,V=hsv[:,:,0],hsv[:,:,1],hsv[:,:,2]
+    frame=np.maximum(dx,dy)>40
+    yel=(H>=12)&(H<=40)&(S>100)&(V>100)
+    return float(yel[frame].mean())>.3
+
+def concentric_sprite(patch):
+    """Inactive teleport: grey concentric circles on the metal tile (a plain
+    gate has a flat radial profile)."""
+    p,hsv,xx,yy,dx,dy=_hsv96(patch)
+    gray=cv2.cvtColor(p,cv2.COLOR_BGR2GRAY).astype(float);r=np.hypot(dx,dy)
+    prof=[gray[(r>=a)&(r<a+3)].mean() for a in range(2,32,3)]
+    return float(np.std(prof))>15
+
+def red_chevrons(patch):
+    """Rotating arrow: stacked red chevrons (asymmetric under a half turn).
+    Direction is not determined."""
+    p,hsv,xx,yy,dx,dy=_hsv96(patch)
+    H,S,V=hsv[:,:,0],hsv[:,:,1],hsv[:,:,2];r=np.hypot(dx,dy)
+    red=((H<12)|(H>165))&(S>90)&(V>50)
+    box=red[18:78,18:78]
+    n=int(box.sum())
+    if not 1000<n<2600:return False
+    asym=float((box^np.rot90(box,2)).sum())/n
+    # Bright-phase chevrons have white-hot tips; sparkle balls have a white core too
+    # but are symmetric, so ask for stronger asymmetry there.
+    white=float(((V>200)&(S<80))[r<6].mean())>.3
+    return asym>(.6 if white else .2)
+
 def classify(patch,templates):
     f=patch_features(patch)
     shape_dir,shape_conf=arrow_shape_match(patch)
@@ -334,12 +365,17 @@ def classify(patch,templates):
     # Metal quadrant tile = switchable element: a plain one is a gate, one with
     # the teleport sprite on top is a switchable teleport.
     if metal_cross(patch):
+        if striped_border(patch):return 'gate_detected',.95,f  # active gate = wall
         tc=teleport_sprite(patch)
-        return (f'teleport_{tc}_switchable' if tc else 'gate_detected'),.93,f
+        if tc:return f'teleport_{tc}_switchable',.93,f
+        # Inactive teleports are drawn grey, so their colour is unknown.
+        if concentric_sprite(patch):return 'teleport_*_inactive',.85,f
+        return 'gate_inactive',.93,f  # plain grey metal = inactive gate
     tc=teleport_sprite(patch)
     if tc:return f'teleport_{tc}',.92,f
     sw=switch_disc(patch)
     if sw:return sw,.95,f
+    if red_chevrons(patch):return 'arrow_rotating',.85,f
     # Mechanic sprites are visually very different from colored balls/goals.
     # Switches are glossy red discs; gates are yellow-hatched metal; plain
     # metal tiles are permanent walls. Evaluate these before colored objects.
@@ -455,13 +491,13 @@ def robust_geometry(img,grid=None):
 
 def parse_label(label):
     label=label.strip().replace(':','_')
-    if label in ('empty','floor','outside','wall','switch','switch_on','unknown','hex_pending','gate_detected'):
+    if label in ('empty','floor','outside','wall','switch','switch_on','unknown','hex_pending','gate_detected','gate_inactive'):
         return label
     if '+' in label:
         return '+'.join(parse_label(part) for part in label.split('+'))
     parts=label.split('_')
     if parts[0] in ('ball','goal','teleport') and len(parts)==2 and parts[1] in COLORS:return label
-    if parts[0]=='teleport' and len(parts) in (2,3) and parts[1] in COLORS+('*',) and (len(parts)==2 or parts[2]=='switchable'):return label
+    if parts[0]=='teleport' and len(parts) in (2,3) and parts[1] in COLORS+('*',) and (len(parts)==2 or parts[2] in ('switchable','inactive')):return label
     if parts[0]=='switch' and len(parts)==2:return label
     if parts[0]=='arrow' and len(parts)==2 and parts[1] in ('u','d','l','r','rotating'):return label
     if parts[0]=='gate' and len(parts)>=2:return label
@@ -470,8 +506,45 @@ def parse_label(label):
     raise ValueError(f'Invalid cell label {label!r}')
 
 
+def guess_switch_mapping(switches,gates,teleports,switch_info,unresolved):
+    """Fill in switch -> wallGroups/teleportIds for switches without an override.
+    Nearest switch (Manhattan distance, ties to the earliest switch in reading
+    order) for each unclaimed element, then reassign so no switch is left empty.
+    Returns a description of a guess, or '' when nothing was ambiguous."""
+    claimed_groups={g for sw in switches if sw['id'] in switch_info for g in sw['wallGroups']}
+    claimed_tp={t for sw in switches if sw['id'] in switch_info for t in sw['teleportIds']}
+    groups={}
+    for gate in gates:groups.setdefault(gate['group'],[]).append((gate['x'],gate['y']))
+    elements=[('g',gid,pts) for gid,pts in groups.items() if gid not in claimed_groups]
+    elements+=[('t',t['id'],[(e['x'],e['y']) for e in t['ends']]) for t in teleports
+               if t.get('switchable') and t['id'] not in claimed_tp]
+    free=[sw for sw in switches if sw['id'] not in switch_info]
+    if not free and elements:free=list(switches)  # leftovers go to the nearest of all switches
+    if not free:return ''
+    for sw in free:
+        sw['wallGroups']=[];sw['teleportIds']=[]
+        unresolved[:]=[w for w in unresolved if w!=f'Switch at ({sw["x"]},{sw["y"]}) has unknown mapping']
+    def dist(sw,el):return min(abs(sw['x']-x)+abs(sw['y']-y) for x,y in el[2])
+    owner={}
+    for el in elements:
+        owner[el[:2]]=min(range(len(free)),key=lambda i:(dist(free[i],el),i))
+    # Surjectivity: an empty switch takes the nearest element from a switch that has several.
+    for i,sw in enumerate(free):
+        if any(o==i for o in owner.values()):continue
+        donors=[el for el in elements if sum(o==owner[el[:2]] for o in owner.values())>1]
+        if not donors:break
+        el=min(donors,key=lambda e:(dist(sw,e),e[1]))
+        owner[el[:2]]=i
+    for el in elements:
+        sw=free[owner[el[:2]]]
+        (sw['wallGroups'] if el[0]=='g' else sw['teleportIds']).append(el[1])
+    if len(switches)==1:return ''
+    empty=[sw['id'] for sw in free if not sw['wallGroups'] and not sw['teleportIds']]
+    if empty:unresolved.append('Switch(es) '+', '.join(empty)+' control nothing: fewer switchable elements than switches')
+    return '; '.join(f"{sw['id']}->{','.join(sw['wallGroups']+sw['teleportIds']) or '-'}" for sw in free)
+
 def assemble_board(labels,geom,level,overrides):
-    walls=[]; balls=[]; goals=[]; arrows=[]; gates=[]; switches=[]; hexes=[]; telecells=defaultdict(list); teleswitchable=defaultdict(list)
+    walls=[]; balls=[]; goals=[]; arrows=[]; gates=[]; switches=[]; hexes=[]; telecells=defaultdict(list); teleswitchable=defaultdict(list); teleinactive=defaultdict(list)
     unresolved=[]
     for row in range(geom.height):
         for col in range(geom.width):
@@ -488,16 +561,16 @@ def assemble_board(labels,geom,level,overrides):
             elif kind.startswith('goal_'):goals.append(dict(**pos,color=kind[5:]))
             elif kind.startswith('teleport_'):
                 color,_,flag=kind[9:].partition('_')
-                telecells[color].append(pos);teleswitchable[color].append(flag=='switchable')
+                telecells[color].append(pos);teleswitchable[color].append(flag in ('switchable','inactive'));teleinactive[color].append(flag=='inactive')
             elif kind.startswith('arrow_'):
                 d=kind[6:]
                 arrows.append(dict(**pos,direction='u' if d=='rotating' else d,**({'rotating':True} if d=='rotating' else {})))
             elif kind == 'hex_pending':
                 unresolved.append(f'Hexagon at ({x},{y}) needs its signed value')
             elif kind.startswith('hex_'):hexes.append(dict(**pos,id=f'H{len(hexes)+1}',value=int(kind[4:])))
-            elif kind == 'gate_detected':
+            elif kind in ('gate_detected','gate_inactive'):
                 gid=f'W{len(gates)+1}'
-                gates.append(dict(**pos,id=gid,group=gid,active=True))
+                gates.append(dict(**pos,id=gid,group=gid,active=kind=='gate_detected'))
             elif kind.startswith('gate_'):
                 bits=kind.split('_')
                 gate_id=bits[1]
@@ -521,7 +594,7 @@ def assemble_board(labels,geom,level,overrides):
                 flags=teleswitchable[color]
                 if flags[0]!=flags[1]:unresolved.append(f'{color} teleport pair: only one end is metal-textured (switchable); check both ends')
                 # Switchable teleports sit on the metal quadrant tile; always-on ones do not.
-                teleports.append(dict(id='T'+('W' if color=='*' else color),color=color,ends=ends,active=True,
+                teleports.append(dict(id='T'+('W' if color=='*' else color),color=color,ends=ends,active=not all(teleinactive[color]),
                                       **({'switchable':True} if all(flags) else {})))
             elif len(ends):unresolved.append(f'{len(ends)} {color} teleport endpoints: explicit pairing required')
     switch_info=overrides.get('switches',{})
@@ -540,18 +613,14 @@ def assemble_board(labels,geom,level,overrides):
     gate_groups=overrides.get('gateGroups',{})
     for gate in gates:
         gate['group']=gate_groups.get(gate['id'],gate['group'])
-    # Switchable elements are the gates and the teleports drawn on metal; the
-    # always-on teleports are never switch-controlled. A board with exactly one
-    # switch has an unambiguous mapping: it controls every switchable element.
-    # An explicit override for that switch still wins.
+    # Switchable elements: gates (grouped) and the teleports drawn on metal;
+    # always-on teleports are never switch-controlled. Every switchable element
+    # belongs to exactly one switch and every switch controls at least one element,
+    # so a lone switch is unambiguous. Otherwise guess by proximity.
     switchable_tp=[t['id'] for t in teleports if t.get('switchable')]
-    if len(switches)==1 and switches[0]['id'] not in switch_info:
-        sw=switches[0]
-        sw['wallGroups']=list(dict.fromkeys(g['group'] for g in gates))
-        sw['teleportIds']=switchable_tp
-        unresolved=[w for w in unresolved if w != f'Switch at ({sw["x"]},{sw["y"]}) has unknown mapping']
-    elif not switches and (gates or switchable_tp):
-        unresolved.append('Switchable gates/teleports found but no switch detected')
+    guessed=guess_switch_mapping(switches,gates,teleports,switch_info,unresolved)
+    if guessed:unresolved.append('Switch mapping guessed by proximity: '+guessed)
+    if not switches and (gates or switchable_tp):unresolved.append('Switchable gates/teleports found but no switch detected')
     # Matching balls to goals can detect many otherwise silent classification errors.
     bc=Counter(b['color'] for b in balls)
     gc=Counter(g['color'] for g in goals)
@@ -586,6 +655,58 @@ def review_image(original,geom,labels,confidences,output):
     cv2.imwrite(str(output),canvas)
 
 
+def inside_cells(img,geom):
+    """Cells inside the neon outline, from outline topology rather than cell
+    appearance (the floor of dark themes is as black as the exterior).
+    Crossing a neon edge toggles inside/outside, so enclosed holes stay outside.
+    Gaps in the outline (white edge-exit markers) are treated as closed."""
+    hsv=cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
+    V=hsv[:,:,2];S=hsv[:,:,1]
+    neon=V>150
+    white=(V>200)&(S<50)
+    H_,W_=V.shape
+    cw,ch=geom.width,geom.height;c=geom.cell
+    def wall(x0,y0,x1,y1,vertical):
+        best=0.;mark=0.
+        for off in range(-8,9):
+            if vertical:
+                xs=int(round(x0+off));ys=slice(int(y0),int(y1))
+                if not 0<=xs<W_:continue
+                seg=neon[ys,xs];wh=white[ys,xs]
+            else:
+                ys_=int(round(y0+off));xs=slice(int(x0),int(x1))
+                if not 0<=ys_<H_:continue
+                seg=neon[ys_,xs];wh=white[ys_,xs]
+            if seg.size:best=max(best,float(seg.mean()));mark=max(mark,float(wh.mean()))
+        return best>.6 or mark>.05
+    # Walls between padded cells (col,row) with -1..width/height: only real edges can hold neon.
+    def edge_wall(a,b):
+        (ac,ar),(bc,br)=a,b
+        if ac!=bc:  # vertical edge between columns
+            e=max(ac,bc);r=ar
+            if not 0<=r<ch:return False
+            x=geom.left+e*c;y0=geom.top+r*c+.25*c;y1=geom.top+r*c+.75*c
+            return wall(x,y0,x,y1,True)
+        e=max(ar,br);col=ac
+        if not 0<=col<cw:return False
+        y=geom.top+e*c;x0=geom.left+col*c+.25*c;x1=geom.left+col*c+.75*c
+        return wall(x0,y,x1,y,False)
+    from collections import deque
+    INF=10**9
+    dist={(-1,-1):0};dq=deque([(-1,-1)])
+    while dq:
+        cur=dq.popleft();d=dist[cur]
+        for dc,dr in ((1,0),(-1,0),(0,1),(0,-1)):
+            nxt=(cur[0]+dc,cur[1]+dr)
+            if not (-1<=nxt[0]<=cw and -1<=nxt[1]<=ch):continue
+            w=1 if edge_wall(cur,nxt) else 0
+            nd=d+w
+            if nd<dist.get(nxt,INF):
+                dist[nxt]=nd
+                (dq.appendleft if w==0 else dq.append)(nxt)
+    return {(col,row) for col in range(cw) for row in range(ch) if dist.get((col,row),INF)%2==1}
+
+
 def parse_one(path,out,grid,templates,overrides,write_codes):
     im=cv2.imread(str(path))
     if im is None:raise ValueError(f'Could not read image: {path}')
@@ -606,6 +727,17 @@ def parse_one(path,out,grid,templates,overrides,write_codes):
             stats.append({'x':col+1,'y':geometry.height-row,'kind':kind,'confidence':round(conf,3),
                           'measurements':{k:round(v,3) if isinstance(v,float) else v for k,v in features.items()}})
         labels.append(labs);confidence.append(confs)
+    try:
+        inside=inside_cells(im,geometry)
+        if inside:
+            for r_ in range(geometry.height):
+                for c_ in range(geometry.width):
+                    if labels[r_][c_]=='outside' and (c_,r_) in inside and f'{c_+1},{geometry.height-r_}' not in overrides_cells:
+                        labels[r_][c_]='floor';confidence[r_][c_]=.8
+                        for st in stats:
+                            if st['x']==c_+1 and st['y']==geometry.height-r_:st['kind']='floor'
+    except Exception as exc:
+        warnings.append('Outline topology check failed: '+str(exc))
     level_match=re.search(r'(?<![0-9])([0-9]+)[.-]([0-9]+)(?![0-9])',path.stem)
     level=(level_match.group(1)+'.'+level_match.group(2)) if level_match else path.stem.replace('-', '.')
     board,issues=assemble_board(labels,geometry,level,overrides)
@@ -618,7 +750,7 @@ def parse_one(path,out,grid,templates,overrides,write_codes):
                 'notes':'Review every screenshot, including confident predictions. Correct cells using overrides.'}
     (prefix.with_name(prefix.name+'_diagnostics.json')).write_text(json.dumps(diagnostic,indent=2)+'\n',encoding='utf8')
     code_path=None
-    if write_codes and not warnings:
+    if write_codes:
         try:
             from encode_k3 import encode
             code=encode(board)

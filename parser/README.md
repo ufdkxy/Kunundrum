@@ -1,4 +1,4 @@
-# Kunundrum Screenshot Parser v0.6
+# Kunundrum Screenshot Parser v0.7
 
 Offline Python/OpenCV screenshot-to-K3 converter. **Node.js is not required.**
 
@@ -102,6 +102,14 @@ warnings. Eight retained warnings for missing switch mapping / hexagon values.
 This is not a guarantee of 100% correctness on unseen screenshots; always
 inspect the annotated review images, particularly for partially covered cells,
 new sprites, and nonstandard scaling.
+
+## Changes in v0.7
+
+- Plain grey metal = inactive gate (`gate_inactive`); metal with a yellow/brown striped frame = active gate (`gate_detected`). Inactive teleports (grey concentric circles on metal) are `teleport_*_inactive`: colour is unknown, so `*` is guessed.
+- Red chevrons are detected as rotating arrows (direction not determined; blue fixed arrows as before).
+- Floor vs exterior now also uses outline topology (crossing a neon edge toggles inside/outside, enclosed holes stay outside), because dark themes have floors as black as the exterior.
+- A K3 code is always written (unless `--no-code`). Switches without an override get a mapping guessed by proximity: each switchable element goes to the nearest switch (Manhattan distance, ties to the first switch in reading order), then empty switches take the nearest element from a switch holding several. The guess is reported as a warning; `--overrides` still wins.
+- Known gaps: a ball sitting on a goal of a similar hue (e.g. green ball on a cyan ring in 11.9) is misread; rotating-arrow direction; the white edge-exit markers in 12.6 are only treated as closed outline gaps; K3 of a board the engine rejects (e.g. missing goals) is written but will not open in the app.
 
 ## Changes in v0.6
 
