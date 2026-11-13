@@ -5,7 +5,7 @@ Requires numpy and opencv-python. See README.md. Screen coordinates are
 converted to bottom-left-origin, one-based game coordinates.
 """
 from __future__ import annotations
-PARSER_VERSION = '0.7'  # Parser's own version, independent of the web app's APP_VERSION.
+PARSER_VERSION = '0.8'  # Parser's own version, independent of the web app's APP_VERSION.
 import argparse
 import json
 import math
@@ -508,7 +508,7 @@ def parse_label(label):
 
 def guess_switch_mapping(switches,gates,teleports,switch_info,unresolved):
     """Fill in switch -> wallGroups/teleportIds for switches without an override.
-    Nearest switch (Manhattan distance, ties to the earliest switch in reading
+    Nearest switch (Manhattan distance, ties to the earliest switch in lexicographic
     order) for each unclaimed element, then reassign so no switch is left empty.
     Returns a description of a guess, or '' when nothing was ambiguous."""
     claimed_groups={g for sw in switches if sw['id'] in switch_info for g in sw['wallGroups']}
@@ -546,7 +546,9 @@ def guess_switch_mapping(switches,gates,teleports,switch_info,unresolved):
 def assemble_board(labels,geom,level,overrides):
     walls=[]; balls=[]; goals=[]; arrows=[]; gates=[]; switches=[]; hexes=[]; telecells=defaultdict(list); teleswitchable=defaultdict(list); teleinactive=defaultdict(list)
     unresolved=[]
-    for row in range(geom.height):
+    # Lexicographic order: x fastest (left to right), then y upward from the bottom row.
+    # All automatic numbering (W/S/H ids) follows this scan order.
+    for row in range(geom.height-1,-1,-1):
         for col in range(geom.width):
             kind=labels[row][col]
             x,y=col+1,geom.height-row
@@ -711,22 +713,24 @@ def parse_one(path,out,grid,templates,overrides,write_codes):
     im=cv2.imread(str(path))
     if im is None:raise ValueError(f'Could not read image: {path}')
     geometry=robust_geometry(im,grid)
-    labels=[];confidence=[];warnings=[];stats=[]
+    warnings=[];stats=[]
+    labels=[[None]*geometry.width for _ in range(geometry.height)]
+    confidence=[[0.]*geometry.width for _ in range(geometry.height)]
     overrides_cells=overrides.get('cells',{})
-    for row in range(geometry.height):
-        labs=[];confs=[]
+    # Scan in lexicographic order (left to right, then bottom to top) so warnings and
+    # diagnostics are listed in that order; labels/confidence stay indexed by screenshot row.
+    for row in range(geometry.height-1,-1,-1):
         for col in range(geometry.width):
             patch=crop_cell(im,geometry,col,row)
             kind,conf,features=classify(patch,templates)
             key=f'{col+1},{geometry.height-row}'
             if key in overrides_cells:
                 kind=parse_label(str(overrides_cells[key]));conf=1.
-            labs.append(kind);confs.append(conf)
+            labels[row][col]=kind;confidence[row][col]=conf
             if kind=='unknown' or (conf<.7 and kind not in ('outside','floor')):
                 warnings.append(f'Cell ({key}) classified {kind}, confidence {conf:.2f}')
             stats.append({'x':col+1,'y':geometry.height-row,'kind':kind,'confidence':round(conf,3),
                           'measurements':{k:round(v,3) if isinstance(v,float) else v for k,v in features.items()}})
-        labels.append(labs);confidence.append(confs)
     try:
         inside=inside_cells(im,geometry)
         if inside:

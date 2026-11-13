@@ -84,7 +84,7 @@ The editor works on an independent draft and validates it before switching back 
 
 ## 3. Canonical board JSON and validation
 
-The board object follows the schema illustrated in [RULES.md](RULES.md). All game components consume `Core.validateBoard` output when using the browser implementation. Normalization sorts feature lists; most arrays sort bottom-to-top then left-to-right, teleports sort by ID, balls sort **R/G/B/Y then y/x**, and each teleport's ends sort y/x. The validator also checks references, ID uniqueness, floor-feature overlap, and initial ball placement.
+The board object follows the schema illustrated in [RULES.md](RULES.md). All game components consume `Core.validateBoard` output when using the browser implementation. Normalization sorts feature lists; most arrays sort in **lexicographic order** (left-to-right within a row, rows bottom-to-top, i.e. by `y` then `x`), teleports sort by ID, balls sort **R/G/B/Y then y/x**, and each teleport's ends sort y/x. The validator also checks references, ID uniqueness, floor-feature overlap, and initial ball placement.
 
 Coordinate and index conventions:
 
@@ -122,7 +122,7 @@ list: hexes              (position, id, zigzagSignedValue)
 
 - `varuint` is unsigned **LEB128** (7 data bits per byte, continuation bit high).
 - `list` is varuint count then its elements.
-- `position` is the zero-based row-major offset above, stored as varuint.
+- `position` is the zero-based lexicographic offset above (`x` fastest, then `y` upward from the bottom row), stored as varuint.
 - `color` is an integer index into `RGBY*` (`*` only for teleports).
 - `string` values use a per-board dictionary: a new UTF-8 string is tagged with `2 * byteLength` and then raw bytes; a repeat is tagged `2 * dictionaryIndex + 1`. Dictionary order follows first occurrence in the binary stream.
 - `activeBool`/`onBool` are varuint `0` or `1`. Hex signed values are mapped `v>=0 -> 2*v`, `v<0 -> -2*v-1`.

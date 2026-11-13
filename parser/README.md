@@ -34,7 +34,7 @@ If grid detection is wrong, supply a geometry manually:
     python3 parse.py 8-2.jpg --grid 280,113,80,10,7 -o parsed/
 
 Format is `LEFT,TOP,CELL,COLS,ROWS`, in screenshot pixels; left/top are the
-inside top-left of the grid, rows are counted top-to-bottom in the image.
+inside top-left of the grid, rows are counted top-to-bottom in the image (this is only the input geometry; output labelling is lexicographic, see below).
 Board JSON coordinates are (x,y), counted from the **bottom-left**.
 
 ## Overrides
@@ -108,7 +108,7 @@ new sprites, and nonstandard scaling.
 - Plain grey metal = inactive gate (`gate_inactive`); metal with a yellow/brown striped frame = active gate (`gate_detected`). Inactive teleports (grey concentric circles on metal) are `teleport_*_inactive`: colour is unknown, so `*` is guessed.
 - Red chevrons are detected as rotating arrows (direction not determined; blue fixed arrows as before).
 - Floor vs exterior now also uses outline topology (crossing a neon edge toggles inside/outside, enclosed holes stay outside), because dark themes have floors as black as the exterior.
-- A K3 code is always written (unless `--no-code`). Switches without an override get a mapping guessed by proximity: each switchable element goes to the nearest switch (Manhattan distance, ties to the first switch in reading order), then empty switches take the nearest element from a switch holding several. The guess is reported as a warning; `--overrides` still wins.
+- A K3 code is always written (unless `--no-code`). Switches without an override get a mapping guessed by proximity: each switchable element goes to the nearest switch (Manhattan distance, ties to the first switch in lexicographic order), then empty switches take the nearest element from a switch holding several. The guess is reported as a warning; `--overrides` still wins.
 - Known gaps: a ball sitting on a goal of a similar hue (e.g. green ball on a cyan ring in 11.9) is misread; rotating-arrow direction; the white edge-exit markers in 12.6 are only treated as closed outline gaps; K3 of a board the engine rejects (e.g. missing goals) is written but will not open in the app.
 
 ## Changes in v0.6
@@ -126,6 +126,10 @@ new sprites, and nonstandard scaling.
 - Board outline/grid detection works for any level theme (red, green, ...), not only cyan.
 - Known gap: arrows in non-blue themes (red/green chevrons) are not recognised yet
   and are misread as balls. Gate/teleport on/off (inactive) appearance is untested.
+
+## Changes in v0.8
+
+- All automatic labelling uses **lexicographic order**: `(1,1) < (2,1) < ... < (n,1) < (1,2) < ...`, i.e. left to right, then bottom to top (previously screenshot reading order, top to bottom). This affects the generated `W`/`S`/`H` ids, the tie-break in the switch-mapping guess, and the order of warnings and `cells` in diagnostics.
 
 ## Changes in v0.5
 
