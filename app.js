@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.8'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.9'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -384,7 +384,13 @@ function renderMeta() {
   const completed=$('completion-inline');
   completed.textContent=isComplete(state())?(isAccepted(state())?'Complete':'Complete · score ≤ 0 is not accepted') : '';
   completed.className=`completion-inline${isComplete(state())?isAccepted(state())?' done':' unaccepted':''}`;
-  $('board-hint').innerHTML=isComplete(state())?(isAccepted(state())?'':'The original game requires score ≥ 1.'):(busy||isPlaying?'Moving...':`<span class="mouse-mini" aria-hidden="true"></span><span aria-hidden="true">/</span>Arrow keys: move`);
+}
+// Bottom-bar hint. "Moving..." is shown only while autoplay is running (isPlaying), never for a
+// manual move. Derived purely from current state and called from renderControls(), which every
+// isPlaying change goes through, so it cannot go stale (stopPlayback() only re-renders controls).
+function renderHint() {
+  const s=state();
+  $('board-hint').innerHTML=isComplete(s)?(isAccepted(s)?'':'The original game requires score ≥ 1.'):(isPlaying?'Moving...':`<span class="mouse-mini" aria-hidden="true"></span><span aria-hidden="true">/</span>Arrow keys: move`);
 }
 function updateResetControl() {
   $('reset').disabled=isPlaying||(!busy&&!pendingMove&&frames.length===1&&cursor===0&&!$('solution-input').value);
@@ -416,6 +422,7 @@ function renderControls() {
   $('solution-input').disabled=isPlaying;
   $('use-example').title=board.solution?'Load the saved solution from the start':'No saved solution for this board.';
   for(const [id,on] of [['toggle-coords',settings.coordinates],['toggle-outline',settings.outline],['toggle-trace',settings.trail]]) {$(id).classList.toggle('active',on);$(id).setAttribute('aria-pressed',String(on));}
+  renderHint();
 }
 function revealActiveMove() {
   const box=$('move-history');
