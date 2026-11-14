@@ -151,3 +151,7 @@ The geometry calibration assumes full-size 1440 x 720 phone screenshots, as
 provided. Use `--grid` for different resolutions if automatic detection fails.
 As with earlier versions, a clean warnings count is **not** proof that every
 object has been transcribed correctly; inspect the review PNGs before batch use.
+
+## Changes in v0.9
+
+- Grid detection now accepts cell sizes up to 180px (was 110px). Full-resolution 1440x720 screenshots have 120px cells, which were previously mis-detected as a half-size grid (e.g. 3.4 read as 14x8 instead of 7x4, 1.1 as 6x8 instead of 3x4).

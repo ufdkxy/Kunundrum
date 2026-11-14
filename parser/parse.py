@@ -5,7 +5,7 @@ Requires numpy and opencv-python. See README.md. Screen coordinates are
 converted to bottom-left-origin, one-based game coordinates.
 """
 from __future__ import annotations
-PARSER_VERSION = '0.8'  # Parser's own version, independent of the web app's APP_VERSION.
+PARSER_VERSION = '0.9'  # Parser's own version, independent of the web app's APP_VERSION.
 import argparse
 import json
 import math
@@ -459,7 +459,7 @@ def robust_geometry(img,grid=None):
     y0,y1=int(yy.min()),int(yy.max())
     spanx=x1-x0+1;spany=y1-y0+1
     options=[]
-    for cell in range(42,111):
+    for cell in range(42,181):
         cols=round((spanx-23)/cell)
         rows=round((spany-17)/cell)
         if cols<2 or cols>32 or rows<2 or rows>32:continue
