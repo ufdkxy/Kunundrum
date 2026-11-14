@@ -139,6 +139,9 @@ def crop_cell(img,geom,col,row,size=96):
     return cv2.warpAffine(img,mat,(size,size),flags=cv2.INTER_LINEAR,borderMode=cv2.BORDER_CONSTANT)
 
 
+# Default values guessed for hexagons by colour: green = bonus, red = penalty.
+HEX_GUESS={'G':-5,'R':5}
+
 def patch_features(patch):
     p=cv2.resize(patch,(96,96),interpolation=cv2.INTER_AREA)
     b,g,r=cv2.split(p)
@@ -406,7 +409,8 @@ def classify(patch,templates):
     elif f['bright_count']>450 and f['color_strength']<.20 and .10<f['ann_bright']<.40:
         typ='wall'; conf=.96
     elif 1050<f['bright_count']<2500 and .54<f['core_bright']<.88 and f['ann_bright']<.22 and f['mid_bright']<.62:
-        typ='hex_pending'; conf=.88
+        # Value is not visible; guess its sign from the sprite colour (see HEX_GUESS).
+        typ='hex_pending_'+f['color'] if f['color'] in HEX_GUESS else 'hex_pending'; conf=.88
     elif f['bright_count']<95:
         typ='floor'; conf=.96
     else:
@@ -491,7 +495,7 @@ def robust_geometry(img,grid=None):
 
 def parse_label(label):
     label=label.strip().replace(':','_')
-    if label in ('empty','floor','outside','wall','switch','switch_on','unknown','hex_pending','gate_detected','gate_inactive'):
+    if label in ('empty','floor','outside','wall','switch','switch_on','unknown','hex_pending','hex_pending_G','hex_pending_R','gate_detected','gate_inactive'):
         return label
     if '+' in label:
         return '+'.join(parse_label(part) for part in label.split('+'))
@@ -567,6 +571,10 @@ def assemble_board(labels,geom,level,overrides):
             elif kind.startswith('arrow_'):
                 d=kind[6:]
                 arrows.append(dict(**pos,direction='u' if d=='rotating' else d,**({'rotating':True} if d=='rotating' else {})))
+            elif kind in ('hex_pending_G','hex_pending_R'):
+                v=HEX_GUESS[kind[-1]]
+                hexes.append(dict(**pos,id=f'H{len(hexes)+1}',value=v))
+                unresolved.append(f'Hexagon at ({x},{y}) value guessed by colour: {v:+d}')
             elif kind == 'hex_pending':
                 unresolved.append(f'Hexagon at ({x},{y}) needs its signed value')
             elif kind.startswith('hex_'):hexes.append(dict(**pos,id=f'H{len(hexes)+1}',value=int(kind[4:])))

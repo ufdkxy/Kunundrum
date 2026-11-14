@@ -61,6 +61,10 @@ multi-gate groups use `gateGroups` and set each switch's `wallGroups` to the
 chosen group identifiers. A board with exactly one switch is assigned all
 switchable elements (gates and teleports) automatically and needs no mapping.
 
+Hexagon values are not visible in a screenshot, so the parser guesses them by
+sprite colour (green = -5, red = +5) and reports each guess as a pending
+mechanics warning; override with `hex_<value>` cells as above.
+
 For a single screenshot, `fixes.json` can be an un-nested object with `cells`
 and `switches`. Other accepted labels include `outside`, `floor`, `wall`,
 `arrow_u`, `arrow_d`, `arrow_l`, `arrow_r`, `goal_G`, `ball_R`,
