@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.19'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.20'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -678,12 +678,14 @@ function renderLevelCards(chapter) {
   for (const list of byChapter.values()) list.sort((x, y) => levelParts(x.id)[1] - levelParts(y.id)[1]);
   if (chapter == null) chapter = levelsChapter ?? levelParts(currentPresetId || LEVELS[0].id)[0];
   levelsChapter = chapter;
+  const barTop = $('chapter-bar').scrollTop, barLeft = $('chapter-bar').scrollLeft;
   $('chapter-bar').innerHTML = Array.from({length: 30}, (_, i) => {
     const a = i + 1, count = byChapter.get(a)?.length || 0;
     return `<button type="button" class="chapter-button${a === chapter ? ' active' : ''}${count ? '' : ' empty'}" data-chapter="${a}" aria-pressed="${a === chapter}"><strong>${a}</strong><span>${count}/10</span></button>`;
   }).join('');
-  revealChapter();
+  $('chapter-bar').scrollTop = barTop; $('chapter-bar').scrollLeft = barLeft;
   const list = byChapter.get(chapter) || [];
+  $('level-cards').scrollTop = 0;
   $('level-cards').innerHTML = list.length ? list.map(level => {
     const best = bestScores[level.id];
     return `<button class="level-card${currentPresetId===level.id?' active':''}" data-level="${escape(level.id)}"><div class="level-preview" style="grid-row:auto">${renderSvg(level,createInitialState(level),{mini:true})}</div><div class="level-card-title" style="align-self:center"><strong>${escape(level.title)}</strong><span>${best?`${icon('check')} ${best.score}`:level.width+' × '+level.height}</span></div></button>`;

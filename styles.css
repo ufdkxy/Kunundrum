@@ -228,7 +228,9 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .modal-heading p { margin-top: 9px; font-size: 12px; color: #8ea6b4; }
 .modal-heading > .icon-button { width: 31px; height: 31px; flex-shrink: 0; }
 .modal-bottom { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 20px; margin-top: 22px; border-top: 1px solid #293e4b; color: #7c97a6; font-size: 11px; }
-.levels-modal { overflow: hidden; }
+.levels-modal { overflow: hidden; padding-top: 16px; padding-bottom: 20px; }
+.levels-modal .modal-heading { margin-bottom: 12px; align-items: center; }
+.levels-modal .modal-heading h2 { margin-top: 0; font-size: 20px; }
 .levels-modal[open] { display: flex; flex-direction: column; height: calc(100dvh - 48px); }
 .levels-layout { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: 92px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 18px; align-items: stretch; }
 .chapter-bar { display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; padding-right: 6px; border-right: 1px solid #293e4b; }
