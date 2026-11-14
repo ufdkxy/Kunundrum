@@ -139,7 +139,7 @@ def crop_cell(img,geom,col,row,size=96):
     return cv2.warpAffine(img,mat,(size,size),flags=cv2.INTER_LINEAR,borderMode=cv2.BORDER_CONSTANT)
 
 
-# Default values guessed for hexagons by colour: green = bonus, red = penalty.
+# Default values guessed for hexagons: red = penalty; anything else (green/blue) = bonus.
 HEX_GUESS={'G':-5,'R':5}
 
 def patch_features(patch):
@@ -410,7 +410,7 @@ def classify(patch,templates):
         typ='wall'; conf=.96
     elif 1050<f['bright_count']<2500 and .54<f['core_bright']<.88 and f['ann_bright']<.22 and f['mid_bright']<.62:
         # Value is not visible; guess its sign from the sprite colour (see HEX_GUESS).
-        typ='hex_pending_'+(f['color'] if f['color'] in HEX_GUESS else 'R'); conf=.88
+        typ='hex_pending_'+('R' if f['color']=='R' else 'G'); conf=.88  # green/blue are easily confused: only red is trusted
     elif f['bright_count']<95:
         typ='floor'; conf=.96
     else:

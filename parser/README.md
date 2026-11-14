@@ -62,7 +62,7 @@ chosen group identifiers. A board with exactly one switch is assigned all
 switchable elements (gates and teleports) automatically and needs no mapping.
 
 Hexagon values are not visible in a screenshot, so the parser guesses them by
-sprite colour (green = -5, anything else = +5) and reports each guess as a pending
+sprite colour (red = +5, anything else = -5) and reports each guess as a pending
 mechanics warning; override with `hex_<value>` cells as above.
 
 For a single screenshot, `fixes.json` can be an un-nested object with `cells`
