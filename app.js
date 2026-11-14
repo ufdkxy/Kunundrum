@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.24'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.25'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -412,7 +412,7 @@ function renderControls() {
   $('sel-dot').style.setProperty('--ball-color',ball?PALETTE[ball.color]:'#73808a');
   $('undo').disabled=playbackLocked||cursor===0||cursor!==frames.length-1;
   updateResetControl();
-  for (const id of ['open-levels','open-help','open-board-data','open-share','toggle-coords','toggle-outline','toggle-trace']) $(id).disabled=isPlaying;
+  for (const id of ['open-levels','open-help','open-board-data','open-share','edit-mode-button','toggle-coords','toggle-outline','toggle-trace']) $(id).disabled=isPlaying;
   $('replay-first').disabled=playbackLocked||cursor===0;
   $('replay-back').disabled=playbackLocked||cursor===0;
   $('replay-next').disabled=playbackLocked||cursor>=frames.length-1;
