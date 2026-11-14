@@ -587,12 +587,14 @@ body.edit-mode #board-stage.editor-grabbing .editor-floating-tile{cursor:grabbin
 .editor-properties[hidden]{display:none!important}
 
 /* Compact, optional background music control */
-.music-toggle { flex:0 0 auto; width:31px; height:30px; padding:0; display:inline-flex; align-items:center; justify-content:center; border:1px solid #354c56; border-radius:6px; background:#152630; color:#9ecad4; font-size:14px; cursor:pointer; transition:background .15s,border-color .15s,color .15s; }
-.music-toggle:hover { background:#203741; border-color:#5d8c97; color:#e8fbff; }
-.music-toggle[aria-pressed="true"] { color:#98e8c7; border-color:#4c806d; background:#203d36; }
+.view-toggle.music-toggle { background:none; border:0; cursor:pointer; }
+.view-toggle.music-toggle[aria-pressed="true"] { color:#98e8c7; }
 .music-toggle:focus-visible { outline:2px solid #7fdac6; outline-offset:2px; }
 #music-icon { display:inline-flex; align-items:center; justify-content:center; line-height:1; }
-#music-icon svg { display:block; width:16px; height:16px; }
+#music-icon svg { display:block; width:13px; height:13px; }
+@media (max-width: 640px) { #music-icon svg { width:14px; height:14px; } }
+.next-puzzle { margin-left:8px; padding:2px 8px; border:1px solid #4c806d; border-radius:5px; background:#203d36; color:#98e8c7; font:inherit; font-weight:600; cursor:pointer; }
+.next-puzzle:hover { background:#2a5246; color:#e8fbff; }
 #music-audio { display:none; }
 #board-hint:empty { display:none; }
 

@@ -25,7 +25,7 @@
 
   // Icon geometry, not font glyphs: square-ended, serif-free pause bars.
   const icons = {
-    play: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M8 5.5 19 12 8 18.5Z" fill="currentColor"/></svg>',
+    play: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M9 4v11.3A3.5 3.5 0 1 0 11 18.5V8h6V4Z" fill="currentColor"/></svg>',
     pause: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><rect x="6" y="5" width="4" height="14" rx="0.5" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="0.5" fill="currentColor"/></svg>',
   };
 

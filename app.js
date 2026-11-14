@@ -381,7 +381,9 @@ function renderMeta() {
   const docked=state().balls.filter(ball=>ball.locked).length;
   $('docked-value').innerHTML=`${docked}<span>/${state().balls.length}</span>`;
   const completed=$('completion-inline');
-  completed.textContent=isComplete(state())?'Complete':'';
+  const nextIndex=currentPresetId?LEVELS.findIndex(level=>level.id===currentPresetId)+1:0;
+  const hasNext=isComplete(state())&&nextIndex>0&&nextIndex<LEVELS.length;
+  completed.innerHTML=isComplete(state())?`Complete${hasNext?'<button class="next-puzzle" id="next-puzzle" type="button" title="Go to the next puzzle">Next puzzle ›</button>':''}`:'';
   completed.className=`completion-inline${isComplete(state())?' done':''}`;
 }
 // Bottom-bar hint. "Moving..." is shown only while autoplay is running (isPlaying), never for a
@@ -782,6 +784,7 @@ $('toggle-trace').addEventListener('click',()=>{if(busy||isPlaying)return;settin
 $('toggle-outline').addEventListener('click',()=>{if(busy||isPlaying)return;settings.outline=!settings.outline;renderBoard();renderControls();persist();});
 $('open-levels').addEventListener('click',()=>{levelsChapter=null;renderLevelCards();openDialog('levels-dialog');revealChapter();});
 $('chapter-bar').addEventListener('click',event=>{const b=event.target.closest('[data-chapter]');if(b)renderLevelCards(Number(b.dataset.chapter));});
+$('completion-inline').addEventListener('click',event=>{if(!event.target.closest('#next-puzzle')||busy||isPlaying)return;const next=LEVELS[LEVELS.findIndex(level=>level.id===currentPresetId)+1];if(next){adoptBoard(next);clearLocation();}});
 $('level-cards').addEventListener('click',event=>{const target=event.target.closest('[data-level]');if(!target)return;const next=LEVELS.find(level=>level.id===target.dataset.level);if(next){adoptBoard(next);clearLocation();$('levels-dialog').close();}});
 $('open-help').addEventListener('click',()=>openDialog('help-dialog'));
 $('open-share').addEventListener('click',()=>{renderShare();openDialog('share-dialog');});
