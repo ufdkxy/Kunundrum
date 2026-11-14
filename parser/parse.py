@@ -410,7 +410,7 @@ def classify(patch,templates):
         typ='wall'; conf=.96
     elif 1050<f['bright_count']<2500 and .54<f['core_bright']<.88 and f['ann_bright']<.22 and f['mid_bright']<.62:
         # Value is not visible; guess its sign from the sprite colour (see HEX_GUESS).
-        typ='hex_pending_'+f['color'] if f['color'] in HEX_GUESS else 'hex_pending'; conf=.88
+        typ='hex_pending_'+(f['color'] if f['color'] in HEX_GUESS else 'R'); conf=.88
     elif f['bright_count']<95:
         typ='floor'; conf=.96
     else:

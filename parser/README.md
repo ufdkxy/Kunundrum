@@ -22,7 +22,7 @@ For each screenshot, writes:
 - `NAME.json` — editable board description
 - `NAME_review.png` — original with classification overlays
 - `NAME_diagnostics.json` — detected grid, warnings, per-cell measurements
-- `NAME.k3.txt` — generated *only* when no warnings remain
+- `NAME.k3.txt` — always generated (unless `--no-code`), even when warnings remain; guessed values are reported as warnings
 
 The command's batch summary separates **recognition warnings** (incorrect or
 ambiguous visual objects) from **mechanics pending** (e.g. switch mapping and
@@ -62,7 +62,7 @@ chosen group identifiers. A board with exactly one switch is assigned all
 switchable elements (gates and teleports) automatically and needs no mapping.
 
 Hexagon values are not visible in a screenshot, so the parser guesses them by
-sprite colour (green = -5, red = +5) and reports each guess as a pending
+sprite colour (green = -5, anything else = +5) and reports each guess as a pending
 mechanics warning; override with `hex_<value>` cells as above.
 
 For a single screenshot, `fixes.json` can be an un-nested object with `cells`
