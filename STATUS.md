@@ -34,7 +34,7 @@ Certified optimal scores (`verify.js`): 6.6 → 18, 7.1 → 15, 7.4 → 27, 7.6 
 
 **App 3.3.18, 2026-11-14: puzzle dialog.** The chapter list now fills the dialog height (up to the viewport) instead of a 520px cap, and the footer with "Import board data" was removed.
 
-**App 3.3.16, 2026-11-14: music toggle and next puzzle.** The music button is now the first view toggle (before Coordinates), labelled "Music", with a music note icon when paused (pause bars while playing). After "Complete" in the bottom bar a "Next puzzle ›" button loads the next catalog level; it is hidden on the last level and on custom boards.
+**App 3.3.21, 2026-11-14: music toggle and next puzzle.** The music button is now the first view toggle (before Coordinates), labelled "Music", with a music note icon when paused (pause bars while playing). After "Complete" in the bottom bar a "Next puzzle ›" button loads the next catalog level; it is hidden on the last level and on custom boards.
 
 **App 3.3.15, 2026-11-14: move history minimum height.** The move history panel now reserves room for two rows of moves (e.g. level 1.9) so the layout no longer jumps as moves are added: 99px standard, 100px small screens, 77px in the compact layout.
 
