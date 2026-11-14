@@ -689,32 +689,31 @@ function renderLevelCards(chapter) {
     return `<button class="level-card${currentPresetId===level.id?' active':''}" data-level="${escape(level.id)}"><div class="level-preview" style="grid-row:auto">${renderSvg(level,createInitialState(level),{mini:true})}</div><div class="level-card-title" style="align-self:center"><strong>${escape(level.title)}</strong><span>${best?`${icon('check')} ${best.score}`:level.width+' × '+level.height}</span></div></button>`;
   }).join('') : `<p class="level-empty">No puzzles in chapter ${chapter} yet.</p>`;
 }
-// Export dialog: two independent options. "URL format" wraps the data in a link
-// (or a bare #hash when opened from a file); otherwise the output is a K3 board code.
-// "Include route" adds the current route (a K3 code embeds it as the board's saved solution).
-let shareAsUrl = !OFFLINE, shareRoute = false;
-function shareOutput(withRoute) {
+// Export dialog: a full permalink and a K3 board code, both optionally carrying the current route.
+// The permalink is this page's own URL plus data, so over file:// it only works on this computer.
+let shareRoute = false;
+function shareLink(withRoute) {
   const hasRoute = withRoute && frames.length > 1;
   const {solution:_saved,...bareBoard} = board; // without a route, export no saved solution
-  if (shareAsUrl) {
-    const source=OFFLINE?{board:bareBoard}:currentPresetId?{levelId:currentPresetId}:{board:bareBoard};
-    const url=makeShareUrl(OFFLINE?'https://kunundrum.invalid/':location.href,{...source,routeBoard:board,...(hasRoute?{moves:getNotation(),at:cursor}:{})});
-    return OFFLINE?new URL(url).hash:url;
-  }
-  return encodeBoard(hasRoute?{...bareBoard,solution:getNotation()}:bareBoard);
+  const source=OFFLINE?{board:bareBoard}:currentPresetId?{levelId:currentPresetId}:{board:bareBoard};
+  const input={...source,routeBoard:board,...(hasRoute?{moves:getNotation(),at:cursor}:{})};
+  // makeShareUrl only accepts http(s) bases, so over file:// build the hash with a placeholder base.
+  return OFFLINE?location.href.split(/[?#]/)[0]+new URL(makeShareUrl('https://kunundrum.invalid/',input)).hash:makeShareUrl(location.href,input);
+}
+function shareCode(withRoute) {
+  const {solution:_saved,...bareBoard} = board;
+  return encodeBoard(withRoute&&frames.length>1?{...bareBoard,solution:getNotation()}:bareBoard);
 }
 function renderShare() {
-  const canRoute=frames.length>1, withRoute=shareRoute&&canRoute;
-  $('share-as-url').checked=shareAsUrl;
+  const canRoute=frames.length>1, withRoute=shareRoute&&canRoute, n=frames.length-1;
   $('share-include-route').checked=withRoute;
   $('share-include-route').disabled=!canRoute;
-  let text;
-  try{text=shareOutput(withRoute);}catch(error){text='';$('share-caption').textContent=error.message;$('share-url').value='';return;}
-  $('share-url').value=text;
-  const parts=[shareAsUrl?(OFFLINE?'Portable link data; paste it in Board data.':'Opens the puzzle in this app.'):'K3 board code; paste it in Board data.'];
-  if(withRoute)parts.push(`Includes all ${frames.length-1} moves`+(shareAsUrl?` and opens at move ${cursor}.`:'.'));
-  else if(!canRoute)parts.push('Make a move to include a route.');
-  $('share-caption').textContent=parts.join(' ');
+  $('share-route-help').textContent=withRoute?`Includes ${n}-move route.`:canRoute?'Off: the puzzle is exported without a route.':'Make a move to include a route.';
+  let link='',code='',error='';
+  try{link=shareLink(withRoute);code=shareCode(withRoute);}catch(e){error=e.message;}
+  $('share-link').value=link;$('share-code').value=code;
+  $('share-link-help').textContent=error||('Opens the puzzle in this app'+(withRoute?`, with the ${n}-move route loaded at move ${cursor}`:'')+'.'+(OFFLINE?' Opened via file://, so it works only on this computer at this file location.':''));
+  $('share-code-help').textContent=error||('Paste it in Board data.'+(withRoute?` The ${n}-move route is stored as the board's saved solution; after importing, use "Use saved solution" to recover it (the move history starts empty).`:''));
 }
 async function copyText(text,success) {
   try {await navigator.clipboard.writeText(text);toast(success);return true;}
@@ -784,10 +783,10 @@ $('chapter-bar').addEventListener('click',event=>{const b=event.target.closest('
 $('level-cards').addEventListener('click',event=>{const target=event.target.closest('[data-level]');if(!target)return;const next=LEVELS.find(level=>level.id===target.dataset.level);if(next){adoptBoard(next);clearLocation();$('levels-dialog').close();}});
 $('open-help').addEventListener('click',()=>openDialog('help-dialog'));
 $('open-share').addEventListener('click',()=>{renderShare();openDialog('share-dialog');});
-$('share-as-url').addEventListener('change',event=>{shareAsUrl=event.target.checked;renderShare();});
 $('share-include-route').addEventListener('change',event=>{shareRoute=event.target.checked;renderShare();});
-$('copy-share').addEventListener('click',()=>copyText($('share-url').value,shareAsUrl?(OFFLINE?'Portable link data copied.':'Link copied.'):'K3 code copied.'));
-$('share-url').addEventListener('click',event=>event.target.select());
+$('copy-link').addEventListener('click',()=>copyText($('share-link').value,'Permalink copied.'));
+$('copy-code').addEventListener('click',()=>copyText($('share-code').value,'K3 code copied.'));
+for(const id of ['share-link','share-code'])$(id).addEventListener('click',event=>event.target.select());
 $('open-board-data').addEventListener('click',()=>{setDataTab('code');openDialog('board-dialog');});
 $('import-from-levels').addEventListener('click',()=>{$('levels-dialog').close();setDataTab('code');openDialog('board-dialog');});
 $('data-code-tab').addEventListener('click',()=>setDataTab('code'));
