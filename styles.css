@@ -106,7 +106,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .view-options { display: flex; align-items: center; gap: 11px; }
 .view-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 3px 0; color: #657d8b; font-size: 10px; }
 .view-toggle [data-icon] svg { width: 13px; height: 13px; }
-.view-toggle.active { color: #a9bcc5; }
+.view-toggle.active, .view-toggle[aria-pressed="true"] { color: #98e8c7; }
 .view-toggle:hover { color: var(--mint); }
 .board-stage { display: flex; align-items: center; justify-content: center; min-height: 400px; padding: 16px; position: relative; touch-action: none; background: radial-gradient(ellipse at 50% 42%, #172a35 0, #101e28 56%, #0f1a23 100%); }
 .board-svg { display: block; width: 100%; height: auto; max-height: 560px; user-select: none; -webkit-user-select: none; overflow: visible; }
@@ -588,7 +588,6 @@ body.edit-mode #board-stage.editor-grabbing .editor-floating-tile{cursor:grabbin
 
 /* Compact, optional background music control */
 .view-toggle.music-toggle { background:none; border:0; cursor:pointer; }
-.view-toggle.music-toggle[aria-pressed="true"] { color:#98e8c7; }
 .music-toggle:focus-visible { outline:2px solid #7fdac6; outline-offset:2px; }
 #music-icon { display:inline-flex; align-items:center; justify-content:center; line-height:1; }
 #music-icon svg { display:block; width:13px; height:13px; }
