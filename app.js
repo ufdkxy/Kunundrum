@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.12'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.13'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -193,7 +193,7 @@ function initialFrame(nextBoard) { return { state: createInitialState(nextBoard)
 
 function buildReplay(nextBoard, notation) {
   const tokens = parseSolution(notation);
-  if (tokens.length > MAX_REPLAY_MOVES) throw new Error(`A replay can contain at most ${MAX_REPLAY_MOVES.toLocaleString()} slides.`);
+  if (tokens.length > MAX_REPLAY_MOVES) throw new Error(`A replay can contain at most ${MAX_REPLAY_MOVES.toLocaleString()} moves.`);
   if (!tokens.length) throw new Error('Enter a solution string first, for example Rur,G3ld,Bu.');
   const result = [initialFrame(nextBoard)];
   for (let i = 0; i < tokens.length; i++) {
@@ -237,8 +237,8 @@ function persist() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ board: encodeBoard(board), moves: records, at: cursor, selected, mode, settings, draft: $('solution-input').value }));
     if (isAccepted(state()) && currentPresetId) {
       const previous = bestScores[currentPresetId];
-      if (!previous || state().score < previous.score || state().score === previous.score && state().slides < previous.slides) {
-        bestScores[currentPresetId] = { score: state().score, slides: state().slides };
+      if (!previous || state().score < previous.score || state().score === previous.score && state().moves < previous.moves) {
+        bestScores[currentPresetId] = { score: state().score, moves: state().moves };
         localStorage.setItem(BEST_KEY, JSON.stringify(bestScores));
       }
     }
@@ -288,7 +288,7 @@ function renderSvg(b, s, options = {}) {
     .filter(goal => s.balls.some(ball => ball.locked && ball.color === goal.color && ball.x === goal.x && ball.y === goal.y))
     .map(goal => [`${goal.x},${goal.y}`, PALETTE[goal.color]]));
   const labels = mappingLabels(b);
-  let svg = `<svg class="board-svg" viewBox="0 0 ${width} ${height}" ${mini ? 'aria-hidden="true"' : `role="group" aria-label="${escape(b.title)}. ${b.width} columns by ${b.height} rows. Arrow keys slide. Shift plus arrow keys select another ball."`} xmlns="http://www.w3.org/2000/svg"><defs>`;
+  let svg = `<svg class="board-svg" viewBox="0 0 ${width} ${height}" ${mini ? 'aria-hidden="true"' : `role="group" aria-label="${escape(b.title)}. ${b.width} columns by ${b.height} rows. Arrow keys move. Shift plus arrow keys select another ball."`} xmlns="http://www.w3.org/2000/svg"><defs>`;
   for (const [color, value] of Object.entries(PALETTE)) {
     svg += `<radialGradient id="${prefix}-orb-${color}" cx="35%" cy="28%" r="75%"><stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset=".28" stop-color="${value}"/><stop offset="1" stop-color="${value}" stop-opacity=".73"/></radialGradient>`;
   }
@@ -493,12 +493,12 @@ async function animatePath(id,path) {
   if(!element)return true;
   const pad=settings.coordinates?35:18;
   const xy=p=>({x:pad+(p.x-.5)*64,y:pad+(board.height-p.y+.5)*64});
-  // Per-segment durations: slides are quick, a teleport is a ~1s fade-out / fade-in.
+  // Per-segment durations: moves are quick, a teleport is a ~1s fade-out / fade-in.
   const TELEPORT_MS=1000;
   const segments=[];for(let i=1;i<path.length;i++)segments.push(path[i].teleport?TELEPORT_MS:54);
-  const slideTotal=segments.reduce((sum,ms,i)=>sum+(path[i+1].teleport?0:ms),0);
-  const slideScale=slideTotal?Math.min(1400,Math.max(180,slideTotal))/slideTotal:1;
-  const durations=segments.map((ms,i)=>(path[i+1].teleport?ms:ms*slideScale)/settings.speed);
+  const moveTotal=segments.reduce((sum,ms,i)=>sum+(path[i+1].teleport?0:ms),0);
+  const moveScale=moveTotal?Math.min(1400,Math.max(180,moveTotal))/moveTotal:1;
+  const durations=segments.map((ms,i)=>(path[i+1].teleport?ms:ms*moveScale)/settings.speed);
   const duration=durations.reduce((sum,ms)=>sum+ms,0);
   const svgRoot=element.ownerSVGElement;
   const rings=[];
@@ -519,7 +519,7 @@ async function animatePath(id,path) {
     function skipAnimation(error){
       // Motion is cosmetic: commit the already-validated move without tweening
       // if rendering fails, rather than leaving the controls permanently busy.
-      console.warn('Kunundrum: skipped a failed slide animation.',error);
+      console.warn('Kunundrum: skipped a failed move animation.',error);
       cleanup();
       resolve(epoch===animationEpoch);
     }
@@ -558,7 +558,7 @@ async function animatePath(id,path) {
 
 async function makeMove(id,direction,choices=[]) {
   if(busy||isPlaying)return;
-  if(cursor >= MAX_REPLAY_MOVES){toast('This route has reached the 2,000-slide limit. Go back to an earlier move to start a new branch.',true);return;}
+  if(cursor >= MAX_REPLAY_MOVES){toast('This route has reached the 2,000-move limit. Go back to an earlier move to start a new branch.',true);return;}
   showError('replay-error');
   let result;
   try {result=applyMove(state(),board,id,direction,choices);}catch(error){toast(error.message,true);return;}
@@ -578,7 +578,7 @@ async function makeMove(id,direction,choices=[]) {
   frames=frames.slice(0,cursor+1);frames.push(result);cursor++;mode='manual';busy=false;
   selected=selectionAfterMove(id);
   render();persist();
-  if(isComplete(state()))toast(isAccepted(state())?`Complete in ${state().slides} slides. Final score: ${state().score}.`:`All balls docked with score ${state().score}. The original game rejects scores ≤ 0.`,!isAccepted(state()));
+  if(isComplete(state()))toast(isAccepted(state())?`Complete in ${state().moves} moves. Final score: ${state().score}.`:`All balls docked with score ${state().score}. The original game rejects scores ≤ 0.`,!isAccepted(state()));
 }
 
 function selectionAfterMove(movedId) {
@@ -899,7 +899,8 @@ function boot() {
   try {
     const stored=localStorage.getItem(STORAGE_KEY);if(stored&&stored.length<120000)saved=JSON.parse(stored);
     const best=JSON.parse(localStorage.getItem(BEST_KEY)||'{}');
-    if(best&&typeof best==='object')bestScores=Object.fromEntries(Object.entries(best).filter(([id,value])=>LEVELS.some(level=>level.id===id)&&Number.isInteger(value?.score)&&value.score>=1&&Number.isInteger(value?.slides)));
+    // Older versions stored the move count under the key `slides`; keep reading it.
+    if(best&&typeof best==='object')bestScores=Object.fromEntries(Object.entries(best).map(([id,value])=>[id,value&&typeof value==='object'?{score:value.score,moves:value.moves??value.slides}:value]).filter(([id,value])=>LEVELS.some(level=>level.id===id)&&Number.isInteger(value?.score)&&value.score>=1&&Number.isInteger(value?.moves)));
   }catch{storageAvailable=false;}
   if(!viewSettingsInitialized) {
     const previous=saved?.settings;

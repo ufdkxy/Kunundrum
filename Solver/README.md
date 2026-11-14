@@ -1,6 +1,6 @@
-# Kunundrum native C++ solver — prototype 0.3 (`SOLVER_VERSION` in `solver.cpp`, `kunsolve --version`; independent of the web app)
+# Kunundrum native C++ solver — prototype 0.4 (`SOLVER_VERSION` in `solver.cpp`, `kunsolve --version`; independent of the web app)
 
-A dependency-free C++17 exact search engine for the **K2/K3 Kunundrum board format**. The solver accepts a board code (or a file containing one), searches for a minimum-slide solution, checks the resulting path against its simulator, and exports a new K3 code with the solution embedded.
+A dependency-free C++17 exact search engine for the **K2/K3 Kunundrum board format**. The solver accepts a board code (or a file containing one), searches for the **lowest-score** solution (score = moves plus one-time hex bonuses and penalties; fewest moves among equal scores), checks the resulting path against its simulator, and exports a new K3 code with the solution embedded.
 
 **This is a separate solver, not an update to the Replay Lab app.** The source is suitable for an eventual Emscripten/WebAssembly build, but a browser-facing WebAssembly module and browser UI are **not included** yet.
 
@@ -32,7 +32,7 @@ A prebuilt **Linux x86-64** `kunsolve-linux-x86_64` is included for convenience:
 ```sh
 ./kunsolve --level 8.1
 ./kunsolve --level 7.6 --seconds 60 --max-states 2000000
-./kunsolve --level 8.1 --max-depth 17          # prove there is no solution of 17 slides or fewer
+./kunsolve --level 8.1 --max-depth 17          # prove there is no solution of 17 moves or fewer
 ./kunsolve 'K3.YOUR_CODE' --seconds 120 --max-states 3000000
 ./kunsolve board-code.txt --algorithm forward
 cat board-code.txt | ./kunsolve -
@@ -45,33 +45,35 @@ Options:
 - `--algorithm auto|forward|bidirectional` — auto selects bidirectional search for boards with at least three balls and without hexagons/rotating arrows when terminal gate/teleport masks fit the state budget (and goals equal balls), otherwise forward BFS.
 - `--max-states N` — maximum combined stored states, default 2,000,000.
 - `--seconds S` — wall-clock search limit, default 60.
-- `--max-choices N` — maximum rotating-arrow choices within one slide, default 8.
-- `--max-depth N` — only consider solutions of at most N slides (N >= 1, default unlimited); see [Depth limit](#depth-limit-certifying-a-known-solution).
+- `--max-choices N` — maximum rotating-arrow choices within one move, default 8.
+- `--max-depth N` — only consider solutions of at most N moves (N >= 1, default unlimited); see [Depth limit](#depth-limit-certifying-a-known-solution).
 - `--quiet` — hide per-depth progress; statistics and results still print.
 - `--no-code` — omit the long embedded K3 output.
 
 Outcomes/exit codes:
 
-- **OPTIMAL** (exit 0): shortest accepted solution, proved by exhaustive depth-layer exploration. The K3 output includes the solution.
+- **OPTIMAL** (exit 0): accepted solution with the lowest possible score (fewest moves among equal scores), proved by exhaustive exploration. The output lists `Score:` and `Moves:`. The K3 output includes the solution.
 - **UNSOLVABLE** (exit 3): entire reachable-state search exhausted without an accepted completion.
 - **INCONCLUSIVE** (exit 2): time, state, or rotating-arrow choice budget was exceeded; no optimality claim.
 - **SOLUTION FOUND (optimality not certified)** (exit 2): solution verified, but incomplete layers prevent an optimality guarantee.
-- **NO SOLUTION WITHIN N SLIDES** (exit 4, only with `--max-depth N`): every sequence of at most N slides was covered and none is accepted, so the optimum is at least N+1 slides (or the board is unsolvable).
+- **NO SOLUTION WITHIN N MOVES** (exit 4, only with `--max-depth N`): every sequence of at most N moves was covered and none is accepted, so the optimum is at least N+1 moves (or the board is unsolvable).
 - Invalid input or unsupported forced algorithm: exit 1.
 
 ## Depth limit: certifying a known solution
 
-`--max-depth N` restricts the search to solutions of at most N slides. Its main use is to certify a solution you already have. If a level has a replay-verified solution of L slides:
+`--max-depth N` restricts the search to solutions of at most N moves. Its main use is to certify a solution you already have. **This certifies the move count, which equals the score only on boards without hexes.** On a board with hexes the objective is the score, which a longer route can lower, so certify by running without `--max-depth` and comparing the printed `Score:`. If a hex-free level has a replay-verified solution of L moves:
 
 ```sh
 ./kunsolve --level 8.1 --catalog ../levels.js --max-depth 17 --no-code     # L = 18
 ```
 
-- **exit 4** (`NO SOLUTION WITHIN 17 SLIDES`): nothing shorter exists, so the known L-slide solution is optimal.
+- **exit 4** (`NO SOLUTION WITHIN 17 MOVES`): nothing shorter exists, so the known L-move solution is optimal.
 - **exit 0** (`OPTIMAL`): a shorter solution exists; it is printed and replay-verified.
 - **exit 2** (`INCONCLUSIVE`): time or state budget ran out; no claim.
 
-Searching with `--max-depth L` instead also certifies (it returns `OPTIMAL` with L slides), but `L-1` is cheaper because the last layer is never expanded.
+With hexes, `--max-depth N` returns the lowest score among routes of at most N moves; `OPTIMAL` is printed only when no longer route can score lower (a route of more than N moves scores at least N+1 plus the sum of all negative hex values).
+
+Searching with `--max-depth L` instead also certifies (it returns `OPTIMAL` with L moves), but `L-1` is cheaper because the last layer is never expanded.
 
 How it is applied: forward BFS stops expanding at the limit, and on the final layer only tests whether a generated state is accepted without storing it, which saves the largest layer's memory. Bidirectional search ignores meeting points longer than N and certifies once the complete forward and reverse depths together reach N. A bound is only reported when no state, time or rotating-arrow choice budget was exceeded. The limit gives a bound on length; it does not by itself make BFS faster, but it is the natural cut-off for a future A*/IDA* search.
 
@@ -79,15 +81,17 @@ How it is applied: forward BFS stops expanding at the limit, and on the final la
 
 ### Forward breadth-first search
 
-All game features use the same transition semantics as `engine.js`: all four ball directions; fixed and rotating arrows; colored/universal teleports; consumable hexes and score; toggle switches/walls/teleports; permanent goal locking. A branch encountering a rotating arrow is expanded over all four chosen directions, up to the specified per-slide choice limit. A reached goal is accepted only with **score >= 1**.
+All game features use the same transition semantics as `engine.js`: all four ball directions; fixed and rotating arrows; colored/universal teleports; consumable hexes and score; toggle switches/walls/teleports; permanent goal locking. A branch encountering a rotating arrow is expanded over all four chosen directions, up to the specified per-move choice limit. A reached goal is accepted only with **score >= 1**.
 
-States are quotiented by permutations of same-colored balls; route reconstruction assigns them back to the original G1/G2/... IDs. The state key contains all mutable gate, switch, teleport and consumed-hex flags. Hexagon boards also include the **score so far** (slides + consumed hex values), because different path lengths can lead to the same geometry but different final scores. The score is clamped at `1 - (sum of the unconsumed negative hex values)`: from that point no later acceptance check can fail, so all larger scores behave identically and share one key (v0.2 keyed on raw depth). This keeps score correctness exact. It helps most on boards with few or small negative hexes; on a board with large hex values (7.3: values -15..20, cap 76) the cap is never reached and there is no reduction.
+States are quotiented by permutations of same-colored balls; route reconstruction assigns them back to the original G1/G2/... IDs. The state key contains all mutable gate, switch, teleport and consumed-hex flags. Hexagon boards also include the **score so far** (moves + consumed hex values), because different path lengths can lead to the same geometry but different final scores. The score is clamped at `1 - (sum of the unconsumed negative hex values)`: from that point no later acceptance check can fail, so all larger scores behave identically and share one key (v0.2 keyed on raw depth). This keeps score correctness exact.
+
+**Objective (v0.4).** Without hexes, the score equals the move count, so the first accepted state is optimal. With hexes a longer route can score lower (v0.3 and earlier stopped at the first accepted state, i.e. minimized moves, and wrongly certified 1.7 and 1.8). Now the search continues past the first accepted state and discards every state whose lower bound cannot beat the best score found: `score so far + (unlocked balls, one move each) + (sum of unconsumed negative hex values)`. Breadth-first order means equal scores are found fewest moves first. `OPTIMAL` is only printed once the whole bounded space is covered. It helps most on boards with few or small negative hexes; on a board with large hex values (7.3: values -15..20, cap 76) the cap is never reached and there is no reduction.
 
 ### Switch-aware bidirectional breadth-first search (v0.2)
 
-The reverse search enumerates **genuine predecessor transitions** for static walls, fixed arrows, teleports, and now **switches controlling gates and teleports**, including the game's blocked-closing rule. As before, a backward edge is accepted only if the corresponding forward slide reproduces its successor state; the final reported path is also independently replayed from the original initial board.
+The reverse search enumerates **genuine predecessor transitions** for static walls, fixed arrows, teleports, and now **switches controlling gates and teleports**, including the game's blocked-closing rule. As before, a backward edge is accepted only if the corresponding forward move reproduces its successor state; the final reported path is also independently replayed from the original initial board.
 
-The starting reverse frontier includes **all possible terminal gate configurations**, using one bit per gate *group*, not one bit per individual wall. This works because all gates in a group always flip together. Controlled teleports are similarly enumerated, while uncontrolled teleports retain their initial state. States differing only in the switch's visual on/off indicator are safely merged: the indicator never affects slide legality or switch behavior, only the actual gate/teleport flags do.
+The starting reverse frontier includes **all possible terminal gate configurations**, using one bit per gate *group*, not one bit per individual wall. This works because all gates in a group always flip together. Controlled teleports are similarly enumerated, while uncontrolled teleports retain their initial state. States differing only in the switch's visual on/off indicator are safely merged: the indicator never affects move legality or switch behavior, only the actual gate/teleport flags do.
 
 - Equal numbers of goals and balls are required for bidirectional mode.
 - **Switches are supported**, including simultaneous toggling of multiple gates and dynamic teleports.
@@ -122,7 +126,7 @@ node tests/random-switch.js
 
 Tested on the following supplied catalog levels (times vary by machine):
 
-| Level | Optimal slides | Algorithm | Typical environment time |
+| Level | Optimal moves | Algorithm | Typical environment time |
 |---|---:|---|---:|
 | 6.6 | 18 | Bidirectional BFS | < 1 s |
 | 7.1 | 15 | Bidirectional BFS | ~ 5 s |

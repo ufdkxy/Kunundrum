@@ -35,7 +35,7 @@ No server or framework is required by the JavaScript sources. The native solver 
 
 | File | Responsibility | Important exposed interface |
 | --- | --- | --- |
-| `engine.js` | Board normalization, validation, immutable state and slide simulation, notation parsing | global `Core` |
+| `engine.js` | Board normalization, validation, immutable state and move simulation, notation parsing | global `Core` |
 | `codec.js` | K2/K3 board binary encoding/decoding; compact K3 routes; replay URLs | global `Codec` |
 | `levels.js` | Editable newline catalog data, held as a template-string assignment | `window.KUNUNDRUM_LEVEL_CODES` |
 | `catalog.js` | Parse and validate catalog entries and IDs | global `Collection.entries` |
@@ -73,7 +73,7 @@ Core.formatSolution(records) -> string
   teleportActive: { [teleportId]: boolean },
   switchOn: { [switchId]: boolean },
   consumedHexIds: [hexId, ...],
-  slides: 0,
+  moves: 0,
   score: 0
 }
 ```
@@ -183,17 +183,17 @@ Build and run:
 cd Solver
 make
 ./kunsolve --level 8.1 --catalog ../levels.js
-./kunsolve --level 8.1 --catalog ../levels.js --max-depth 17   # exit 4 proves no solution of 17 slides or fewer
+./kunsolve --level 8.1 --catalog ../levels.js --max-depth 17   # exit 4 proves no solution of 17 moves or fewer
 ./kunsolve board-code.txt --algorithm forward --seconds 120 --max-states 3000000
 ./kunsolve 'K3....' --algorithm auto
 ```
 
-The C++17 CLI is a separate process (`solver.cpp`) with no external runtime libraries. It accepts a literal code, a file containing a code, standard input (`-`), or a catalog ID (`--level`, optional `--catalog`). Common flags are `--algorithm auto|forward|bidirectional`, `--seconds` (default 60), `--max-states` (default 2,000,000), `--max-choices` (default 8), `--max-depth` (default unlimited: only solutions of at most that many slides are considered), `--quiet`, and `--no-code`.
+The C++17 CLI is a separate process (`solver.cpp`) with no external runtime libraries. It accepts a literal code, a file containing a code, standard input (`-`), or a catalog ID (`--level`, optional `--catalog`). Common flags are `--algorithm auto|forward|bidirectional`, `--seconds` (default 60), `--max-states` (default 2,000,000), `--max-choices` (default 8), `--max-depth` (default unlimited: only solutions of at most that many moves are considered), `--quiet`, and `--no-code`.
 
-- **Forward BFS:** exact move-depth search, including rotating-arrow choice branching, one-use hex values, fixed arrows, gates/switches, compatible teleports and goal locking. With hexes, the state key also tracks the score so far (slides + consumed hex values), clamped at `1 - (sum of unconsumed negative hex values)` above which no acceptance check can fail, so score remains determined by a given state while larger scores share one key.
+- **Forward BFS:** exact move-depth search for the lowest score (on boards with hexes it continues past the first accepted state and prunes with `score so far + unlocked balls + unconsumed negative hex values`), including rotating-arrow choice branching, one-use hex values, fixed arrows, gates/switches, compatible teleports and goal locking. With hexes, the state key also tracks the score so far (moves + consumed hex values), clamped at `1 - (sum of unconsumed negative hex values)` above which no acceptance check can fail, so score remains determined by a given state while larger scores share one key.
 - **Bidirectional BFS:** backward predecessor generation with **forward transition revalidation**. Supports fixed arrows, static/controlled teleports and switch-controlled gate groups with blocked closing. It **does not** support rotating arrows or hexes. It additionally needs equal numbers of balls and goals and an affordable enumeration of terminal gate-group/controlled-teleport masks. `auto` chooses bidirectional mode only when feasible **and there are at least three balls**; otherwise forward mode.
 - Within a color, balls are interchangeable for search-state deduplication; solution reconstruction restores stable public ball IDs. Mutable gate, teleport and consumed-hex flags appear in search keys. The switch visual `on` flag does not determine transitions and is excluded from state deduplication.
-- Search limits may make a result **INCONCLUSIVE** (exit 2). `OPTIMAL` (exit 0) means a verified accepted shortest path; `UNSOLVABLE` (exit 3) means exhaustive proof; `NO SOLUTION WITHIN N SLIDES` (exit 4, only with `--max-depth N`) means every sequence of at most N slides was covered without an accepted completion (a proved lower bound of N+1); invalid input / unsupported forced mode exits 1. A found but uncertified solution also exits 2. To certify a known L-slide solution, run with `--max-depth L-1` and expect exit 4.
+- Search limits may make a result **INCONCLUSIVE** (exit 2). `OPTIMAL` (exit 0) means a verified accepted route with the lowest possible score (fewest moves among equal scores); `UNSOLVABLE` (exit 3) means exhaustive proof; `NO SOLUTION WITHIN N MOVES` (exit 4, only with `--max-depth N`) means every sequence of at most N moves was covered without an accepted completion (a proved lower bound of N+1); invalid input / unsupported forced mode exits 1. A found but uncertified solution also exits 2. To certify a known L-move solution on a board without hexes (score = moves), run with `--max-depth L-1` and expect exit 4; with hexes, compare the score of the unrestricted `OPTIMAL` result instead.
 - For any solution, the C++ program re-simulates the route and exports solution notation and an updated K3 code. The JavaScript regression suite independently decodes and replays the exported code.
 
 `--max-states` caps stored search states, **not bytes or memory use**. Searches are currently single-threaded. No browser-facing WASM or worker interface exists yet.
@@ -216,6 +216,6 @@ For changes to game rules, binary layout, notation, parser, or solver:
 1. Add a minimal reproducible board JSON and expected replay/state transition.
 2. Validate using `Core.validateBoard` and `Core.applyMove` (gameplay oracle).
 3. Check K2 import, K3 JS encode/decode, Python K3 interoperability, and route/link backward compatibility as applicable.
-4. Compare solver results with JavaScript replay; require an optimality certificate before recording a move count as optimal.
+4. Compare solver results with JavaScript replay; require an optimality certificate before recording a score as optimal.
 5. Extend parser tests with representative **original screenshot + corrected JSON + review/diagnostics**, especially animated arrows, nonstandard grids, goals occupied by balls, switches and hexes.
 6. Update [RULES.md](RULES.md), this document, and [STATUS.md](STATUS.md) at milestones; do not silently reinterpret mechanics or overwrite the full private catalog with the sample catalog.

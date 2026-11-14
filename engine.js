@@ -190,7 +190,7 @@ function createInitialState(board       )            {
     gateActive: Object.fromEntries(board.gates.map(g => [g.id, g.active])),
     teleportActive: Object.fromEntries(board.teleports.map(t => [t.id, t.active])),
     switchOn: Object.fromEntries(board.switches.map(s => [s.id, s.on ?? false])),
-    consumedHexIds: [], slides: 0, score: 0,
+    consumedHexIds: [], moves: 0, score: 0,
   };
 }
 function isComplete(state           )          { return state.balls.length > 0 && state.balls.every(b => b.locked); }
@@ -222,9 +222,9 @@ function applyMove(state           , board       , ballId        , direction    
   let x = ball.x, y = ball.y, heading = direction, choicesUsed = 0, scoreDelta = 1;
   let entered = false, steps = 0;
   while (true) {
-    if (++steps > 65536) return fail("loop", "This slide is too long to resolve safely. Nothing was changed.", path);
+    if (++steps > 65536) return fail("loop", "This move is too long to resolve safely. Nothing was changed.", path);
     const signature = `${x},${y},${heading},${choicesUsed}`;
-    if (visited.has(signature)) return fail("loop", "This slide loops forever. Nothing was changed; choose another direction.", path);
+    if (visited.has(signature)) return fail("loop", "This move loops forever. Nothing was changed; choose another direction.", path);
     visited.add(signature);
     const delta = DELTAS[heading], next = { x: x + delta.x, y: y + delta.y }, key = posKey(next);
     if (next.x < 1 || next.x > board.width || next.y < 1 || next.y > board.height || fixed.has(key) || activeGates.has(key) || occupied.has(key)) break;
@@ -249,7 +249,7 @@ function applyMove(state           , board       , ballId        , direction    
       events.push(`${COLOR_NAMES[ball.color]} teleported.`);
     }
   }
-  if (!entered) return fail("blocked", `${ballId} cannot slide ${DIRECTION_NAMES[direction]} from here.`, path);
+  if (!entered) return fail("blocked", `${ballId} cannot move ${DIRECTION_NAMES[direction]} from here.`, path);
   if (choicesUsed !== choices.length) return fail("error", `This move uses ${choicesUsed} rotating-arrow ${choicesUsed === 1 ? "choice" : "choices"}, but ${choices.length} were supplied.`, path);
   const end = { x, y };
   const locked = board.goals.some(g => g.color === ball.color && samePos(g, end));
@@ -257,7 +257,7 @@ function applyMove(state           , board       , ballId        , direction    
     balls: state.balls.map(b => b.id === ballId ? { ...b, x, y, locked } : { ...b }),
     gateActive: { ...state.gateActive }, teleportActive: { ...state.teleportActive },
     switchOn: { ...state.switchOn },
-    consumedHexIds: [...consumed], slides: state.slides + 1, score: state.score + scoreDelta,
+    consumedHexIds: [...consumed], moves: state.moves + 1, score: state.score + scoreDelta,
   };
   if (locked) events.push(`${ballId} docked.`);
   const sw = board.switches.find(s => samePos(s, end));
