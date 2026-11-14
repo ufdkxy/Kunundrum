@@ -194,7 +194,6 @@ function createInitialState(board       )            {
   };
 }
 function isComplete(state           )          { return state.balls.length > 0 && state.balls.every(b => b.locked); }
-function isAccepted(state           )          { return isComplete(state) && state.score >= 1; }
 
 /** A move either returns a complete new snapshot, or leaves the input untouched. */
 function applyMove(state           , board       , ballId        , direction           , choices              = [])             {
@@ -364,5 +363,5 @@ function formatSolution(records                                                 
   return groups.join(",");
 }
 
-return {validateBoard,createInitialState,applyMove,isComplete,isAccepted,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES};
+return {validateBoard,createInitialState,applyMove,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES};
 })();

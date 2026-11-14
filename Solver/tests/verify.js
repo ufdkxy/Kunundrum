@@ -5,7 +5,7 @@ const root=path.join(__dirname,'..'),repo=path.join(root,'..');
 const ctx={TextEncoder,TextDecoder,Uint8Array,URL,URLSearchParams,atob,btoa,window:{}};vm.createContext(ctx);
 for(let f of ['engine.js','codec.js','levels.js'])vm.runInContext(fs.readFileSync(path.join(repo,f),'utf8'),ctx,{filename:f});
 const {Core,Codec}=vm.runInContext('({Core,Codec})',ctx);
-function solutionCheck(code,sol){const board=Codec.decodeBoard(code);let st=Core.createInitialState(board);const tokens=Core.parseSolution(sol);for(let i=0;i<tokens.length;i++){const t=tokens[i];let id=Core.resolveBallId(st,t.identifier);let m=Core.applyMove(st,board,id,t.direction,t.choices);assert.equal(m.kind,'ok',`move ${i+1} ${id}${t.direction} ${m.kind}: ${m.message}`);st=m.state;}assert(Core.isAccepted(st),`not accepted, score=${st.score}`);return {board,score:st.score,count:tokens.length};}
+function solutionCheck(code,sol){const board=Codec.decodeBoard(code);let st=Core.createInitialState(board);const tokens=Core.parseSolution(sol);for(let i=0;i<tokens.length;i++){const t=tokens[i];let id=Core.resolveBallId(st,t.identifier);let m=Core.applyMove(st,board,id,t.direction,t.choices);assert.equal(m.kind,'ok',`move ${i+1} ${id}${t.direction} ${m.kind}: ${m.message}`);st=m.state;}assert(Core.isComplete(st),`not complete, score=${st.score}`);return {board,score:st.score,count:tokens.length};}
 let n=0;// 1.7, 1.8 and 2.2 contain hexagons: the objective is the lowest SCORE, not the fewest moves (saved routes: 13 moves/score 3, 10/5, 14/9).
 const expectedScore={'1.7':3,'1.8':5,'2.2':9};
 for(let id of ['6.6','7.4','7.1','7.6','7.10','8.1','1.7','1.8','2.2']){

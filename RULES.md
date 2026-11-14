@@ -36,7 +36,7 @@ After a legal move finishes at its **final** cell:
 - **Blocked closing rule:** for a particular gate group, if any currently inactive gate in that group would become active under a ball, **none of that group's gates change** on this activation. Other groups and controlled teleports still toggle. The switch visual indicator still changes.
 - A move changes the score by `1 + sum(values of hexes first consumed during that move)`. Each hex may contribute its signed value (`-10000` through `10000`, excluding zero) **at most once per run**, even if traversed repeatedly. Score starts at `0`; moves start at `0`.
 
-`Core.isComplete(state)` means every ball is locked. **Acceptance** (`Core.isAccepted(state)`) additionally requires `score >= 1`. A fully docked board with score `0` or less is **not accepted**. **Objective:** each puzzle is solved for the **lowest possible score**: the number of moves plus the one-time hex bonuses and penalties collected along the route (lower is better, so a negative hex is a bonus and a positive hex a penalty). The solver minimizes the score, and among equal scores the number of moves. On boards without hexes the score equals the move count.
+`Core.isComplete(state)` means every ball is locked, and the puzzle is solved exactly then. There is no score threshold: the score may be zero or negative. **Objective:** each puzzle is solved for the **lowest possible score**: the number of moves plus the one-time hex bonuses and penalties collected along the route (lower is better, so a negative hex is a bonus and a positive hex a penalty). The solver minimizes the score, and among equal scores the number of moves. On boards without hexes the score equals the move count.
 
 ## 4. Ball identifiers and ordering
 
@@ -62,7 +62,7 @@ Rr(->u),Gd
 
 The second example is the bundled 18-move route for level 8.1. Each `u/d/l/r` is **one whole move**, not a single-cell step. For a rotating arrow encountered during a move, immediately follow that move's initial direction with one `(->u)`, `(->d)`, `(->l)`, or `(->r)` **per rotating-arrow encounter in traversal order** (Unicode `→` is accepted in place of `->`). For example `Rr(->u)` means move red right and choose up at the encountered rotating arrow. No comma separates an arrow choice from its move.
 
-Text parsing checks syntax and identifiers; applying the moves against successive states checks their legality. `Core.formatSolution` coalesces adjacent moves of the same ball into one group. A saved `solution` field need not be winning merely because its notation parses: validate by replaying it and checking `Core.isAccepted`.
+Text parsing checks syntax and identifiers; applying the moves against successive states checks their legality. `Core.formatSolution` coalesces adjacent moves of the same ball into one group. A saved `solution` field need not be winning merely because its notation parses: validate by replaying it and checking `Core.isComplete`.
 
 ## 6. Canonical board JSON example
 
@@ -117,5 +117,5 @@ Recorded from game screenshots (e.g. level 12.6); the simulator above does **not
 3. The switch's `on` indicator is **display state**, distinct from actual gate/teleport active flags.
 4. Locked balls remain on the board and block movement; locking only occurs at the **end** of a move (or at initialization).
 5. Teleport exits occupied by other balls block jumps, not entry; arrow, hex, teleport, then final switch/goal processing must keep the documented order.
-6. Hexes are one-use, and accepted victory requires **all balls locked plus positive score**.
+6. Hexes are one-use, and victory requires **all balls locked** (the score may be zero or negative).
 7. Any proposed difference between the external game's behavior and these rules requires explicit evidence, a regression fixture, and synchronized changes to `engine.js`, `solver.cpp`, and affected codecs/parsers.

@@ -1,14 +1,14 @@
 /* Kunundrum interface/controller. Engine, codec and catalog load separately. */
 'use strict';
 (() => {
-const {validateBoard,createInitialState,applyMove,isComplete,isAccepted,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES}=Core;
+const {validateBoard,createInitialState,applyMove,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES}=Core;
 const {entries:CATALOG_ENTRIES}=Collection;
 const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.13'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.14'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -235,7 +235,7 @@ function persist() {
   try {
     const records = getNotation();
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ board: encodeBoard(board), moves: records, at: cursor, selected, mode, settings, draft: $('solution-input').value }));
-    if (isAccepted(state()) && currentPresetId) {
+    if (isComplete(state()) && currentPresetId) {
       const previous = bestScores[currentPresetId];
       if (!previous || state().score < previous.score || state().score === previous.score && state().moves < previous.moves) {
         bestScores[currentPresetId] = { score: state().score, moves: state().moves };
@@ -381,15 +381,15 @@ function renderMeta() {
   const docked=state().balls.filter(ball=>ball.locked).length;
   $('docked-value').innerHTML=`${docked}<span>/${state().balls.length}</span>`;
   const completed=$('completion-inline');
-  completed.textContent=isComplete(state())?(isAccepted(state())?'Complete':'Complete · score ≤ 0 is not accepted') : '';
-  completed.className=`completion-inline${isComplete(state())?isAccepted(state())?' done':' unaccepted':''}`;
+  completed.textContent=isComplete(state())?'Complete':'';
+  completed.className=`completion-inline${isComplete(state())?' done':''}`;
 }
 // Bottom-bar hint. "Moving..." is shown only while autoplay is running (isPlaying), never for a
 // manual move. Derived purely from current state and called from renderControls(), which every
 // isPlaying change goes through, so it cannot go stale (stopPlayback() only re-renders controls).
 function renderHint() {
   const s=state();
-  $('board-hint').innerHTML=isComplete(s)?(isAccepted(s)?'':'The original game requires score ≥ 1.'):(isPlaying?'Moving...':`<span class="mouse-mini" aria-hidden="true"></span><span aria-hidden="true">/</span>Arrow keys: move`);
+  $('board-hint').innerHTML=isComplete(s)?'':(isPlaying?'Moving...':`<span class="mouse-mini" aria-hidden="true"></span><span aria-hidden="true">/</span>Arrow keys: move`);
 }
 function updateResetControl() {
   $('reset').disabled=isPlaying||(!busy&&!pendingMove&&frames.length===1&&cursor===0&&!$('solution-input').value);
@@ -578,7 +578,7 @@ async function makeMove(id,direction,choices=[]) {
   frames=frames.slice(0,cursor+1);frames.push(result);cursor++;mode='manual';busy=false;
   selected=selectionAfterMove(id);
   render();persist();
-  if(isComplete(state()))toast(isAccepted(state())?`Complete in ${state().moves} moves. Final score: ${state().score}.`:`All balls docked with score ${state().score}. The original game rejects scores ≤ 0.`,!isAccepted(state()));
+  if(isComplete(state()))toast(`Complete in ${state().moves} moves. Final score: ${state().score}.`);
 }
 
 function selectionAfterMove(movedId) {
@@ -899,8 +899,7 @@ function boot() {
   try {
     const stored=localStorage.getItem(STORAGE_KEY);if(stored&&stored.length<120000)saved=JSON.parse(stored);
     const best=JSON.parse(localStorage.getItem(BEST_KEY)||'{}');
-    // Older versions stored the move count under the key `slides`; keep reading it.
-    if(best&&typeof best==='object')bestScores=Object.fromEntries(Object.entries(best).map(([id,value])=>[id,value&&typeof value==='object'?{score:value.score,moves:value.moves??value.slides}:value]).filter(([id,value])=>LEVELS.some(level=>level.id===id)&&Number.isInteger(value?.score)&&value.score>=1&&Number.isInteger(value?.moves)));
+    if(best&&typeof best==='object')bestScores=Object.fromEntries(Object.entries(best).filter(([id,value])=>LEVELS.some(level=>level.id===id)&&Number.isInteger(value?.score)&&Number.isInteger(value?.moves)));
   }catch{storageAvailable=false;}
   if(!viewSettingsInitialized) {
     const previous=saved?.settings;

@@ -132,7 +132,6 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .mouse-mini::after { content: ""; position: absolute; left: 3px; top: 1px; width: 1px; height: 3px; background: #8ba3ae; }
 .completion-inline { color: var(--muted); text-align: right; }
 .completion-inline.done { color: var(--mint); font-weight: 600; }
-.completion-inline.unaccepted { color: var(--yellow); }
 
 /* Timeline */
 .timeline-panel { margin-top: 16px; min-height: 152px; padding: 17px 20px 12px; border: 1px solid var(--border); border-radius: 9px; background: #111b24; }
