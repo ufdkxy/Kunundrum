@@ -28,6 +28,8 @@ Certified optimal scores (`verify.js`): 6.6 → 18, 7.1 → 15, 7.4 → 27, 7.6 
 
 **App 3.3.16, 2026-11-14: Export dialog.** The "URL format" checkbox is gone; the dialog now always shows a full permalink and a K3 board code, each with its own copy button. "Include route" says "Includes N-move route"; the K3 code help tells the user to recover the route with "Use saved solution" after importing (the move history starts empty). The permalink also works over file:// (page address plus #hash), but only on the same computer and file location.
 
+**App 3.3.19, 2026-11-14: puzzle dialog columns.** The puzzle dialog has a fixed height; the chapter list and the puzzle previews are equally tall and each scrolls on its own.
+
 **App 3.3.18, 2026-11-14: puzzle dialog.** The chapter list now fills the dialog height (up to the viewport) instead of a 520px cap, and the footer with "Import board data" was removed.
 
 **App 3.3.15, 2026-11-14: move history minimum height.** The move history panel now reserves room for two rows of moves (e.g. level 1.9) so the layout no longer jumps as moves are added: 99px standard, 100px small screens, 77px in the compact layout.
