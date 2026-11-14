@@ -5,7 +5,7 @@ Requires numpy and opencv-python. See README.md. Screen coordinates are
 converted to bottom-left-origin, one-based game coordinates.
 """
 from __future__ import annotations
-PARSER_VERSION = '0.9.1'  # Parser's own version, independent of the web app's APP_VERSION.
+PARSER_VERSION = '0.9.2'  # Parser's own version, independent of the web app's APP_VERSION.
 import argparse
 import json
 import math
@@ -246,6 +246,11 @@ def arrow_shape_match(patch):
             t=t.astype(np.float32)/255.
             t-=t.mean()
             ARROW_SHAPES[f.stem]=(d,t/(np.linalg.norm(t)+1.e-8))
+            # The chevron brightness animation is mirrored on the opposite arrow
+            # (bright tail chevron), so a flipped template is a valid sample of
+            # the opposite direction in another animation phase.
+            flipped,opposite=(t[::-1,:],{'u':'d','d':'u'}.get(d)) if d in 'ud' else (t[:,::-1],{'l':'r','r':'l'}.get(d))
+            ARROW_SHAPES[f.stem+'_flip']=(opposite,flipped/(np.linalg.norm(flipped)+1.e-8))
     if not ARROW_SHAPES:return None,0.
     b=patch[:,:,0]
     core=b[14:82,14:82]
@@ -314,8 +319,9 @@ def teleport_sprite(patch):
     lit=corner&(V>100)
     if float((S[lit]>70).mean())<.5:return '*'
     hues=hsv[:,:,0][lit&(S>70)].astype(int)
-    counts={'R':int(((hues<12)|(hues>169)).sum()),'Y':int(((hues>=12)&(hues<39)).sum()),
-            'G':int(((hues>=39)&(hues<85)).sum()),'B':int(((hues>=85)&(hues<=169)).sum())}
+    # Yellow arcs on dark tiles drift towards green (hue up to ~50), green arcs sit at ~60-75.
+    counts={'R':int(((hues<12)|(hues>169)).sum()),'Y':int(((hues>=12)&(hues<55)).sum()),
+            'G':int(((hues>=55)&(hues<85)).sum()),'B':int(((hues>=85)&(hues<=169)).sum())}
     return max(counts,key=counts.get)
 
 def switch_disc(patch):
@@ -353,18 +359,39 @@ def red_chevrons(patch):
     red=((H<12)|(H>165))&(S>90)&(V>50)
     box=red[18:78,18:78]
     n=int(box.sum())
-    if not 1000<n<2600:return False
+    if not 1000<n<2300:return False
+    # A goal ring is also red but lights up the cell's outer annulus; chevrons do not.
+    if patch_features(patch)['ann_bright']>.5:return False
     asym=float((box^np.rot90(box,2)).sum())/n
     # Bright-phase chevrons have white-hot tips; sparkle balls have a white core too
     # but are symmetric, so ask for stronger asymmetry there.
     white=float(((V>200)&(S<80))[r<6].mean())>.3
     return asym>(.6 if white else .2)
 
+def chevron_direction(patch):
+    """Direction from the chevron geometry: the apex is displaced from the arms
+    towards the arrow's heading, whatever the animation brightness phase.
+    Returns u/d/l/r, or None if the cell shows no clear chevron."""
+    p=cv2.resize(patch,(96,96),interpolation=cv2.INTER_AREA)
+    v=np.maximum(0,p[:,:,0].astype(np.float32)-60)[12:84,12:84]
+    yy,xx=np.mgrid[:72,:72]
+    def centroid(mask,coord):
+        w=v*mask
+        return float((w*coord).sum()/(w.sum()+1e-6))
+    c=35.5
+    mid_x=np.abs(xx-c)<8;arm_x=(np.abs(xx-c)>18)&(np.abs(xx-c)<34)
+    mid_y=np.abs(yy-c)<8;arm_y=(np.abs(yy-c)>18)&(np.abs(yy-c)<34)
+    dv=centroid(mid_x,yy)-centroid(arm_x,yy)   # image y grows downwards
+    dh=centroid(mid_y,xx)-centroid(arm_y,xx)
+    if max(abs(dv),abs(dh))<5:return None
+    if abs(dv)>=abs(dh):return 'd' if dv>0 else 'u'
+    return 'r' if dh>0 else 'l'
+
 def classify(patch,templates):
     f=patch_features(patch)
     shape_dir,shape_conf=arrow_shape_match(patch)
     if shape_dir is not None:
-        return 'arrow_'+shape_dir,shape_conf,f
+        return 'arrow_'+(chevron_direction(patch) or shape_dir),shape_conf,f
     # Metal quadrant tile = switchable element: a plain one is a gate, one with
     # the teleport sprite on top is a switchable teleport.
     if metal_cross(patch):
@@ -394,6 +421,7 @@ def classify(patch,templates):
     if (f['color']=='B' and f['color_strength']>.85 and f['core_bright']>.69
         and f['ann_bright']<.23 and 900<f['bright_count']<2400 and asym>24.3 and not (whitecore>.46 and float(grayfull[coremask].mean())>202)):
         direction,confidence=direction_from_sprite(patch)
+        direction=(chevron_direction(patch) or direction) if direction else None
         return ('arrow_'+direction if direction else 'unknown'),confidence,f
     overlap=overlay_colors(patch) if f['bright_count']>2400 and f['core_bright']>.85 else None
     if overlap:
