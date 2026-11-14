@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.21'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.22'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -374,6 +374,13 @@ function renderBoard(trace = frames[cursor]) {
   if(window.KunEditor?.active){window.KunEditor.render();return;}
   $('board-stage').innerHTML = renderSvg(board,state(),{outlinedBallId,trace});
 }
+// Next level in numeric order (chapter, number) among catalog levels; levels.js file order is not numeric.
+function nextLevel() {
+  if (!currentPresetId) return null;
+  const key = id => { const [c,n] = id.split('.').map(Number); return c*100+n; };
+  const here = key(currentPresetId);
+  return LEVELS.filter(level => key(level.id) > here).sort((x,y) => key(x.id)-key(y.id))[0] || null;
+}
 function renderMeta() {
   $('level-title').textContent=board.title;
   $('board-dimensions').textContent=`${board.width} × ${board.height}`;
@@ -381,8 +388,7 @@ function renderMeta() {
   const docked=state().balls.filter(ball=>ball.locked).length;
   $('docked-value').innerHTML=`${docked}<span>/${state().balls.length}</span>`;
   const completed=$('completion-inline');
-  const nextIndex=currentPresetId?LEVELS.findIndex(level=>level.id===currentPresetId)+1:0;
-  const hasNext=isComplete(state())&&nextIndex>0&&nextIndex<LEVELS.length;
+  const hasNext=isComplete(state())&&!!nextLevel();
   completed.innerHTML=isComplete(state())?`Complete${hasNext?'<button class="next-puzzle" id="next-puzzle" type="button" title="Go to the next puzzle">Next puzzle ›</button>':''}`:'';
   completed.className=`completion-inline${isComplete(state())?' done':''}`;
 }
@@ -784,7 +790,7 @@ $('toggle-trace').addEventListener('click',()=>{if(busy||isPlaying)return;settin
 $('toggle-outline').addEventListener('click',()=>{if(busy||isPlaying)return;settings.outline=!settings.outline;renderBoard();renderControls();persist();});
 $('open-levels').addEventListener('click',()=>{levelsChapter=null;renderLevelCards();openDialog('levels-dialog');revealChapter();});
 $('chapter-bar').addEventListener('click',event=>{const b=event.target.closest('[data-chapter]');if(b)renderLevelCards(Number(b.dataset.chapter));});
-$('completion-inline').addEventListener('click',event=>{if(!event.target.closest('#next-puzzle')||busy||isPlaying)return;const next=LEVELS[LEVELS.findIndex(level=>level.id===currentPresetId)+1];if(next){adoptBoard(next);clearLocation();}});
+$('completion-inline').addEventListener('click',event=>{if(!event.target.closest('#next-puzzle')||busy||isPlaying)return;const next=nextLevel();if(next){adoptBoard(next);clearLocation();}});
 $('level-cards').addEventListener('click',event=>{const target=event.target.closest('[data-level]');if(!target)return;const next=LEVELS.find(level=>level.id===target.dataset.level);if(next){adoptBoard(next);clearLocation();$('levels-dialog').close();}});
 $('open-help').addEventListener('click',()=>openDialog('help-dialog'));
 $('open-share').addEventListener('click',()=>{renderShare();openDialog('share-dialog');});

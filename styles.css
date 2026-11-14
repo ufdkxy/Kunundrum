@@ -455,7 +455,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
     .compact-layout .board-bottom { min-height:34px; padding:6px 12px; flex-wrap:wrap; gap:4px 14px; }
     .compact-layout .board-bottom > .replay-transport { display:none; }
     .compact-layout .board-view-controls { display:flex; align-items:center; gap:14px; flex:0 0 auto; }
-    .compact-layout .board-bottom #board-hint { min-width:0; flex:1 1 180px; justify-content:center; }
+    .compact-layout .board-bottom #board-hint { min-width:0; flex:1 1 180px; justify-content:flex-end; }
     .compact-layout .board-bottom .completion-inline { margin-left:auto; }
     .compact-layout .board-bottom .completion-inline:empty { display:none; }
     /* Keyboard focus stays available, but only the selected ball gets a prominent ring. */
@@ -629,7 +629,7 @@ body.edit-mode #board-stage.editor-grabbing .editor-floating-tile{cursor:grabbin
 .selected-info { gap:5px; min-width:27ch; justify-content:flex-start; }
 .sel-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--ball-color, #73808a); box-shadow:0 0 8px color-mix(in srgb, var(--ball-color, #73808a) 45%, transparent); }
 body.edit-mode .selected-info { display:none; }
-#board-hint { gap:5px; }
+#board-hint { gap:5px; margin-left:auto; text-align:right; }
 @media (max-width:900px) { .compact-layout .control-column { flex-direction:column; } .compact-layout .timeline-panel { flex:0 0 auto; min-height:120px; } }
 
 .move-tracker { margin-left:6px; color:#8fb0a4; font:12px var(--mono); letter-spacing:.4px; font-weight:400; }
