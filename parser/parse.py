@@ -5,7 +5,7 @@ Requires numpy and opencv-python. See README.md. Screen coordinates are
 converted to bottom-left-origin, one-based game coordinates.
 """
 from __future__ import annotations
-PARSER_VERSION = '0.9.2'  # Parser's own version, independent of the web app's APP_VERSION.
+PARSER_VERSION = '0.9.3'  # Parser's own version, independent of the web app's APP_VERSION.
 import argparse
 import json
 import math
@@ -313,8 +313,10 @@ def teleport_sprite(patch):
     corner=(dx>13)&(dy>13)&(r>30)&(r<56)
     axis=((dx<5)&(dy>28)&(dy<46))|((dy<5)&(dx>28)&(dx<46))
     quads=[corner&((xx<48)==a)&((yy<48)==b) for a in (True,False) for b in (True,False)]
-    if min(float((V[m]>170).mean()) for m in quads)<.10:return None
+    # Arcs on dim (dark-tinted) teleport tiles peak at V~165, so use the same V>100 as `lit` below.
+    if min(float((V[m]>100).mean()) for m in quads)<.10:return None
     if float((V[axis]>170).mean())>.08 or float(V[r<6].mean())<200:return None
+    if float((V[(r>=12)&(r<24)]>170).mean())>.5:return None  # solid bright disc (switch), not a ring/dot sprite
     # White (any-colour) teleports have unsaturated arcs; coloured ones are mostly saturated.
     lit=corner&(V>100)
     if float((S[lit]>70).mean())<.5:return '*'
