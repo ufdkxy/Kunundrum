@@ -22,6 +22,8 @@
 
 Certified optimal scores (`verify.js`): 6.6 → 18, 7.1 → 15, 7.4 → 27, 7.6 → 20, 7.10 → 27, 8.1 → 18 (no hexes, so score = moves); with hexes 1.7 → 3 (13 moves), 1.8 → 5 (10 moves), 2.2 → 9 (14 moves). Level 7.3 is not in `verify.js`; the solver makes no claim for it (it finds a 16-move route with score 16, far worse than the saved route's score 1, and cannot certify within the default limits).
 
+**App 3.3.16, 2026-11-14: label and music.** The top scoreboard label "MOVE SCORE" is now "SCORE". A manual music pause is no longer stored; music autoplays on every reload (or on the first gesture if the browser blocks autoplay).
+
 **App 3.3.15, 2026-11-14: move history minimum height.** The move history panel now reserves room for two rows of moves (e.g. level 1.9) so the layout no longer jumps as moves are added: 99px standard, 100px small screens, 77px in the compact layout.
 
 **Solver v0.5 and app 3.3.14, 2026-11-14: no score floor.** The `score >= 1` acceptance rule was removed (it is not a game rule): a board is solved when every ball is locked, and scores of zero or below are valid. `Core.isAccepted` is gone (use `Core.isComplete`), the app no longer warns about scores of 0 or less, the legacy `slides` best-score key is no longer read, and the solver's state key no longer contains the score (a state's score only grows with its move count, so breadth-first order keeps the best). Catalog results are unchanged: every level except 7.3, 10.8, 10.9 is certified and equals the saved score; `verify.js` 13 cases, `random-compare.js` 50/50, `random-switch.js` 100/100 pass. A board that is already docked returns `OPTIMAL` with 0 moves and score 0.

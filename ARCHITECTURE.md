@@ -42,7 +42,7 @@ No server or framework is required by the JavaScript sources. The native solver 
 | `app.js` | Render SVG board, play/move controls, replay history, import/export, URL and localStorage state | `window.KunundrumHost` for editor integration |
 | `editor.js` | In-place board editing, object properties, drag/drop, undo/redo, validation, K3 export | `window.KunEditor` |
 | `styles.css` | Browser presentation, responsive layout | CSS |
-| `music.js` | Five-track music playlist; autoplays on load, or on the first user gesture if the browser blocks it; a manual pause is remembered in localStorage | DOM audio controls and `Music/*.mp3` |
+| `music.js` | Five-track music playlist; autoplays on load, or on the first user gesture if the browser blocks it; a manual pause is not stored | DOM audio controls and `Music/*.mp3` |
 | `convert-levels.html` | Standalone local K2/K3 catalog-to-K3 converter | file input + browser-generated `levels.js` download |
 | `favicon.svg` | Icon | static asset |
 

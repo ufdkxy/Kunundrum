@@ -3,7 +3,7 @@
 // The music library is intentionally user-supplied and is never bundled.
 // Music tries to autoplay on load. Browsers usually block that until the page
 // has been interacted with, so a blocked attempt is retried on the first gesture.
-// A manual pause is remembered (localStorage) so it is respected on reload.
+// A manual pause is not remembered: music autoplays on every load.
 (() => {
   const tracks = [
     'ame_en_peine',
@@ -38,9 +38,6 @@
     button.title = text;
   }
 
-  const OFF_KEY = 'kunundrum-music-off';
-  const readOff = () => { try { return localStorage.getItem(OFF_KEY) === '1'; } catch (e) { return false; } };
-  const writeOff = off => { try { off ? localStorage.setItem(OFF_KEY, '1') : localStorage.removeItem(OFF_KEY); } catch (e) { /* storage unavailable */ } };
 
   const gestureEvents = ['pointerdown', 'keydown'];
   let armed = false;
@@ -88,12 +85,10 @@
   button.addEventListener('click', () => {
     if (requested && !audio.paused) {
       requested = false;
-      writeOff(true);
       disarm();
       audio.pause();
       label();
     } else {
-      writeOff(false);
       void play();
     }
   });
@@ -112,5 +107,5 @@
     button.title = 'Music unavailable — check the Music/ folder';
   });
   label();
-  if (!readOff()) void play();
+  void play();
 })();
