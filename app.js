@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.17'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.18'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -788,7 +788,6 @@ $('copy-link').addEventListener('click',()=>copyText($('share-link').value,'Perm
 $('copy-code').addEventListener('click',()=>copyText($('share-code').value,'K3 code copied.'));
 for(const id of ['share-link','share-code'])$(id).addEventListener('click',event=>event.target.select());
 $('open-board-data').addEventListener('click',()=>{setDataTab('code');openDialog('board-dialog');});
-$('import-from-levels').addEventListener('click',()=>{$('levels-dialog').close();setDataTab('code');openDialog('board-dialog');});
 $('data-code-tab').addEventListener('click',()=>setDataTab('code'));
 $('data-json-tab').addEventListener('click',()=>setDataTab('json'));
 $('load-board').addEventListener('click',importBoard);

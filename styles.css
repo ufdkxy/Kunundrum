@@ -229,7 +229,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .modal-heading > .icon-button { width: 31px; height: 31px; flex-shrink: 0; }
 .modal-bottom { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 20px; margin-top: 22px; border-top: 1px solid #293e4b; color: #7c97a6; font-size: 11px; }
 .levels-layout { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 18px; align-items: start; }
-.chapter-bar { display: flex; flex-direction: column; gap: 4px; max-height: min(60dvh, 520px); overflow-y: auto; padding-right: 6px; border-right: 1px solid #293e4b; position: sticky; top: 0; }
+.chapter-bar { display: flex; flex-direction: column; gap: 4px; max-height: calc(100dvh - 200px); overflow-y: auto; padding-right: 6px; border-right: 1px solid #293e4b; position: sticky; top: 0; }
 .chapter-button { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; padding: 7px 10px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #9fb6c3; text-align: left; }
 .chapter-button strong { font-size: 14px; font-weight: 600; }
 .chapter-button span { font-size: 9px; color: #6b8594; }
