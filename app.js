@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.27'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.28'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -34,6 +34,7 @@ const ICON_PATHS = {
   'redo': '<path d="m16 5 5 5-5 5m5-5H10a6 6 0 0 0 0 12"/>',
   'reset': '<path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/>',
   'play': '<path d="m8 5 11 7-11 7Z" fill="currentColor" stroke-width="1.5"/>',
+  'replay': '<path d="m5 5 10 7-10 7Z" fill="currentColor" stroke-width="1.5"/><path d="M19 5v14" stroke-width="2.4"/>',
   'pause': '<path d="M8 5v14M16 5v14" stroke-width="4"/>',
   'play-circle': '<circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4Z"/>',
   'step-back': '<path d="m15 5-7 7 7 7" stroke-width="2.4"/>',
@@ -412,14 +413,15 @@ function renderControls() {
   $('sel-dot').style.setProperty('--ball-color',ball?PALETTE[ball.color]:'#73808a');
   $('undo').disabled=playbackLocked||cursor===0||cursor!==frames.length-1;
   updateResetControl();
-  for (const id of ['open-levels','open-help','open-board-data','open-share','edit-mode-button','toggle-coords','toggle-outline','toggle-trace']) $(id).disabled=isPlaying;
+  for (const id of ['open-levels','open-help','open-board-data','open-share','edit-mode-button']) $(id).disabled=isPlaying;
   $('replay-first').disabled=playbackLocked||cursor===0;
   $('replay-back').disabled=playbackLocked||cursor===0;
   $('replay-next').disabled=playbackLocked||cursor>=frames.length-1;
   $('replay-last').disabled=playbackLocked||cursor>=frames.length-1;
   $('replay-play').disabled=!isPlaying&&(busy||!routeComplete);
-  { const playBtn=$('replay-play'), want=isPlaying?'pause':'play'; if(playBtn.dataset.icon!==want){ playBtn.dataset.icon=want; playBtn.innerHTML=icon(want); } }
-  $('replay-play').title = `${isPlaying?'Pause':isComplete(current)?'Replay again':'Autoplay route'} (Space)`;
+  const want=isPlaying?'pause':(routeComplete&&cursor===frames.length-1?'replay':'play');
+  { const playBtn=$('replay-play'); if(playBtn.dataset.icon!==want){ playBtn.dataset.icon=want; playBtn.innerHTML=icon(want); } }
+  $('replay-play').title = `${isPlaying?'Pause':want==='replay'?'Replay from start':'Autoplay route'} (Space)`;
   $('replay-play').setAttribute('aria-label', $('replay-play').title);
   $('replay-speed').disabled=isPlaying;
   $('replay-speed').value=String(settings.speed);
@@ -784,9 +786,9 @@ $('solution-input').addEventListener('input',()=>{if(isPlaying)return;showError(
 $('solution-input').addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();loadSolution(event.target.value);}});
 $('copy-route').addEventListener('click',()=>{const text=getNotation(cursor);if(!text){toast('No moves to copy yet.');return;}copyText(text,'Route notation copied.');});
 $('move-history').addEventListener('click',event=>{if(busy||isPlaying)return;const target=event.target.closest('[data-jump]');if(target)goTo(Number(target.dataset.jump));});
-$('toggle-coords').addEventListener('click',()=>{if(busy||isPlaying)return;settings.coordinates=!settings.coordinates;renderBoard();renderControls();persist();});
-$('toggle-trace').addEventListener('click',()=>{if(busy||isPlaying)return;settings.trail=!settings.trail;renderBoard();renderControls();persist();});
-$('toggle-outline').addEventListener('click',()=>{if(busy||isPlaying)return;settings.outline=!settings.outline;renderBoard();renderControls();persist();});
+$('toggle-coords').addEventListener('click',()=>{settings.coordinates=!settings.coordinates;if(!busy)renderBoard();renderControls();persist();});
+$('toggle-trace').addEventListener('click',()=>{settings.trail=!settings.trail;if(!busy)renderBoard();renderControls();persist();});
+$('toggle-outline').addEventListener('click',()=>{settings.outline=!settings.outline;if(!busy)renderBoard();renderControls();persist();});
 $('open-levels').addEventListener('click',()=>{levelsChapter=null;renderLevelCards();openDialog('levels-dialog');revealChapter();});
 $('chapter-bar').addEventListener('click',event=>{const b=event.target.closest('[data-chapter]');if(b)renderLevelCards(Number(b.dataset.chapter));});
 $('completion-inline').addEventListener('click',event=>{if(!event.target.closest('#next-puzzle')||busy||isPlaying)return;const next=nextLevel();if(next){adoptBoard(next);clearLocation();}});
