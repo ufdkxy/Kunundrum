@@ -128,7 +128,7 @@ void successors(const Board&b,const State&s,int maxChoices,Stats&stats,const fun
 }
 struct Node{State s;uint32_t parent;Move m;int depth;};
 struct SearchResult{bool solved=false,exhaustive=false,truncated=false,boundProved=false;vector<Move> path;uint64_t states=0,transitions=0;int depth=0;string algorithm;};
-struct Limits{uint64_t maxStates=2000000;double seconds=60;int maxChoices=8;int maxDepth=0;/* 0 = unlimited */bool verbose=true;string algorithm="auto";};
+struct Limits{uint64_t maxStates=2000000;double seconds=60;int maxChoices=8;int maxDepth=0;/* 0 = unlimited */bool scoreCap=false;long long maxScore=0;/* --max-score: only routes with score <= maxScore matter */bool verbose=true;string algorithm="auto";};
 using Clock=chrono::steady_clock;
 struct ClockLimit{Clock::time_point start=Clock::now();double seconds;explicit ClockLimit(double s):seconds(s){} bool expired()const{return chrono::duration<double>(Clock::now()-start).count()>=seconds;}double elapsed()const{return chrono::duration<double>(Clock::now()-start).count();}};
 // Lower bound on the final score of any accepted route continuing from state s (reached after `depth` moves): every
@@ -141,22 +141,24 @@ long long scoreLowerBound(const Board&b,const State&s,int depth){long long v=sco
 SearchResult forwardBFS(const Board&b,const Limits&lim,ClockLimit&timer){SearchResult out;out.algorithm="forward BFS";State s0=initial(b);vector<Node> nodes;nodes.reserve(min<uint64_t>(lim.maxStates,1000000));nodes.push_back({s0,0,{},0});unordered_map<string,uint32_t> seen;seen.reserve(min<uint64_t>(lim.maxStates,1000000));seen.emplace(stateKey(b,s0),0);Stats stats;int old=-1;
  if(complete(b,s0)){out.solved=true;out.exhaustive=true;return out;}
  const bool byScore=!b.hexes.empty();
+ const bool prune=byScore||lim.scoreCap; // bound-based pruning: needed for the score objective with hexes, and for --max-score
  long long negAll=0;for(const auto&h:b.hexes)if(h.value<0)negAll+=h.value;
- long long best=LLONG_MAX;
+ long long best=lim.scoreCap?lim.maxScore+1:LLONG_MAX; // routes must score below best; --max-score S starts it at S+1
  size_t head=0;uint32_t found=0;bool success=false,limit=false,depthCut=false;
  for(;head<nodes.size()&&!(success&&!byScore);head++){
   if(nodes.size()>=lim.maxStates||timer.expired()){limit=true;break;}
-  const auto& cur=nodes[head];if(cur.depth!=old){old=cur.depth;if(lim.verbose){cerr<<"forward depth "<<old<<" visited "<<seen.size()<<" elapsed "<<timer.elapsed()<<"s";if(byScore&&success)cerr<<" best score "<<best;cerr<<"\n";}}
+  const auto& cur=nodes[head];if(cur.depth!=old){old=cur.depth;if(lim.verbose){cerr<<"forward depth "<<old<<" visited "<<seen.size()<<" elapsed "<<timer.elapsed()<<"s";if(success)cerr<<" best score "<<best;cerr<<"\n";}}
   State parentState=cur.s;int dep=cur.depth;
-  if(byScore&&success&&scoreLowerBound(b,parentState,dep)>=best)continue; // cannot beat the best route found so far
+  if(prune&&scoreLowerBound(b,parentState,dep)>=best)continue; // cannot beat the best route found so far or the --max-score bound
   successors(b,parentState,lim.maxChoices,stats,[&](Transition&& t){if(limit||(success&&!byScore))return;string key=stateKey(b,t.s);if(seen.count(key))return;
    const bool acc=complete(b,t.s);
-   if(byScore&&!acc&&success&&scoreLowerBound(b,t.s,dep+1)>=best)return;
+   if(prune&&acc&&scoreHex(b,t.s,dep+1)>=best)return; // a finished route that cannot beat the incumbent or the bound
+   if(prune&&!acc&&scoreLowerBound(b,t.s,dep+1)>=best)return;
    if(lim.maxDepth>0&&dep+1>=lim.maxDepth){ // Last allowed layer: only test acceptance. These states are never expanded, so they are not stored.
-    if(acc){long long sc=scoreHex(b,t.s,dep+1);if(!success||sc<best){best=sc;found=(uint32_t)nodes.size();nodes.push_back({move(t.s),(uint32_t)head,move(t.m),dep+1});}success=true;}else depthCut=true;
+    if(acc){long long sc=scoreHex(b,t.s,dep+1);if(sc<best){best=sc;found=(uint32_t)nodes.size();nodes.push_back({move(t.s),(uint32_t)head,move(t.m),dep+1});success=true;}}else depthCut=true;
     return;}
    if(nodes.size()>=lim.maxStates){limit=true;return;}uint32_t ni=nodes.size();seen.emplace(move(key),ni);nodes.push_back({move(t.s),(uint32_t)head,move(t.m),dep+1});
-   if(acc){long long sc=scoreHex(b,nodes.back().s,dep+1);if(!success||sc<best){best=sc;found=ni;}success=true;}});
+   if(acc){long long sc=scoreHex(b,nodes.back().s,dep+1);if(sc<best){best=sc;found=ni;success=true;}}});
   stats.expanded++;
  }
  out.states=seen.size();out.transitions=stats.transitions;out.truncated=stats.truncatedChoices;out.solved=success;
@@ -166,7 +168,7 @@ SearchResult forwardBFS(const Board&b,const Limits&lim,ClockLimit&timer){SearchR
   // route (more than D moves) scores at least D+1 plus every negative hex, so it can only matter if that bound is below best.
   out.exhaustive=!byScore?!stats.truncatedChoices:covered&&(!depthCut||(long long)lim.maxDepth+1+negAll>=best);
   out.depth=nodes[found].depth;while(found){out.path.push_back(nodes[found].m);found=nodes[found].parent;}reverse(out.path.begin(),out.path.end());
- }else{out.exhaustive=covered&&!depthCut;out.boundProved=covered&&depthCut;}
+ }else{out.exhaustive=covered&&!depthCut&&!lim.scoreCap;out.boundProved=covered&&(depthCut||lim.scoreCap);} // with --max-score pruned states mean no UNSOLVABLE claim, only 'no route within the bound'
  return out;
 }
 // Fast static-rule move for bidirectional search; no mutable mechanics, rotating arrows or hexes.
@@ -402,19 +404,23 @@ string codeWithSolution(const Board&b,const vector<LabeledMove>& path){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open levels.js: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0)return trim(line.substr(prefix.size()));}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.5"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.6"; // Solver's own version, independent of the web app's APP_VERSION.
 int main(int argc,char**argv){
  try{
   Limits lim;string input,level,catalog="levels.js";bool wantK3=true;
   for(int i=1;i<argc;i++){string a=argv[i];auto value=[&](){if(++i>=argc)throw runtime_error("missing argument for "+a);return string(argv[i]);};
    if(a=="--version"){cout<<"kunsolve v"<<SOLVER_VERSION<<"\n";return 0;}
-   if(a=="--help"||a=="-h"){cout<<"Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional] [--max-states N] [--seconds N] [--max-choices N] [--max-depth N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth (proved lower bound), 1 error.\n";return 0;}
-   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states")lim.maxStates=stoull(value());else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-choices")lim.maxChoices=stoi(value());else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantK3=false;else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
+   if(a=="--help"||a=="-h"){cout<<"Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional] [--max-states N] [--seconds N] [--max-choices N] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";return 0;}
+   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states")lim.maxStates=stoull(value());else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-choices")lim.maxChoices=stoi(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantK3=false;else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
   }
   if(input.empty()&&level.empty())throw runtime_error("missing board code/file or --level");
   if(!level.empty())input=catalogCode(level,catalog);else if(input=="-"){input=string((istreambuf_iterator<char>(cin)),{});}else input=readInput(input);
   if(lim.maxStates<2||lim.seconds<=0||lim.maxChoices<0||lim.maxChoices>32)throw runtime_error("invalid resource limits");
   Board b=parseCode(input);cerr<<"board "<<b.id<<" ("<<b.w<<"x"<<b.h<<") "<<b.n<<" balls, "<<b.hexes.size()<<" hexes, "<<b.switches.size()<<" switches\n";
+  const int userDepth=lim.maxDepth;
+  if(lim.scoreCap&&b.hexes.empty()&&lim.maxScore>=1){ // without hexes the score is the move count, so the score bound is a depth bound (also usable by the bidirectional search)
+   lim.maxDepth=lim.maxDepth>0?(int)min<long long>(lim.maxDepth,lim.maxScore):(int)min<long long>(lim.maxScore,1000000);
+  }
   ClockLimit timer(lim.seconds);
   SearchResult res;
   int controlledTele=0;
@@ -430,13 +436,13 @@ int main(int argc,char**argv){
   if((lim.algorithm=="auto"&&canBi&&b.n>=3)||lim.algorithm=="bidirectional")res=bidirectional(b,lim,timer);
   else if(lim.algorithm=="auto"||lim.algorithm=="forward")res=forwardBFS(b,lim,timer);
   else throw runtime_error("unknown algorithm");
-  cout<<"Algorithm: "<<res.algorithm<<"\n"<<(lim.maxDepth>0?"Depth limit: "+to_string(lim.maxDepth)+"\n":string())<<"States: "<<res.states<<"\nTransitions: "<<res.transitions<<"\nElapsed: "<<timer.elapsed()<<" s\n";
+  cout<<"Algorithm: "<<res.algorithm<<"\n"<<(userDepth>0?"Depth limit: "+to_string(userDepth)+"\n":string())+(lim.scoreCap?"Score limit: "+to_string(lim.maxScore)+"\n":string())<<"States: "<<res.states<<"\nTransitions: "<<res.transitions<<"\nElapsed: "<<timer.elapsed()<<" s\n";
   if(res.solved){int score;auto route=labelAndVerify(b,res.path,score);bool optimal=res.exhaustive;
    cout<<(optimal?"OPTIMAL":"SOLUTION FOUND (optimality not certified)")<<"\nScore: "<<score<<"\nMoves: "<<route.size()<<"\nSolution: "<<formatMoves(b,route)<<"\n";if(wantK3&&!route.empty())cout<<"K3: "<<codeWithSolution(b,route)<<"\n";
    if(!optimal)cerr<<"WARNING: search did not complete the layers needed to certify optimality\n";
    return optimal?0:2;
   }
-  if(res.boundProved){cout<<"NO SOLUTION WITHIN "<<lim.maxDepth<<" MOVES\nLower bound: at least "<<lim.maxDepth+1<<" moves\n";return 4;}
+  if(res.boundProved){if(lim.scoreCap){cout<<"NO SOLUTION WITH SCORE <= "<<lim.maxScore;if(userDepth>0)cout<<" WITHIN "<<userDepth<<" MOVES";cout<<"\n";if(userDepth==0)cout<<"Lower bound: score at least "<<lim.maxScore+1<<"\n";}else cout<<"NO SOLUTION WITHIN "<<lim.maxDepth<<" MOVES\nLower bound: at least "<<lim.maxDepth+1<<" moves\n";return 4;}
   cout<<(res.exhaustive?"UNSOLVABLE":"INCONCLUSIVE")<<"\n";return res.exhaustive?3:2;
  }catch(const exception&e){cerr<<"Error: "<<e.what()<<"\n";return 1;}
 }

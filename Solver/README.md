@@ -1,4 +1,4 @@
-# Kunundrum native C++ solver — prototype 0.4 (`SOLVER_VERSION` in `solver.cpp`, `kunsolve --version`; independent of the web app)
+# Kunundrum native C++ solver — prototype 0.6 (`SOLVER_VERSION` in `solver.cpp`, `kunsolve --version`; independent of the web app)
 
 A dependency-free C++17 exact search engine for the **K2/K3 Kunundrum board format**. The solver accepts a board code (or a file containing one), searches for the **lowest-score** solution (score = moves plus one-time hex bonuses and penalties; fewest moves among equal scores), checks the resulting path against its simulator, and exports a new K3 code with the solution embedded.
 
@@ -47,6 +47,7 @@ Options:
 - `--seconds S` — wall-clock search limit, default 60.
 - `--max-choices N` — maximum rotating-arrow choices within one move, default 8.
 - `--max-depth N` — only consider solutions of at most N moves (N >= 1, default unlimited); see [Depth limit](#depth-limit-certifying-a-known-solution).
+- `--max-score N` — only consider routes with score at most N (default: no bound); see [Score limit](#score-limit).
 - `--quiet` — hide per-depth progress; statistics and results still print.
 - `--no-code` — omit the long embedded K3 output.
 
@@ -57,6 +58,7 @@ Outcomes/exit codes:
 - **INCONCLUSIVE** (exit 2): time, state, or rotating-arrow choice budget was exceeded; no optimality claim.
 - **SOLUTION FOUND (optimality not certified)** (exit 2): solution verified, but incomplete layers prevent an optimality guarantee.
 - **NO SOLUTION WITHIN N MOVES** (exit 4, only with `--max-depth N`): every sequence of at most N moves was covered and none is accepted, so the optimum is at least N+1 moves (or the board is unsolvable).
+- **NO SOLUTION WITH SCORE <= N** (exit 4, only with `--max-score N`): every route that could score N or less was covered and none finishes the board, so the optimal score is at least N+1 (or the board is unsolvable). It is never reported as UNSOLVABLE, because pruned states mean the whole space was not covered.
 - Invalid input or unsupported forced algorithm: exit 1.
 
 ## Depth limit: certifying a known solution
@@ -72,6 +74,17 @@ Outcomes/exit codes:
 - **exit 2** (`INCONCLUSIVE`): time or state budget ran out; no claim.
 
 With hexes, `--max-depth N` returns the lowest score among routes of at most N moves; `OPTIMAL` is printed only when no longer route can score lower (a route of more than N moves scores at least N+1 plus the sum of all negative hex values).
+
+## Score limit
+
+`--max-score N` starts the search with the bound "score at most N": every state whose lower bound (`score so far + unlocked balls + unconsumed negative hex values`) exceeds N is discarded from the start, instead of only after a route has been found. To certify a saved route that scores S, run with `--max-score S-1` and expect exit 4; with `--max-score S` the solver returns the optimal route (score S, `OPTIMAL`). It works on hex boards, where `--max-depth` does not certify the score. Without hexes the score is the move count, so `--max-score N` is turned into `--max-depth N` and the bidirectional search can be used.
+
+```
+./kunsolve --level 1.8 --catalog ../levels.js --max-score 4 --no-code   # exit 4: no route scores 4 or less
+./kunsolve --level 1.8 --catalog ../levels.js --max-score 5 --no-code   # OPTIMAL, score 5 (10 moves)
+```
+
+The bound is weak when a board has many large negative hexes: level 7.3 (16 hexes) is still inconclusive with `--max-score 0` at 2,000,000 states (10 s) and at 8,000,000 states (54 s).
 
 Searching with `--max-depth L` instead also certifies (it returns `OPTIMAL` with L moves), but `L-1` is cheaper because the last layer is never expanded.
 
