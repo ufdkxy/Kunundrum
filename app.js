@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.25'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.26'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -673,8 +673,8 @@ let levelsChapter = null;
 function revealChapter() {
   const bar = $('chapter-bar'), act = bar.querySelector('.active');
   if (!act) return;
-  if (getComputedStyle(bar).flexDirection === 'row') bar.scrollLeft = act.offsetLeft - bar.offsetLeft - 8;
-  else bar.scrollTop = act.offsetTop - bar.offsetTop - 8;
+  if (getComputedStyle(bar).flexDirection === 'row') bar.scrollLeft = act.offsetLeft - bar.offsetLeft - (bar.clientWidth - act.offsetWidth) / 2;
+  else bar.scrollTop = act.offsetTop - bar.offsetTop - (bar.clientHeight - act.offsetHeight) / 2; // centre, so the previous chapter stays visible
 }
 function renderLevelCards(chapter) {
   const byChapter = new Map();
@@ -700,7 +700,6 @@ function renderLevelCards(chapter) {
   }).join('') : `<p class="level-empty">No puzzles in chapter ${chapter} yet.</p>`;
 }
 // Export dialog: a full permalink and a K3 board code, both optionally carrying the current route.
-// The permalink is this page's own URL plus data, so over file:// it only works on this computer.
 let shareRoute = false;
 function shareLink(withRoute) {
   const hasRoute = withRoute && frames.length > 1;
@@ -723,7 +722,7 @@ function renderShare() {
   try{link=shareLink(withRoute);code=shareCode(withRoute);}catch(e){error=e.message;}
   $('share-link').value=link;$('share-code').value=code;
   $('share-code-help').textContent=error||('Paste in Board data'+(withRoute?'. Route is the saved solution: click "Use saved solution" to recover it.':'.'));
-  $('share-link-help').textContent=error||(OFFLINE?'file:// link: works only on this computer, at this location.':withRoute?`Opens at move ${cursor}.`:'');
+  $('share-link-help').textContent=error||(withRoute?`Opens at move ${cursor}.`:'');
 }
 async function copyText(text,success) {
   try {await navigator.clipboard.writeText(text);toast(success);return true;}
@@ -737,16 +736,16 @@ function setDataTab(tab) {
   dataTab=tab;
   $('data-code-tab').classList.toggle('active',tab==='code');$('data-code-tab').setAttribute('aria-pressed',String(tab==='code'));
   $('data-json-tab').classList.toggle('active',tab==='json');$('data-json-tab').setAttribute('aria-pressed',String(tab==='json'));
-  $('board-input-label').textContent=tab==='json'?'BOARD JSON':'BOARD CODE OR LINK';
+  $('board-input-label').textContent=tab==='json'?'BOARD JSON':'BOARD CODE';
   $('board-input').value=tab==='json'?JSON.stringify(board,null,2):'';
-  $('board-input').placeholder=tab==='json'?'Edit the board definition…':'Paste a K3. board code or a shared link…';
+  $('board-input').placeholder=tab==='json'?'Edit the board definition…':'Paste a K3. board code…';
   $('board-data-help').textContent=tab==='json'?'Loading starts a new run. Validated before loading.':'Paste a board or replay code. Validated before loading.';
   showError('board-error');
 }
 function importBoard() {
   const input=$('board-input').value.trim();
   try {
-    if(!input)throw new Error('Paste a board code, a shared link, or a JSON board first.');
+    if(!input)throw new Error('Paste a board code or a JSON board first.');
     let nextBoard,share;const problems=[];
     if(/^(?:https?:\/\/|[?#])/i.test(input)) {
       share=readShareUrl(input);
