@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.26'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.27'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -423,7 +423,7 @@ function renderControls() {
   $('replay-play').setAttribute('aria-label', $('replay-play').title);
   $('replay-speed').disabled=isPlaying;
   $('replay-speed').value=String(settings.speed);
-  $('replay-badge').textContent=isPlaying?'PLAYING':frames.length>1?`${cursor} / ${frames.length-1}`:'NO ROUTE';
+  $('replay-badge').textContent=isPlaying?'PLAYING':frames.length>1?`${cursor} / ${frames.length-1}`:'';
   $('load-solution').disabled=playbackLocked;
   $('use-example').disabled=playbackLocked||!board.solution;
   $('solution-input').disabled=isPlaying;

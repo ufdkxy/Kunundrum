@@ -241,7 +241,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .chapter-button.empty { opacity: .45; }
 .chapter-button.active { border-color: var(--mint); background: #13222c; color: var(--text); opacity: 1; }
 .level-empty { grid-column: 1 / -1; padding: 40px 0; text-align: center; color: #7d96a5; font-size: 12px; }
-.level-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-content: start; min-height: 0; overflow-y: auto; }
+.level-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-content: start; min-height: 0; overflow-y: auto; padding-right: 8px; margin-right: -8px; }
 .level-card { display: block; min-width: 0; text-align: left; padding: 10px; border: 1px solid #2e4553; border-radius: 9px; background: #13222c; }
 .level-card:hover { border-color: #6b928e; background: #1a2b35; }
 .level-card.active { border-color: var(--mint); box-shadow: 0 0 0 1px #b7efd829; }
