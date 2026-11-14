@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.16'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.17'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -708,12 +708,12 @@ function renderShare() {
   const canRoute=frames.length>1, withRoute=shareRoute&&canRoute, n=frames.length-1;
   $('share-include-route').checked=withRoute;
   $('share-include-route').disabled=!canRoute;
-  $('share-route-help').textContent=withRoute?`Includes ${n}-move route.`:canRoute?'Off: the puzzle is exported without a route.':'Make a move to include a route.';
+  $('share-route-help').textContent=withRoute?`Includes ${n}-move route`:canRoute?'':'Make a move to include a route';
   let link='',code='',error='';
   try{link=shareLink(withRoute);code=shareCode(withRoute);}catch(e){error=e.message;}
   $('share-link').value=link;$('share-code').value=code;
-  $('share-link-help').textContent=error||('Opens the puzzle in this app'+(withRoute?`, with the ${n}-move route loaded at move ${cursor}`:'')+'.'+(OFFLINE?' Opened via file://, so it works only on this computer at this file location.':''));
-  $('share-code-help').textContent=error||('Paste it in Board data.'+(withRoute?` The ${n}-move route is stored as the board's saved solution; after importing, use "Use saved solution" to recover it (the move history starts empty).`:''));
+  $('share-code-help').textContent=error||('Paste in Board data'+(withRoute?'. Route is the saved solution: click "Use saved solution" to recover it.':'.'));
+  $('share-link-help').textContent=error||(OFFLINE?'file:// link: works only on this computer, at this location.':withRoute?`Opens at move ${cursor}.`:'');
 }
 async function copyText(text,success) {
   try {await navigator.clipboard.writeText(text);toast(success);return true;}

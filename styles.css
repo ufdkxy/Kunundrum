@@ -628,3 +628,9 @@ body.edit-mode .selected-info { display:none; }
 .move-tracker { margin-left:6px; color:#8fb0a4; font:12px var(--mono); letter-spacing:.4px; font-weight:400; }
 
 .replay-transport button svg, .history-controls button svg { pointer-events:none; }
+
+.share-options { align-items: center; }
+.share-hint { color: #6c8797; font-size: 11px; }
+.share-row { display: flex; gap: 8px; align-items: stretch; }
+.share-row .code-input { min-height: 0; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 8px 12px; line-height: 1.6; resize: none; }
+.share-row .secondary-button { flex: 0 0 auto; }
