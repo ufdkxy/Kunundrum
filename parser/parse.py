@@ -5,7 +5,7 @@ Requires numpy and opencv-python. See README.md. Screen coordinates are
 converted to bottom-left-origin, one-based game coordinates.
 """
 from __future__ import annotations
-PARSER_VERSION = '0.9'  # Parser's own version, independent of the web app's APP_VERSION.
+PARSER_VERSION = '0.9.1'  # Parser's own version, independent of the web app's APP_VERSION.
 import argparse
 import json
 import math
@@ -486,7 +486,11 @@ def robust_geometry(img,grid=None):
         g0=Geometry(left,top,float(cell),cols,rows,0.)
         seam=seam_at(px,left,cols)+seam_at(py,top,rows)
         fit=abs(mx-23)*.15+min(abs(my-10),abs(my-23))*.12
-        score=seam*.12-fit-.008*(cols+rows)-.45*abs(cell-round(cell/10)*10)
+        # A coarse candidate (e.g. 180px for a true 90px grid) lands on real seams
+        # too, but its half-cell positions are then seams as well; the true cell
+        # size has no seams halfway between its own.
+        half=seam_at(px,left+cell/2,cols)+seam_at(py,top+cell/2,rows)
+        score=(seam-half)*.12-fit-.008*(cols+rows)-.45*abs(cell-round(cell/10)*10)
         options.append((score,g0))
     if not options:raise ValueError('Could not establish a grid from the full cyan outline; use --grid')
     score,geom=max(options,key=lambda t:t[0]);geom.score=score
