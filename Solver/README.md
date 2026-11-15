@@ -1,4 +1,4 @@
-# Kunundrum native C++ solver — prototype 0.6 (`SOLVER_VERSION` in `solver.cpp`, `kunsolve --version`; independent of the web app)
+# Kunundrum native C++ solver — prototype 0.7 (`SOLVER_VERSION` in `solver.cpp`, `kunsolve --version`; independent of the web app)
 
 A dependency-free C++17 exact search engine for the **K2/K3 Kunundrum board format**. The solver accepts a board code (or a file containing one), searches for the **lowest-score** solution (score = moves plus one-time hex bonuses and penalties; fewest moves among equal scores), checks the resulting path against its simulator, and exports a new K3 code with the solution embedded.
 
@@ -43,8 +43,9 @@ The solver reads `levels.js` from the current directory by default. In this repo
 Options:
 
 - `--algorithm auto|forward|bidirectional` — auto selects bidirectional search for boards with at least three balls and without hexagons/rotating arrows when terminal gate/teleport masks fit the state budget (and goals equal balls), otherwise forward BFS.
-- `--max-states N` — maximum combined stored states, default 2,000,000.
-- `--seconds S` — wall-clock search limit, default 60.
+- `--max-states N` — maximum combined stored states, default 2,000,000; `0` = unlimited.
+- `--max-memory MB` — cap on the stored state bytes (default none). With no limits the memory of the machine is the real limit: v0.7 stores roughly 20-30 bytes per state.
+- `--seconds S` — wall-clock search limit, default 60; `0` = unlimited.
 - `--max-choices N` — maximum rotating-arrow choices within one move, default 8.
 - `--max-depth N` — only consider solutions of at most N moves (N >= 1, default unlimited); see [Depth limit](#depth-limit-certifying-a-known-solution).
 - `--max-score N` — only consider routes with score at most N (default: no bound); see [Score limit](#score-limit).

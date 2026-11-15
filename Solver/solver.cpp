@@ -9,6 +9,9 @@
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <memory>
+#include <cstring>
+#include <climits>
 #include <numeric>
 #include <queue>
 #include <stdexcept>
@@ -79,13 +82,69 @@ Board parseCode(string code){code=trim(code);if(code.rfind("K3.",0)!=0&&code.rfi
 }
 struct State{vector<uint16_t> p;vector<Byte> gate,tele,sw,hex;};
 State initial(const Board&b){State s;for(const auto& x:b.balls)s.p.push_back(x.p);s.gate=b.gateInit;s.tele=b.teleInit;s.sw=b.switchInit;s.hex.assign(b.hexes.size(),0);return s;}
-// The state is unlabelled within a color. Same-colored balls are physically interchangeable.
-string stateKey(const Board&b,const State&s){string k; k.reserve(b.n*2+s.gate.size()+s.tele.size()+s.sw.size()+s.hex.size()+8);for(int i=0;i<b.n;){int j=i;while(j<b.n&&b.balls[j].color==b.balls[i].color)j++;vector<uint16_t> temp(s.p.begin()+i,s.p.begin()+j);sort(temp.begin(),temp.end());for(auto x:temp){k.push_back(char(x&255));k.push_back(char(x>>8));}i=j;}for(auto v:s.gate)k.push_back(char(v));for(auto v:s.tele)k.push_back(char(v));/* Switch visual on/off flags do not affect transitions. */for(auto v:s.hex)k.push_back(char(v));
- // The score (moves + consumed hex values) is deliberately not part of the key: for one position and one set of consumed hexes it only
- // grows with the move count, and breadth-first search reaches every such state with the fewest moves first.
- return k;}
 struct Move{uint16_t source=0;uint8_t color=0,dir=0;string choices;};
 struct Transition{State s;Move m;};
+// ---- Compact state storage (SOLVER-012) ----
+// A search state is packed into a fixed-size byte string: per color the sorted ball cells (balls of one color are interchangeable),
+// one bit per switch-controlled gate group (all gates of a group always flip together, so the first gate determines the rest) and per
+// switch-controlled teleport, and one bit per hexagon (consumed). Everything else is constant during a search, and the switch's
+// visual on/off flag and the score are deliberately not part of the key: for one position and one set of consumed hexes the score only
+// grows with the move count, so breadth-first order reaches every such state with the fewest moves first.
+struct Packer{
+ const Board* b=nullptr;int K=0,posBits=1;vector<int> groups,teles;vector<uint8_t> gateRel;State base;bool rotating=false;
+ void init(const Board&bd){
+  b=&bd;while((1<<posBits)<bd.w*bd.h)posBits++;
+  for(int g=0;g<(int)bd.groupGates.size();g++){bool c=false;for(const auto&gs:bd.switchGroups)if(find(gs.begin(),gs.end(),g)!=gs.end())c=true;if(c)groups.push_back(g);}
+  for(int t=0;t<(int)bd.teleports.size();t++){bool c=false;for(const auto&ts:bd.switchTele)if(find(ts.begin(),ts.end(),t)!=ts.end())c=true;if(c)teles.push_back(t);}
+  gateRel.assign(bd.gates.size(),0);for(const auto&gg:bd.groupGates)for(int j:gg)gateRel[j]=bd.gateInit[j]^bd.gateInit[gg[0]];
+  int bits=bd.n*posBits+(int)groups.size()+(int)teles.size()+(int)bd.hexes.size();K=(bits+7)/8;base=initial(bd);
+  for(const auto&a:bd.arrows)if(a.rotating)rotating=true;
+ }
+ void pack(const State&s,uint8_t*out)const{
+  memset(out,0,K);int at=0;
+  auto put=[&](unsigned v,int n){for(int i=0;i<n;i++,at++)if((v>>i)&1)out[at>>3]|=(uint8_t)(1<<(at&7));};
+  uint16_t tmp[128];
+  for(int i=0;i<b->n;){int j=i;while(j<b->n&&b->balls[j].color==b->balls[i].color)j++;int c=j-i;for(int k=0;k<c;k++)tmp[k]=s.p[i+k];sort(tmp,tmp+c);for(int k=0;k<c;k++)put(tmp[k],posBits);i=j;}
+  for(int g:groups)put(s.gate[b->groupGates[g][0]],1);
+  for(int t:teles)put(s.tele[t],1);
+  for(size_t h=0;h<s.hex.size();h++)put(s.hex[h],1);
+ }
+ void unpack(const uint8_t*in,State&s)const{
+  s=base;int at=0;
+  auto get=[&](int n){unsigned v=0;for(int i=0;i<n;i++,at++)v|=(unsigned)((in[at>>3]>>(at&7))&1)<<i;return v;};
+  for(int i=0;i<b->n;i++)s.p[i]=(uint16_t)get(posBits);
+  for(int g:groups){unsigned v=get(1);for(int j:b->groupGates[g])s.gate[j]=(uint8_t)(v^gateRel[j]);}
+  for(int t:teles)s.tele[t]=(uint8_t)get(1);
+  for(size_t h=0;h<s.hex.size();h++)s.hex[h]=(uint8_t)get(1);
+ }
+};
+static inline uint64_t hashBytes(const uint8_t*p,int n){uint64_t h=0x9E3779B97F4A7C15ULL;int i=0;for(;i+8<=n;i+=8){uint64_t v;memcpy(&v,p+i,8);h=(h^v)*0xff51afd7ed558ccdULL;h^=h>>32;}uint64_t v=0;if(i<n)memcpy(&v,p+i,n-i);h=(h^v^((uint64_t)n<<56))*0xc4ceb9fe1a85ec53ULL;h^=h>>29;return h;}
+// Nodes live in fixed-size chunks of one flat byte array: [packed state][parent u32][depth u16][source u16][color*4+dir u8][choice index u32, rotating boards only].
+// An open-addressing table of node indices (compared byte for byte, so there are no hash collisions to worry about) finds duplicates.
+struct Store{
+ static constexpr uint32_t NONE=0xFFFFFFFFu;static constexpr int SHIFT=16;
+ int K=0,stride=0,offChoice=-1;vector<unique_ptr<uint8_t[]>> chunks;vector<uint32_t> table;size_t count=0;vector<string> choiceList;
+ void init(int k,bool choices){K=k;stride=K+9;if(choices){offChoice=stride;stride+=4;}table.assign(1<<16,NONE);}
+ uint8_t* at(size_t i)const{return chunks[i>>SHIFT].get()+(i&(((size_t)1<<SHIFT)-1))*stride;}
+ size_t size()const{return count;}
+ uint64_t bytes()const{return (uint64_t)chunks.size()*((uint64_t)stride<<SHIFT)+(uint64_t)table.size()*4+choiceList.size()*48;}
+ const uint8_t* key(size_t i)const{return at(i);}
+ uint32_t parent(size_t i)const{uint32_t v;memcpy(&v,at(i)+K,4);return v;}
+ int depth(size_t i)const{uint8_t*r=at(i)+K+4;return r[0]|(r[1]<<8);}
+ Move move(size_t i)const{Move m;uint8_t*r=at(i)+K+6;m.source=(uint16_t)(r[0]|(r[1]<<8));m.color=r[2]>>2;m.dir=r[2]&3;if(offChoice>=0){uint32_t ci;memcpy(&ci,at(i)+offChoice,4);if(ci)m.choices=choiceList[ci-1];}return m;}
+ uint32_t find(const uint8_t*k)const{size_t mask=table.size()-1,pos=hashBytes(k,K)&mask;for(;;pos=(pos+1)&mask){uint32_t e=table[pos];if(e==NONE)return NONE;if(!memcmp(at(e),k,K))return e;}}
+ void place(uint32_t idx){size_t mask=table.size()-1,pos=hashBytes(at(idx),K)&mask;while(table[pos]!=NONE)pos=(pos+1)&mask;table[pos]=idx;}
+ void rebuild(size_t n,size_t slots){count=n;table.assign(slots,NONE);for(size_t i=0;i<n;i++)place((uint32_t)i);}
+ // Adds a state known to be absent (call find first). Returns its index.
+ uint32_t add(const uint8_t*k,uint32_t parentIdx,int depthValue,const Move&m){
+  if((count+1)*2>table.size())rebuild(count,table.size()*2);
+  size_t idx=count;if((idx>>SHIFT)>=chunks.size())chunks.emplace_back(new uint8_t[(size_t)stride<<SHIFT]);
+  uint8_t*r=at(idx);memcpy(r,k,K);memcpy(r+K,&parentIdx,4);r[K+4]=(uint8_t)(depthValue&255);r[K+5]=(uint8_t)(depthValue>>8);r[K+6]=(uint8_t)(m.source&255);r[K+7]=(uint8_t)(m.source>>8);r[K+8]=(uint8_t)(m.color*4+m.dir);
+  if(offChoice>=0){uint32_t ci=0;if(!m.choices.empty()){choiceList.push_back(m.choices);ci=(uint32_t)choiceList.size();}memcpy(r+offChoice,&ci,4);}
+  count++;place((uint32_t)idx);return (uint32_t)idx;
+ }
+ void shrinkTo(size_t n){rebuild(n,table.size());}
+};
 // Performs a complete move for a ball found at source. Choice string contains udlr.
 // Returns 1 for success, 0 blocked/loop, 2 more rotating-arrow choices needed.
 int simulate(const Board&b,const State&s,int bi,int direction,const string& choices,State&ns,int&delta,int&choicesUsed){
@@ -126,11 +185,10 @@ void successors(const Board&b,const State&s,int maxChoices,Stats&stats,const fun
   }
  }
 }
-struct Node{State s;uint32_t parent;Move m;int depth;};
-struct SearchResult{bool solved=false,exhaustive=false,truncated=false,boundProved=false;vector<Move> path;uint64_t states=0,transitions=0;int depth=0;string algorithm;};
-struct Limits{uint64_t maxStates=2000000;double seconds=60;int maxChoices=8;int maxDepth=0;/* 0 = unlimited */bool scoreCap=false;long long maxScore=0;/* --max-score: only routes with score <= maxScore matter */bool verbose=true;string algorithm="auto";};
+struct SearchResult{bool solved=false,exhaustive=false,truncated=false,boundProved=false;vector<Move> path;uint64_t states=0,transitions=0,bytes=0;int depth=0;string algorithm;};
+struct Limits{uint64_t maxStates=2000000;/* UINT64_MAX = unlimited */uint64_t maxBytes=0;/* 0 = unlimited */double seconds=60;/* 0 = unlimited */int maxChoices=8;int maxDepth=0;/* 0 = unlimited */bool scoreCap=false;long long maxScore=0;/* --max-score: only routes with score <= maxScore matter */bool verbose=true;string algorithm="auto";};
 using Clock=chrono::steady_clock;
-struct ClockLimit{Clock::time_point start=Clock::now();double seconds;explicit ClockLimit(double s):seconds(s){} bool expired()const{return chrono::duration<double>(Clock::now()-start).count()>=seconds;}double elapsed()const{return chrono::duration<double>(Clock::now()-start).count();}};
+struct ClockLimit{Clock::time_point start=Clock::now();double seconds;explicit ClockLimit(double s):seconds(s){} bool expired()const{return seconds>0&&chrono::duration<double>(Clock::now()-start).count()>=seconds;}double elapsed()const{return chrono::duration<double>(Clock::now()-start).count();}};
 // Lower bound on the final score of any accepted route continuing from state s (reached after `depth` moves): every
 // unlocked ball still needs at least one move (+1 each), and the best case collects every unconsumed negative hex.
 long long scoreLowerBound(const Board&b,const State&s,int depth){long long v=scoreHex(b,s,depth);for(int i=0;i<b.n;i++)if(b.goalColor[s.p[i]]!=b.balls[i].color)v++;for(size_t i=0;i<s.hex.size();i++)if(!s.hex[i]&&b.hexes[i].value<0)v+=b.hexes[i].value;return v;}
@@ -138,36 +196,43 @@ long long scoreLowerBound(const Board&b,const State&s,int depth){long long v=sco
 // Without hexes the score equals the move count, so the first accepted state of the breadth-first search is optimal.
 // With hexes a longer route can score lower, so the search continues past the first accepted state and prunes every
 // state whose scoreLowerBound cannot beat the best score found. Equal-score routes are found in order of move count.
-SearchResult forwardBFS(const Board&b,const Limits&lim,ClockLimit&timer){SearchResult out;out.algorithm="forward BFS";State s0=initial(b);vector<Node> nodes;nodes.reserve(min<uint64_t>(lim.maxStates,1000000));nodes.push_back({s0,0,{},0});unordered_map<string,uint32_t> seen;seen.reserve(min<uint64_t>(lim.maxStates,1000000));seen.emplace(stateKey(b,s0),0);Stats stats;int old=-1;
- if(complete(b,s0)){out.solved=true;out.exhaustive=true;return out;}
+// Objective: the lowest score (moves plus hex bonuses and penalties); among equal scores, the fewest moves.
+// Without hexes the score equals the move count, so the first accepted state of the breadth-first search is optimal.
+// With hexes a longer route can score lower, so the search continues past the first accepted state and prunes every
+// state whose scoreLowerBound cannot beat the best score found. Equal-score routes are found in order of move count.
+SearchResult forwardBFS(const Board&b,const Limits&lim,ClockLimit&timer,const Packer&pk){SearchResult out;out.algorithm="forward BFS";State s0=initial(b);
+ Store store;store.init(pk.K,pk.rotating);vector<uint8_t> key(pk.K);pk.pack(s0,key.data());store.add(key.data(),0,0,Move());Stats stats;int old=-1;
+ if(complete(b,s0)){out.solved=true;out.exhaustive=true;out.states=1;out.bytes=store.bytes();return out;}
  const bool byScore=!b.hexes.empty();
  const bool prune=byScore||lim.scoreCap; // bound-based pruning: needed for the score objective with hexes, and for --max-score
  long long negAll=0;for(const auto&h:b.hexes)if(h.value<0)negAll+=h.value;
  long long best=lim.scoreCap?lim.maxScore+1:LLONG_MAX; // routes must score below best; --max-score S starts it at S+1
+ auto full=[&](){return store.size()>=lim.maxStates||(lim.maxBytes&&store.bytes()>=lim.maxBytes);};
  size_t head=0;uint32_t found=0;bool success=false,limit=false,depthCut=false;
- for(;head<nodes.size()&&!(success&&!byScore);head++){
-  if(nodes.size()>=lim.maxStates||timer.expired()){limit=true;break;}
-  const auto& cur=nodes[head];if(cur.depth!=old){old=cur.depth;if(lim.verbose){cerr<<"forward depth "<<old<<" visited "<<seen.size()<<" elapsed "<<timer.elapsed()<<"s";if(success)cerr<<" best score "<<best;cerr<<"\n";}}
-  State parentState=cur.s;int dep=cur.depth;
+ for(;head<store.size()&&!(success&&!byScore);head++){
+  if(full()||timer.expired()){limit=true;break;}
+  const int dep=store.depth(head);if(dep!=old){old=dep;if(lim.verbose){cerr<<"forward depth "<<old<<" visited "<<store.size()<<" elapsed "<<timer.elapsed()<<"s";if(success)cerr<<" best score "<<best;cerr<<"\n";}}
+  State parentState;pk.unpack(store.key(head),parentState);
   if(prune&&scoreLowerBound(b,parentState,dep)>=best)continue; // cannot beat the best route found so far or the --max-score bound
-  successors(b,parentState,lim.maxChoices,stats,[&](Transition&& t){if(limit||(success&&!byScore))return;string key=stateKey(b,t.s);if(seen.count(key))return;
+  successors(b,parentState,lim.maxChoices,stats,[&](Transition&& t){if(limit||(success&&!byScore))return;pk.pack(t.s,key.data());if(store.find(key.data())!=Store::NONE)return;
    const bool acc=complete(b,t.s);
    if(prune&&acc&&scoreHex(b,t.s,dep+1)>=best)return; // a finished route that cannot beat the incumbent or the bound
    if(prune&&!acc&&scoreLowerBound(b,t.s,dep+1)>=best)return;
-   if(lim.maxDepth>0&&dep+1>=lim.maxDepth){ // Last allowed layer: only test acceptance. These states are never expanded, so they are not stored.
-    if(acc){long long sc=scoreHex(b,t.s,dep+1);if(sc<best){best=sc;found=(uint32_t)nodes.size();nodes.push_back({move(t.s),(uint32_t)head,move(t.m),dep+1});success=true;}}else depthCut=true;
+   if(lim.maxDepth>0&&dep+1>=lim.maxDepth){ // Last allowed layer: only test acceptance. These states are never expanded, so they are not stored unless accepted.
+    if(acc){long long sc=scoreHex(b,t.s,dep+1);if(sc<best){best=sc;found=store.add(key.data(),(uint32_t)head,dep+1,t.m);success=true;}}else depthCut=true;
     return;}
-   if(nodes.size()>=lim.maxStates){limit=true;return;}uint32_t ni=nodes.size();seen.emplace(move(key),ni);nodes.push_back({move(t.s),(uint32_t)head,move(t.m),dep+1});
-   if(acc){long long sc=scoreHex(b,nodes.back().s,dep+1);if(sc<best){best=sc;found=ni;success=true;}}});
+   if(full()){limit=true;return;}
+   uint32_t ni=store.add(key.data(),(uint32_t)head,dep+1,t.m);
+   if(acc){long long sc=scoreHex(b,t.s,dep+1);if(sc<best){best=sc;found=ni;success=true;}}});
   stats.expanded++;
  }
- out.states=seen.size();out.transitions=stats.transitions;out.truncated=stats.truncatedChoices;out.solved=success;
+ out.states=store.size();out.bytes=store.bytes();out.transitions=stats.transitions;out.truncated=stats.truncatedChoices;out.solved=success;
  const bool covered=!limit&&!stats.truncatedChoices; // every state within the limits was explored and no rotating-arrow choices were dropped
  if(success){
   // Without hexes the first accepted state is shortest. With hexes the whole space must be covered; under --max-depth D a longer
   // route (more than D moves) scores at least D+1 plus every negative hex, so it can only matter if that bound is below best.
   out.exhaustive=!byScore?!stats.truncatedChoices:covered&&(!depthCut||(long long)lim.maxDepth+1+negAll>=best);
-  out.depth=nodes[found].depth;while(found){out.path.push_back(nodes[found].m);found=nodes[found].parent;}reverse(out.path.begin(),out.path.end());
+  out.depth=store.depth(found);while(found){out.path.push_back(store.move(found));found=store.parent(found);}reverse(out.path.begin(),out.path.end());
  }else{out.exhaustive=covered&&!depthCut&&!lim.scoreCap;out.boundProved=covered&&(depthCut||lim.scoreCap);} // with --max-score pruned states mean no UNSOLVABLE claim, only 'no route within the bound'
  return out;
 }
@@ -194,8 +259,7 @@ int fastEnd(const Board&b,const State&s,int i,int d){
  }
  return stopped&&entered?p:-1; // Reject loops (all 4*cell states exhausted).
 }
-struct BiNode {State s;uint32_t parent;Move m;uint16_t depth;};
-SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer){
+SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const Packer&pk){
  SearchResult out;out.algorithm="bidirectional BFS";const int D=lim.maxDepth>0?lim.maxDepth:INT32_MAX; // D: only paths of at most D moves matter
  if(!b.staticReverse||b.goals.size()!=b.balls.size())return out;
  State start=initial(b),target=start;
@@ -204,48 +268,42 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer){
   int idx=0;for(int i=0;i<b.n;i++)if(b.balls[i].color==c){if(idx>=(int)loc.size())return out;target.p[i]=loc[idx++];}
  }
  if(complete(b,start)){out.solved=true;out.exhaustive=true;out.states=1;return out;} // already docked: zero moves, score 0
- // Enumerate all possible terminal wall-group polarities. Gates belonging to
- // a group always toggle together, so their relative active states are invariant.
- // A gate group with k walls needs only ONE bit, not k bits.
- // Switch visual state is intentionally excluded from the search key.
- vector<BiNode> reverseNodes;reverseNodes.reserve(min<uint64_t>(lim.maxStates/2,400000));
- unordered_map<string,uint32_t> reverseSeen;reverseSeen.reserve(min<uint64_t>(lim.maxStates/2,400000));
- const int groupCount=(int)b.groupGates.size();
- vector<int> dynamicTele;
- for(int t=0;t<(int)b.teleports.size();t++){
-  bool controlled=false;for(const auto& tt:b.switchTele)if(find(tt.begin(),tt.end(),t)!=tt.end())controlled=true;
-  if(controlled)dynamicTele.push_back(t);
- }
- if(groupCount+dynamicTele.size()>16){if(lim.verbose)cerr<<"too many terminal gate/teleport configurations for reverse seeds\n";return out;}
- uint64_t variants=1ULL<<(groupCount+dynamicTele.size());
+ // Enumerate all possible terminal polarities of the switch-controlled gate groups and teleports. Gates belonging to
+ // a group always toggle together, so their relative active states are invariant: a group needs only ONE bit, not k bits.
+ // Gate groups and teleports no switch controls never change, so they stay at their initial state.
+ Store rev;rev.init(pk.K,false);vector<uint8_t> key(pk.K),targetKey(pk.K),checkKey(pk.K);
+ const int groupCount=(int)pk.groups.size(),teleCount=(int)pk.teles.size();
+ if(groupCount+teleCount>16){if(lim.verbose)cerr<<"too many terminal gate/teleport configurations for reverse seeds\n";return out;}
+ uint64_t variants=1ULL<<(groupCount+teleCount);
  if(variants>lim.maxStates/4){if(lim.verbose)cerr<<"terminal configurations exceed reverse budget\n";return out;}
  for(uint64_t mask=0;mask<variants;mask++){
   State candidate=target;
-  for(int g=0;g<groupCount;g++)if(mask&(1ULL<<g))for(int j:b.groupGates[g])candidate.gate[j]^=1;
-  for(int k=0;k<(int)dynamicTele.size();k++)if(mask&(1ULL<<(groupCount+k)))candidate.tele[dynamicTele[k]]^=1;
+  for(int g=0;g<groupCount;g++)if(mask&(1ULL<<g))for(int j:b.groupGates[pk.groups[g]])candidate.gate[j]^=1;
+  for(int k=0;k<teleCount;k++)if(mask&(1ULL<<(groupCount+k)))candidate.tele[pk.teles[k]]^=1;
   bool valid=true;
   for(int i=0;i<b.n;i++){
    int gi=b.gateAt[candidate.p[i]];
    if(gi>=0&&candidate.gate[gi])valid=false;
   }
   if(!valid)continue;
-  string key=stateKey(b,candidate);
-  if(reverseSeen.count(key))continue;
-  uint32_t idx=reverseNodes.size();reverseSeen.emplace(move(key),idx);
-  reverseNodes.push_back({move(candidate),0,{},0});
+  pk.pack(candidate,key.data());
+  if(rev.find(key.data())!=Store::NONE)continue;
+  rev.add(key.data(),0,0,Move());
  }
- if(reverseNodes.empty())return out;
- if(lim.verbose)cerr<<"reverse target seeds "<<reverseNodes.size()<<" ("<<variants<<" configurations)\n";
+ if(rev.size()==0)return out;
+ if(lim.verbose)cerr<<"reverse target seeds "<<rev.size()<<" ("<<variants<<" configurations)\n";
  int reverseDepth=0;size_t revHead=0;uint64_t transitions=0;
- // Stop after complete layers, reserving at least half the memory/state budget for forward BFS.
- uint64_t reverseBudget=max<uint64_t>(1,lim.maxStates/2);
+ // Stop after complete layers, reserving at least half the state budget for the forward search. Without a state limit the reverse side
+ // gets the budget of the default limit (1,000,000 states): the forward side is the one allowed to grow.
+ const uint64_t reverseBudget=lim.maxStates==UINT64_MAX?1000000:max<uint64_t>(1,lim.maxStates/2);
+ const uint64_t reverseBytes=lim.maxBytes/2;
  bool reverseLimited=false;
- while(revHead<reverseNodes.size()&&!timer.expired()){
-  size_t layerEnd=reverseNodes.size();if(reverseNodes[revHead].depth>=12||reverseNodes[revHead].depth>=D)break;
+ while(revHead<rev.size()&&!timer.expired()){
+  size_t layerEnd=rev.size();if(rev.depth(revHead)>=12||rev.depth(revHead)>=D)break;
   bool finished=true;
   for(;revHead<layerEnd;revHead++){
-   if(reverseNodes.size()>=reverseBudget||timer.expired()){finished=false;break;}
-   State targetState=reverseNodes[revHead].s;
+   if(rev.size()>=reverseBudget||(reverseBytes&&rev.bytes()>=reverseBytes)||timer.expired()){finished=false;break;}
+   State targetState;pk.unpack(rev.key(revHead),targetState);pk.pack(targetState,targetKey.data());const int curDepth=rev.depth(revHead);
    for(int i=0;i<b.n&&finished;i++){
     int dest=targetState.p[i];
     for(int p=0;p<b.w*b.h&&finished;p++){
@@ -283,38 +341,35 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer){
        }
        for(int t:b.switchTele[swi])check.tele[t]^=1;
       }
-      if(stateKey(b,check)!=stateKey(b,targetState))continue;
-      string key=stateKey(b,predecessor);
-      if(reverseSeen.count(key))continue;
-      if(reverseNodes.size()>=reverseBudget){finished=false;break;}
-      uint32_t index=reverseNodes.size();reverseSeen.emplace(move(key),index);
-      reverseNodes.push_back({predecessor,(uint32_t)revHead,{(uint16_t)p,(Byte)b.balls[i].color,(Byte)d,""},(uint16_t)(reverseNodes[revHead].depth+1)});
+      pk.pack(check,checkKey.data());if(memcmp(checkKey.data(),targetKey.data(),pk.K))continue;
+      pk.pack(predecessor,key.data());
+      if(rev.find(key.data())!=Store::NONE)continue;
+      if(rev.size()>=reverseBudget||(reverseBytes&&rev.bytes()>=reverseBytes)){finished=false;break;}
+      Move m;m.source=(uint16_t)p;m.color=(Byte)b.balls[i].color;m.dir=(Byte)d;
+      rev.add(key.data(),(uint32_t)revHead,curDepth+1,m);
      }
     }
    }
   }
   if(!finished){reverseLimited=true;break;}
-  reverseDepth++;if(lim.verbose)cerr<<"reverse depth "<<reverseDepth<<" states "<<reverseNodes.size()<<" elapsed "<<timer.elapsed()<<"s\n";
-  if(reverseNodes.size()>reverseBudget*3/5&&reverseDepth>=4)break;
+  reverseDepth++;if(lim.verbose)cerr<<"reverse depth "<<reverseDepth<<" states "<<rev.size()<<" elapsed "<<timer.elapsed()<<"s\n";
+  if(rev.size()>reverseBudget*3/5&&reverseDepth>=4)break;
  }
  // If the last reverse layer was interrupted, it is safe to discard it and use only earlier complete layers.
- if(reverseLimited){
-  while(!reverseNodes.empty()&&reverseNodes.back().depth>reverseDepth)reverseNodes.pop_back();
-  reverseSeen.clear();reverseSeen.reserve(reverseNodes.size()*2+1);for(int i=0;i<(int)reverseNodes.size();i++)reverseSeen.emplace(stateKey(b,reverseNodes[i].s),i);
- }
+ if(reverseLimited){size_t n=rev.size();while(n>0&&rev.depth(n-1)>reverseDepth)n--;rev.shrinkTo(n);}
  if(lim.verbose)cerr<<"reverse side completed to depth "<<reverseDepth<<"\n";
- if(timer.expired()){out.states=reverseNodes.size();out.transitions=transitions;return out;}
- vector<BiNode> forwardNodes;forwardNodes.reserve(min<uint64_t>(lim.maxStates-reverseNodes.size(),300000));forwardNodes.push_back({start,0,{},0});
- unordered_map<string,uint32_t> forwardSeen;forwardSeen.reserve(min<uint64_t>(lim.maxStates-reverseNodes.size(),300000));forwardSeen.emplace(stateKey(b,start),0);
+ if(timer.expired()){out.states=rev.size();out.bytes=rev.bytes();out.transitions=transitions;return out;}
+ Store fwd;fwd.init(pk.K,false);pk.pack(start,key.data());fwd.add(key.data(),0,0,Move());
  int best=INT32_MAX;uint32_t fMeet=0,rMeet=0;
- auto meet=[&](uint32_t fi){auto it=reverseSeen.find(stateKey(b,forwardNodes[fi].s));if(it==reverseSeen.end())return;int len=(int)forwardNodes[fi].depth+(int)reverseNodes[it->second].depth;if(len<best){best=len;fMeet=fi;rMeet=it->second;if(lim.verbose)cerr<<"candidate "<<best<<" moves (forward "<<forwardNodes[fi].depth<<", reverse "<<reverseNodes[it->second].depth<<")\n";}};
+ auto meet=[&](uint32_t fi){uint32_t ri=rev.find(fwd.key(fi));if(ri==Store::NONE)return;int len=fwd.depth(fi)+rev.depth(ri);if(len<best){best=len;fMeet=fi;rMeet=ri;if(lim.verbose)cerr<<"candidate "<<best<<" moves (forward "<<fwd.depth(fi)<<", reverse "<<rev.depth(ri)<<")\n";}};
  meet(0);
+ auto full=[&](){return rev.size()+fwd.size()>=lim.maxStates||(lim.maxBytes&&rev.bytes()+fwd.bytes()>=lim.maxBytes);};
  size_t head=0;bool limited=false,certified=false;
- while(head<forwardNodes.size()&&!timer.expired()){
-  int depth=forwardNodes[head].depth;
-  size_t layerEnd=forwardNodes.size();
+ while(head<fwd.size()&&!timer.expired()){
+  int depth=fwd.depth(head);
+  size_t layerEnd=fwd.size();
   for(;head<layerEnd;head++){
-   State st=forwardNodes[head].s;
+   State st;pk.unpack(fwd.key(head),st);
    for(int i=0;i<b.n;i++){
     if(b.goalColor[st.p[i]]==b.balls[i].color)continue;
     for(int d=0;d<4;d++){
@@ -330,10 +385,10 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer){
       }
       for(int t:b.switchTele[swi])next.tele[t]^=1;
      }
-     string key=stateKey(b,next);if(forwardSeen.count(key))continue;
-     if(forwardNodes.size()+reverseNodes.size()>=lim.maxStates){limited=true;break;}
-     uint32_t idx=forwardNodes.size();forwardSeen.emplace(move(key),idx);
-     forwardNodes.push_back({move(next),(uint32_t)head,{st.p[i],(Byte)b.balls[i].color,(Byte)d,""},(uint16_t)(depth+1)});
+     pk.pack(next,key.data());if(fwd.find(key.data())!=Store::NONE)continue;
+     if(full()){limited=true;break;}
+     Move m;m.source=st.p[i];m.color=(Byte)b.balls[i].color;m.dir=(Byte)d;
+     uint32_t idx=fwd.add(key.data(),(uint32_t)head,depth+1,m);
      meet(idx);
     }
     if(limited)break;
@@ -341,18 +396,18 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer){
    if(limited||timer.expired())break;
   }
   if(limited||timer.expired())break;
-  if(lim.verbose)cerr<<"forward depth "<<depth+1<<" states "<<forwardNodes.size()<<" best "<<(best==INT32_MAX?-1:best)<<" elapsed "<<timer.elapsed()<<"s\n";
+  if(lim.verbose)cerr<<"forward depth "<<depth+1<<" states "<<fwd.size()<<" best "<<(best==INT32_MAX?-1:best)<<" elapsed "<<timer.elapsed()<<"s\n";
   // Every path of length < best must intersect a complete reverse ball of depth R
   // at forward depth max(0,best-1-R); all forward states through depth+1 are generated.
   // need = longest path length that must be covered: below the best candidate, but never beyond the depth limit D.
   {int need=min(best==INT32_MAX?INT32_MAX:best-1,D);if(need!=INT32_MAX&&depth+1+reverseDepth>=need){certified=true;break;}}
  }
- out.states=forwardNodes.size()+reverseNodes.size();out.transitions=transitions;
- const bool forwardDone=!limited&&!timer.expired()&&head==forwardNodes.size();
+ out.states=fwd.size()+rev.size();out.bytes=fwd.bytes()+rev.bytes();out.transitions=transitions;
+ const bool forwardDone=!limited&&!timer.expired()&&head==fwd.size();
  if(best!=INT32_MAX&&best<=D){
   out.solved=true;out.depth=best;out.exhaustive=certified;vector<Move> before,after;
-  uint32_t at=fMeet;while(at){before.push_back(forwardNodes[at].m);at=forwardNodes[at].parent;}reverse(before.begin(),before.end());
-  at=rMeet;while(reverseNodes[at].depth>0){after.push_back(reverseNodes[at].m);at=reverseNodes[at].parent;}
+  uint32_t at=fMeet;while(at){before.push_back(fwd.move(at));at=fwd.parent(at);}reverse(before.begin(),before.end());
+  at=rMeet;while(rev.depth(at)>0){after.push_back(rev.move(at));at=rev.parent(at);}
   out.path=move(before);out.path.insert(out.path.end(),after.begin(),after.end());
  }else if(best==INT32_MAX){if(forwardDone)out.exhaustive=true;else if(certified)out.boundProved=true;}
  else out.boundProved=certified||forwardDone; // only candidates longer than D exist: no solution within D moves
@@ -404,18 +459,18 @@ string codeWithSolution(const Board&b,const vector<LabeledMove>& path){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open levels.js: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0)return trim(line.substr(prefix.size()));}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.6"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.7"; // Solver's own version, independent of the web app's APP_VERSION.
 int main(int argc,char**argv){
  try{
   Limits lim;string input,level,catalog="levels.js";bool wantK3=true;
   for(int i=1;i<argc;i++){string a=argv[i];auto value=[&](){if(++i>=argc)throw runtime_error("missing argument for "+a);return string(argv[i]);};
    if(a=="--version"){cout<<"kunsolve v"<<SOLVER_VERSION<<"\n";return 0;}
-   if(a=="--help"||a=="-h"){cout<<"Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional] [--max-states N] [--seconds N] [--max-choices N] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";return 0;}
-   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states")lim.maxStates=stoull(value());else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-choices")lim.maxChoices=stoi(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantK3=false;else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
+   if(a=="--help"||a=="-h"){cout<<"Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional] [--max-states N] [--seconds N] [--max-memory MB] [--max-choices N] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";return 0;}
+   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states"){lim.maxStates=stoull(value());if(lim.maxStates==0)lim.maxStates=UINT64_MAX;}else if(a=="--max-memory"){lim.maxBytes=stoull(value())<<20;}else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-choices")lim.maxChoices=stoi(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantK3=false;else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
   }
   if(input.empty()&&level.empty())throw runtime_error("missing board code/file or --level");
   if(!level.empty())input=catalogCode(level,catalog);else if(input=="-"){input=string((istreambuf_iterator<char>(cin)),{});}else input=readInput(input);
-  if(lim.maxStates<2||lim.seconds<=0||lim.maxChoices<0||lim.maxChoices>32)throw runtime_error("invalid resource limits");
+  if(lim.maxStates<2||lim.seconds<0||lim.maxChoices<0||lim.maxChoices>32)throw runtime_error("invalid resource limits");
   Board b=parseCode(input);cerr<<"board "<<b.id<<" ("<<b.w<<"x"<<b.h<<") "<<b.n<<" balls, "<<b.hexes.size()<<" hexes, "<<b.switches.size()<<" switches\n";
   const int userDepth=lim.maxDepth;
   if(lim.scoreCap&&b.hexes.empty()&&lim.maxScore>=1){ // without hexes the score is the move count, so the score bound is a depth bound (also usable by the bidirectional search)
@@ -423,20 +478,15 @@ int main(int argc,char**argv){
   }
   ClockLimit timer(lim.seconds);
   SearchResult res;
-  int controlledTele=0;
-  for(int t=0;t<(int)b.teleports.size();t++){
-   bool controlled=false;
-   for(const auto& sw:b.switchTele)if(find(sw.begin(),sw.end(),t)!=sw.end())controlled=true;
-   if(controlled)controlledTele++;
-  }
-  int terminalBits=(int)b.groupGates.size()+controlledTele;
+  Packer pk;pk.init(b);
+  int terminalBits=(int)(pk.groups.size()+pk.teles.size());
   bool feasibleSeeds=terminalBits<=16&&(1ULL<<terminalBits)<=lim.maxStates/4;
   bool canBi=b.staticReverse&&b.goals.size()==b.balls.size()&&feasibleSeeds;
   if(lim.algorithm=="bidirectional"&&!canBi)throw runtime_error("bidirectional search requires no hexagons/rotating arrows, equal goals/balls and an affordable terminal-state enumeration");
-  if((lim.algorithm=="auto"&&canBi&&b.n>=3)||lim.algorithm=="bidirectional")res=bidirectional(b,lim,timer);
-  else if(lim.algorithm=="auto"||lim.algorithm=="forward")res=forwardBFS(b,lim,timer);
+  if((lim.algorithm=="auto"&&canBi&&b.n>=3)||lim.algorithm=="bidirectional")res=bidirectional(b,lim,timer,pk);
+  else if(lim.algorithm=="auto"||lim.algorithm=="forward")res=forwardBFS(b,lim,timer,pk);
   else throw runtime_error("unknown algorithm");
-  cout<<"Algorithm: "<<res.algorithm<<"\n"<<(userDepth>0?"Depth limit: "+to_string(userDepth)+"\n":string())+(lim.scoreCap?"Score limit: "+to_string(lim.maxScore)+"\n":string())<<"States: "<<res.states<<"\nTransitions: "<<res.transitions<<"\nElapsed: "<<timer.elapsed()<<" s\n";
+  cout<<"Algorithm: "<<res.algorithm<<"\n"<<(userDepth>0?"Depth limit: "+to_string(userDepth)+"\n":string())+(lim.scoreCap?"Score limit: "+to_string(lim.maxScore)+"\n":string())<<"States: "<<res.states<<"\nTransitions: "<<res.transitions<<"\nMemory: "<<(res.bytes>>20)<<" MB\nElapsed: "<<timer.elapsed()<<" s\n";
   if(res.solved){int score;auto route=labelAndVerify(b,res.path,score);bool optimal=res.exhaustive;
    cout<<(optimal?"OPTIMAL":"SOLUTION FOUND (optimality not certified)")<<"\nScore: "<<score<<"\nMoves: "<<route.size()<<"\nSolution: "<<formatMoves(b,route)<<"\n";if(wantK3&&!route.empty())cout<<"K3: "<<codeWithSolution(b,route)<<"\n";
    if(!optimal)cerr<<"WARNING: search did not complete the layers needed to certify optimality\n";
