@@ -5,7 +5,7 @@ Requires numpy and opencv-python. See README.md. Screen coordinates are
 converted to bottom-left-origin, one-based game coordinates.
 """
 from __future__ import annotations
-PARSER_VERSION = '0.9.3'  # Parser's own version, independent of the web app's APP_VERSION.
+PARSER_VERSION = '0.9.4'  # Parser's own version, independent of the web app's APP_VERSION.
 import argparse
 import json
 import math
@@ -233,7 +233,11 @@ def blue_arrow_signature(patch):
     v-=v.mean()
     return v/(np.linalg.norm(v)+1.e-8)
 
-def arrow_shape_match(patch):
+def arrow_shape_match(patch,relaxed=False,gate=True):
+    """Match chevron silhouettes. relaxed=True accepts the weaker correlations
+    that horizontal arrows reach (about .76 against .89 for vertical ones) as
+    long as the best direction clearly beats the second best; gate=False skips
+    the brightness gate for callers that already ruled out balls."""
     global ARROW_SHAPES
     if ARROW_SHAPES is None:
         ARROW_SHAPES={}
@@ -257,14 +261,15 @@ def arrow_shape_match(patch):
     # An arrow retains blue signal even during the darkest animation phase.
     # Floor texture, by contrast, stays below 40 on almost all interior pixels.
     if np.count_nonzero(core>48)<600:return None,0.
-    f=patch_features(patch)
-    if f['core_bright']>.50 or f['ann_bright']>.33 or f['color_strength']<.72 or f['color']!='B':
-        return None,0.
+    if gate:
+        f=patch_features(patch)
+        if f['core_bright']>.50 or f['ann_bright']>.33 or f['color_strength']<.72 or f['color']!='B':
+            return None,0.
     sig=blue_arrow_signature(patch)
     by_direction={d:max((float(np.sum(sig*ref)) for direction,ref in ARROW_SHAPES.values() if direction==d),default=-1.) for d in 'udlr'}
     scores=sorted(((v,d) for d,v in by_direction.items()),reverse=True)
-    if not scores or scores[0][0]<.84:return None,0.
-    if len(scores)>1 and scores[0][0]-scores[1][0]<.06:return None,0.
+    if not scores or scores[0][0]<(.72 if relaxed else .84):return None,0.
+    if len(scores)>1 and scores[0][0]-scores[1][0]<(.07 if relaxed else .06):return None,0.
     return scores[0][1], min(.99,scores[0][0])
 
 def overlay_colors(patch):
@@ -273,7 +278,7 @@ def overlay_colors(patch):
     yy,xx=np.ogrid[:96,:96]
     radial=np.sqrt((xx-47.5)**2+(yy-47.5)**2)
     out=[]
-    for region in (radial<16,(radial>29)&(radial<39)):
+    for region in (radial<16,(radial>33)&(radial<40)):  # ring only: the ball's halo bleeds into r<33
         mask=region&(hsv[:,:,1]>85)&(hsv[:,:,2]>105)
         hues=hsv[:,:,0][mask];value=hsv[:,:,2][mask]
         if len(hues)<75:return None
@@ -394,6 +399,9 @@ def classify(patch,templates):
     shape_dir,shape_conf=arrow_shape_match(patch)
     if shape_dir is not None:
         return 'arrow_'+(chevron_direction(patch) or shape_dir),shape_conf,f
+    shape_dir,shape_conf=arrow_shape_match(patch,relaxed=True)
+    if shape_dir is not None:
+        return 'arrow_'+(chevron_direction(patch) or shape_dir),min(shape_conf,.8),f
     # Metal quadrant tile = switchable element: a plain one is a gate, one with
     # the teleport sprite on top is a switchable teleport.
     if metal_cross(patch):
@@ -422,7 +430,10 @@ def classify(patch,templates):
     whitecore=float(((patch.min(axis=2)>165)&(grayfull>200))[coremask].mean())
     if (f['color']=='B' and f['color_strength']>.85 and f['core_bright']>.69
         and f['ann_bright']<.23 and 900<f['bright_count']<2400 and asym>24.3 and not (whitecore>.46 and float(grayfull[coremask].mean())>202)):
-        direction,confidence=direction_from_sprite(patch)
+        # The sprite templates mislabel horizontal arrows (right read as left),
+        # so silhouette matching decides first and the sprite is a last resort.
+        direction,confidence=arrow_shape_match(patch,relaxed=True,gate=False)
+        if direction is None:direction,confidence=direction_from_sprite(patch)
         direction=(chevron_direction(patch) or direction) if direction else None
         return ('arrow_'+direction if direction else 'unknown'),confidence,f
     overlap=overlay_colors(patch) if f['bright_count']>2400 and f['core_bright']>.85 else None
