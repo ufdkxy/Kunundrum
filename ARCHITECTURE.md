@@ -77,7 +77,7 @@ Core.formatSolution(records) -> string
 }
 ```
 
-`app.js` holds replay **frames** (`{state,path,record,events}`) and a `cursor`; replay loading re-simulates the route from the initial state. Manual play, SVG animation, keyboard and pointer gestures, replay navigation, view settings, sharing and best-run recording live in the controller. Persistence uses localStorage keys `kunundrum.replay.v1` and `kunundrum.best.v1` when available. `window.KunundrumHost` exposes `getBoard()`, `svg(draft)`, `stop()`, and `play(draft)` for `editor.js`. `window.KunEditor` exposes `active`, `render`, and `open()`.
+`app.js` holds replay **frames** (`{state,path,record,events}`) and a `cursor`; replay loading re-simulates the route from the initial state. Manual play, SVG animation, keyboard and pointer gestures (view toggles: C coordinates, O outline, T trail; M music in `music.js`), replay navigation, view settings, sharing and best-run recording live in the controller. Persistence uses localStorage keys `kunundrum.replay.v1` and `kunundrum.best.v1` when available. `window.KunundrumHost` exposes `getBoard()`, `svg(draft)`, `stop()`, and `play(draft)` for `editor.js`. `window.KunEditor` exposes `active`, `render`, and `open()`.
 
 The editor works on an independent draft and validates it before switching back to Play or saving a code. Drawing, teleport-endpoint pairing, object properties, grid resizing, moving objects, and undo/redo are implemented. Editing a board feature clears the draft's saved solution.
 
