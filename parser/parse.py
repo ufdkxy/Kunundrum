@@ -5,7 +5,7 @@ Requires numpy and opencv-python. See README.md. Screen coordinates are
 converted to bottom-left-origin, one-based game coordinates.
 """
 from __future__ import annotations
-PARSER_VERSION = '0.9.4'  # Parser's own version, independent of the web app's APP_VERSION.
+PARSER_VERSION = '0.9.5'  # Parser's own version, independent of the web app's APP_VERSION.
 import argparse
 import json
 import math
@@ -436,7 +436,8 @@ def classify(patch,templates):
         if direction is None:direction,confidence=direction_from_sprite(patch)
         direction=(chevron_direction(patch) or direction) if direction else None
         return ('arrow_'+direction if direction else 'unknown'),confidence,f
-    overlap=overlay_colors(patch) if f['bright_count']>2400 and f['core_bright']>.85 else None
+    # A glossy switch disc has a dim outer ring (ann_bright ~.5); a goal ring is >=.85.
+    overlap=overlay_colors(patch) if f['bright_count']>2400 and f['core_bright']>.85 and f['ann_bright']>.7 else None
     if overlap:
         return 'ball_'+overlap[0]+'+goal_'+overlap[1],.91,f
     if f['core_bright']<.02 and 120<f['bright_count']<900 and f['ann_bright']<.26 and f['mid_bright']<.12:
