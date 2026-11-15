@@ -261,6 +261,7 @@ def arrow_shape_match(patch,relaxed=False,gate=True):
     # An arrow retains blue signal even during the darkest animation phase.
     # Floor texture, by contrast, stays below 40 on almost all interior pixels.
     if np.count_nonzero(core>48)<600:return None,0.
+    if not gate and patch_features(patch)['color']=='R':return None,0.  # red chevrons are rotating arrows (see red_chevrons)
     if gate:
         f=patch_features(patch)
         if f['core_bright']>.50 or f['ann_bright']>.33 or f['color_strength']<.72 or f['color']!='B':
@@ -271,6 +272,27 @@ def arrow_shape_match(patch,relaxed=False,gate=True):
     if not scores or scores[0][0]<(.72 if relaxed else .84):return None,0.
     if len(scores)>1 and scores[0][0]-scores[1][0]<(.07 if relaxed else .06):return None,0.
     return scores[0][1], min(.99,scores[0][0])
+
+def concentric_goal(patch):
+    """Shape test for a goal: two bright concentric rings (outer ~r33, inner small)
+    separated by a dark gap, dark outside the outer ring. Brightness-independent
+    apart from a minimum; both rings must be continuous around the circle."""
+    p=cv2.resize(patch,(96,96),interpolation=cv2.INTER_AREA)
+    v=np.max(p,axis=2).astype(np.float32)
+    yy,xx=np.mgrid[:96,:96]
+    rr=np.rint(np.hypot(xx-47.5,yy-47.5)).astype(int)
+    cnt=np.bincount(rr.ravel(),minlength=70)[:46];prof=np.bincount(rr.ravel(),weights=v.ravel(),minlength=70)[:46]/np.maximum(cnt,1)
+    prof=np.convolve(np.pad(prof,1,mode='edge'),[.25,.5,.25],mode='valid')
+    ko=24+int(np.argmax(prof[24:42]));ki=3+int(np.argmax(prof[3:19]))
+    po,pi=prof[ko],prof[ki]
+    if min(po,pi)<95 or ko-ki<10:return False
+    if prof[ki+3:ko-3].min()>.6*min(po,pi):return False
+    if prof[min(45,ko+6):].max()>.55*po:return False
+    if prof[:max(1,ki-3)].mean()>.7*pi:return False
+    for k,pk in ((ko,po),(ki,pi)):
+        ring=v[rr==k]
+        if np.percentile(ring,15)<.6*pk:return False
+    return True
 
 def overlay_colors(patch):
     """Detect a ball sitting on a differently colored goal ring."""
@@ -336,7 +358,7 @@ def switch_disc(patch):
     Sparkle balls have a white, unsaturated core; the disc is saturated throughout."""
     p,hsv,xx,yy,dx,dy=_hsv96(patch)
     r=np.hypot(dx,dy);S=hsv[:,:,1].astype(float);V=hsv[:,:,2]
-    if float(S[r<8].mean())<200 or float(((S>150)&(V>150))[r<24].mean())<.85:return None
+    if float(S[r<8].mean())<200 or float(((S>150)&(V>90))[r<24].mean())<.85:return None
     hue=int(np.median(hsv[:,:,0][r<8]))
     if 39<=hue<85:return 'switch_on'
     if hue<12 or hue>169:return 'switch'
@@ -396,10 +418,11 @@ def chevron_direction(patch):
 
 def classify(patch,templates):
     f=patch_features(patch)
-    shape_dir,shape_conf=arrow_shape_match(patch)
+    # Arrows are recognized by chevron silhouette alone, independent of brightness.
+    shape_dir,shape_conf=arrow_shape_match(patch,gate=False)
     if shape_dir is not None:
         return 'arrow_'+(chevron_direction(patch) or shape_dir),shape_conf,f
-    shape_dir,shape_conf=arrow_shape_match(patch,relaxed=True)
+    shape_dir,shape_conf=arrow_shape_match(patch,relaxed=True,gate=False)
     if shape_dir is not None:
         return 'arrow_'+(chevron_direction(patch) or shape_dir),min(shape_conf,.8),f
     # Metal quadrant tile = switchable element: a plain one is a gate, one with
@@ -457,7 +480,9 @@ def classify(patch,templates):
         typ='floor'; conf=.96
     else:
         c=f['color']
-        if f['ann_bright']>.54 and f['bright_count']>550:
+        if concentric_goal(patch):
+            typ=f'goal_{c}';conf=.85
+        elif f['ann_bright']>.54 and f['bright_count']>550:
             typ=f'goal_{c}';conf=min(.98,.68+.3*(f['ann_bright']-.54)/.4)
         elif f['core_bright']>.88 and f['bright_count']>1300:
             typ=f'ball_{c}';conf=.90

@@ -159,3 +159,10 @@ object has been transcribed correctly; inspect the review PNGs before batch use.
 ## Changes in v0.9
 
 - Grid detection now accepts cell sizes up to 180px (was 110px). Full-resolution 1440x720 screenshots have 120px cells, which were previously mis-detected as a half-size grid (e.g. 3.4 read as 14x8 instead of 7x4, 1.1 as 6x8 instead of 3x4).
+
+## Shape-based recognition (v0.10)
+
+- **Fixed arrows** are matched by chevron silhouette alone (blue channel), independent of brightness; red chevrons are rotating arrows.
+- **Goals** are also recognized by shape: two bright concentric rings (outer ~r33 of a 96 px cell, small inner ring) with a dark gap, continuous around the circle (`concentric_goal`).
+- **Switches** accept dimmer saturated discs (the depressed, shadowed active switch).
+- Regression check: `4-9.jpg` and `11-9.jpg` (real screenshots) parse identically to v0.9.
