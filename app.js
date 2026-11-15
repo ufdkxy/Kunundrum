@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.28'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.3.29'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -334,8 +334,8 @@ function renderSvg(b, s, options = {}) {
     const p=xy(end), on=s.teleportActive[teleport.id], universal=teleport.color==='*';
     const color=on?(universal?'#c6cdd3':PALETTE[teleport.color]):'#73808a';
     const name=universal?'universal':COLOR_NAMES[teleport.color];
-    const dash=2*Math.PI*23/12;
-    svg += `<g role="img" aria-label="${on?'Active':'Inactive'} ${name} teleport. Links ${pos(teleport.ends[0])} and ${pos(teleport.ends[1])}." transform="translate(${p.x},${p.y})">${on?`<g fill="none" stroke="${color}" opacity=".85" filter="url(#${prefix}-glow)"><circle r="23" stroke-width="6" stroke-dasharray="${dash*.6} ${dash*1.4}"/><circle r="14" stroke-width="3"/></g>`:''}<circle r="23" fill="${color}" fill-opacity=".04" stroke="${color}" stroke-width="${on?2.8:1.8}" stroke-dasharray="${dash*.6} ${dash*.4}" stroke-linecap="round" stroke-opacity="${on?'.95':'.6'}"/>${on?`<circle r="23" fill="none" stroke="#f4ffff" stroke-width="1.3" stroke-dasharray="${dash*.6} ${dash*1.4}" stroke-linecap="round"/>`:''}<circle r="14" fill="#07151f" stroke="${color}" stroke-width="2" stroke-opacity="${on?'.9':'.55'}"/>${on?`<circle r="4.5" fill="#fff" opacity=".65" filter="url(#${prefix}-glow)"/>`:''}<circle r="3.8" fill="#fff" opacity="${on?'1':'.65'}"/></g>`;
+    const arcs=[45,135,225,315].map(a=>{const pt=d=>{const r=(a+d)*Math.PI/180;return `${(23*Math.cos(r)).toFixed(2)} ${(23*Math.sin(r)).toFixed(2)}`;};return `M${pt(-17)}A23 23 0 0 1 ${pt(17)}`;}).join('');
+    svg += `<g role="img" aria-label="${on?'Active':'Inactive'} ${name} teleport. Links ${pos(teleport.ends[0])} and ${pos(teleport.ends[1])}." transform="translate(${p.x},${p.y})"><rect x="-25" y="-25" width="50" height="50" fill="${color}" fill-opacity="${on?'.14':'.05'}"/><g fill="none" stroke="${color}" stroke-opacity="${on?'.5':'.35'}" stroke-width="1"><circle r="19"/><circle r="13.5"/><circle r="8"/></g>${on?`<g filter="url(#${prefix}-glow)" opacity=".8"><path d="${arcs}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round"/><circle r="5" fill="${color}"/></g>`:''}<path d="${arcs}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-opacity="${on?'1':'.6'}"/><circle r="4.5" fill="${color}" fill-opacity="${on?'1':'.65'}"/><circle r="2.2" fill="#fff" fill-opacity="${on?'.85':'.4'}"/></g>`;
   }
   for (const sw of b.switches) {
     const p=xy(sw), label=labels.switches.get(sw.id), on=s.switchOn?.[sw.id]??sw.on??false;
