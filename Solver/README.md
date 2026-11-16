@@ -42,8 +42,8 @@ The solver reads `levels.js` from the current directory by default. In this repo
 
 Options:
 
-- `--algorithm auto|forward|bidirectional|balanced|beam` — `balanced` is the [balanced bidirectional search](#balanced-bidirectional-search-v011) (same preconditions as `bidirectional`, never chosen by `auto`); `beam` is the heuristic [beam search](#beam-search-heuristic-upper-bound) (never chosen by `auto`); auto selects bidirectional search for boards with at least three balls and without hexagons/rotating arrows when terminal gate/teleport masks fit the state budget (and goals equal balls), otherwise forward BFS.
-- `--max-states N` — maximum combined stored states, default 2,000,000; `0` = unlimited.
+- `--algorithm auto|forward|bidirectional|balanced|beam` — `balanced` is the [balanced bidirectional search](#balanced-bidirectional-search-v011) (same preconditions as `bidirectional`; **the choice of `auto`** since v0.12 for applicable boards with at least 3 balls; `bidirectional` is the older forward-heavy version, now only used on request); `beam` is the heuristic [beam search](#beam-search-heuristic-upper-bound) (never chosen by `auto`); auto selects bidirectional search for boards with at least three balls and without hexagons/rotating arrows when terminal gate/teleport masks fit the state budget (and goals equal balls), otherwise forward BFS.
+- `--max-states N` — maximum combined stored states (forward + reverse), default 3,000,000; `0` = unlimited.
 - `--max-memory MB` — cap on the stored state bytes (default none). With no limits the memory of the machine is the real limit: v0.7/v0.8 store roughly 20-30 bytes per state.
 - `--seconds S` — wall-clock search limit, default 60; `0` = unlimited.
 - `--max-choices N` — maximum rotating-arrow choices within one move, default 8.
@@ -130,7 +130,7 @@ This is an **exact**, not heuristic, algorithm when it terminates successfully. 
 
 ## Balanced bidirectional search (v0.11)
 
-`--algorithm balanced` is the exact bidirectional search with one shared budget (`--max-states`, `--max-memory`) and alternating layers: each step expands a whole layer of whichever side (forward from the start, reverse from the goal) currently has the smaller frontier, and every new state is looked up in the other side's store, from both directions. It has the same preconditions and gives the same certified results as `bidirectional` (it is cross-checked against forward and bidirectional on the catalog and on the random tests), but it does not cap the reverse side at about 1,000,000 states, which made `bidirectional` very forward-heavy on large boards.
+`--algorithm balanced` (also what `auto` selects since v0.12) is the exact bidirectional search with one shared budget (`--max-states`, `--max-memory`) and alternating layers: each step expands a whole layer of whichever side (forward from the start, reverse from the goal) currently has the smaller frontier, and every new state is looked up in the other side's store, from both directions. It has the same preconditions and gives the same certified results as `bidirectional` (it is cross-checked against forward and bidirectional on the catalog and on the random tests), but it does not cap the reverse side at about 1,000,000 states, which made `bidirectional` very forward-heavy on large boards.
 
 - Certification: with the forward side complete to depth `fd` and the reverse side to depth `rd`, every route of at most `fd + rd` moves has been found, so the best candidate is optimal once `fd + rd >= best - 1`.
 - When the budget or time runs out, `INCONCLUSIVE` (or `SOLUTION FOUND (optimality not certified)`) is followed by `Lower bound: at least N moves` with `N = fd + rd + 1`. Only this mode prints that bound (the other exact modes report it only for `--max-depth` runs).

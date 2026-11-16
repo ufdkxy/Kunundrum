@@ -188,7 +188,7 @@ void successors(const Board&b,const State&s,int maxChoices,Stats&stats,const fun
  }
 }
 struct SearchResult{bool solved=false,exhaustive=false,truncated=false,boundProved=false;vector<Move> path;uint64_t states=0,transitions=0,bytes=0;int depth=0;int provenMoves=0;/* balanced search: complete layers prove that no route of at most this many moves exists */string algorithm;};
-struct Limits{uint64_t maxStates=2000000;/* UINT64_MAX = unlimited */uint64_t maxBytes=0;/* 0 = unlimited */double seconds=60;/* 0 = unlimited */int maxChoices=8;int maxDepth=0;/* 0 = unlimited */bool scoreCap=false;long long maxScore=0;/* --max-score: only routes with score <= maxScore matter */bool verbose=true;string algorithm="auto";bool beamDynamic=false;size_t beamWidth=200000;uint64_t seed=1;/* --algorithm beam: states kept per layer, tie-break seed */};
+struct Limits{uint64_t maxStates=3000000;/* UINT64_MAX = unlimited */uint64_t maxBytes=0;/* 0 = unlimited */double seconds=60;/* 0 = unlimited */int maxChoices=8;int maxDepth=0;/* 0 = unlimited */bool scoreCap=false;long long maxScore=0;/* --max-score: only routes with score <= maxScore matter */bool verbose=true;string algorithm="auto";bool beamDynamic=false;size_t beamWidth=200000;uint64_t seed=1;/* --algorithm beam: states kept per layer, tie-break seed */};
 using Clock=chrono::steady_clock;
 struct ClockLimit{Clock::time_point start=Clock::now();double seconds;explicit ClockLimit(double s):seconds(s){} bool expired()const{return seconds>0&&chrono::duration<double>(Clock::now()-start).count()>=seconds;}double elapsed()const{return chrono::duration<double>(Clock::now()-start).count();}};
 // Lower bound on the final score of any accepted route continuing from state s (reached after `depth` moves): every
@@ -828,13 +828,13 @@ string codeWithSolution(const Board&b,const vector<LabeledMove>& path){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open levels.js: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0)return trim(line.substr(prefix.size()));}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.11"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.12"; // Solver's own version, independent of the web app's APP_VERSION.
 int main(int argc,char**argv){
  try{
   Limits lim;string input,level,catalog="levels.js";bool wantK3=true;
   for(int i=1;i<argc;i++){string a=argv[i];auto value=[&](){if(++i>=argc)throw runtime_error("missing argument for "+a);return string(argv[i]);};
    if(a=="--version"){cout<<"kunsolve v"<<SOLVER_VERSION<<"\n";return 0;}
-   if(a=="--help"||a=="-h"){cout<<"Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|balanced|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--max-states N] [--seconds N] [--max-memory MB] [--max-choices N] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nbeam = heuristic upper bound (never certifies optimality; exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";return 0;}
+   if(a=="--help"||a=="-h"){cout<<"Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|balanced|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--max-states N] [--seconds N] [--max-memory MB] [--max-choices N] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nauto = balanced bidirectional search when applicable (no hexes/rotating arrows, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic upper bound (never certifies optimality; exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";return 0;}
    else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states"){lim.maxStates=stoull(value());if(lim.maxStates==0)lim.maxStates=UINT64_MAX;}else if(a=="--max-memory"){lim.maxBytes=stoull(value())<<20;}else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-choices")lim.maxChoices=stoi(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--beam-width"){lim.beamWidth=stoull(value());if(lim.beamWidth<1)throw runtime_error("--beam-width must be at least 1");}else if(a=="--beam-heuristic"){string v=value();if(v!="static"&&v!="dynamic")throw runtime_error("--beam-heuristic must be static or dynamic");lim.beamDynamic=v=="dynamic";}else if(a=="--seed")lim.seed=stoull(value());else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantK3=false;else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
   }
   if(input.empty()&&level.empty())throw runtime_error("missing board code/file or --level");
@@ -852,8 +852,8 @@ int main(int argc,char**argv){
   bool feasibleSeeds=terminalBits<=16&&(1ULL<<terminalBits)<=lim.maxStates/4;
   bool canBi=b.staticReverse&&b.goals.size()==b.balls.size()&&feasibleSeeds;
   if((lim.algorithm=="bidirectional"||lim.algorithm=="balanced")&&!canBi)throw runtime_error("bidirectional search requires no hexagons/rotating arrows, equal goals/balls and an affordable terminal-state enumeration");
-  if((lim.algorithm=="auto"&&canBi&&b.n>=3)||lim.algorithm=="bidirectional")res=bidirectional(b,lim,timer,pk);
-  else if(lim.algorithm=="balanced")res=bidirectionalBalanced(b,lim,timer,pk);
+  if(lim.algorithm=="bidirectional")res=bidirectional(b,lim,timer,pk); // the older forward-heavy version, only on request
+  else if((lim.algorithm=="auto"&&canBi&&b.n>=3)||lim.algorithm=="balanced")res=bidirectionalBalanced(b,lim,timer,pk);
   else if(lim.algorithm=="beam")res=beamSearch(b,lim,timer,pk);
   else if(lim.algorithm=="auto"||lim.algorithm=="forward")res=forwardBFS(b,lim,timer,pk);
   else throw runtime_error("unknown algorithm");
