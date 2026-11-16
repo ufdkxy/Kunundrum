@@ -13,7 +13,9 @@
 #include <cstring>
 #include <climits>
 #include <numeric>
+#include <deque>
 #include <queue>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -186,7 +188,7 @@ void successors(const Board&b,const State&s,int maxChoices,Stats&stats,const fun
  }
 }
 struct SearchResult{bool solved=false,exhaustive=false,truncated=false,boundProved=false;vector<Move> path;uint64_t states=0,transitions=0,bytes=0;int depth=0;string algorithm;};
-struct Limits{uint64_t maxStates=2000000;/* UINT64_MAX = unlimited */uint64_t maxBytes=0;/* 0 = unlimited */double seconds=60;/* 0 = unlimited */int maxChoices=8;int maxDepth=0;/* 0 = unlimited */bool scoreCap=false;long long maxScore=0;/* --max-score: only routes with score <= maxScore matter */bool verbose=true;string algorithm="auto";};
+struct Limits{uint64_t maxStates=2000000;/* UINT64_MAX = unlimited */uint64_t maxBytes=0;/* 0 = unlimited */double seconds=60;/* 0 = unlimited */int maxChoices=8;int maxDepth=0;/* 0 = unlimited */bool scoreCap=false;long long maxScore=0;/* --max-score: only routes with score <= maxScore matter */bool verbose=true;string algorithm="auto";size_t beamWidth=200000;uint64_t seed=1;/* --algorithm beam: states kept per layer, tie-break seed */};
 using Clock=chrono::steady_clock;
 struct ClockLimit{Clock::time_point start=Clock::now();double seconds;explicit ClockLimit(double s):seconds(s){} bool expired()const{return seconds>0&&chrono::duration<double>(Clock::now()-start).count()>=seconds;}double elapsed()const{return chrono::duration<double>(Clock::now()-start).count();}};
 // Lower bound on the final score of any accepted route continuing from state s (reached after `depth` moves): every
@@ -464,6 +466,148 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
  else out.boundProved=certified||forwardDone; // only candidates longer than D exist: no solution within D moves
  return out;
 }
+// ---- Beam search (SOLVER-014): heuristic upper bound for boards too large for the exact searches ----
+// Layer by layer (one layer = one more move) only the `width` best states are kept, ranked by a distance heuristic.
+// It finds good routes quickly but NEVER certifies optimality: the result is always "SOLUTION FOUND (optimality not certified)".
+// Heuristic: for every unlocked ball the number of moves a lone ball (ignoring all other balls) needs to reach each free goal of
+// its color, minimised over the assignment of balls to goals (exact for up to 4 balls per color, greedy beyond); plus the hex
+// score collected so far. It is inadmissible (other balls can act as stoppers), which is fine for an upper bound.
+struct HashSet64{
+ vector<uint64_t> t;size_t n=0;HashSet64():t(1<<16,0){}
+ static uint64_t norm(uint64_t k){return k|1;}
+ void grow(){vector<uint64_t> o;o.swap(t);t.assign(o.size()*2,0);for(auto k:o)if(k){size_t i=(k>>1)&(t.size()-1);while(t[i])i=(i+1)&(t.size()-1);t[i]=k;}}
+ bool has(uint64_t k)const{k=norm(k);size_t i=(k>>1)&(t.size()-1);while(t[i]){if(t[i]==k)return true;i=(i+1)&(t.size()-1);}return false;}
+ bool insert(uint64_t k){k=norm(k);if((n+1)*2>t.size())grow();size_t i=(k>>1)&(t.size()-1);while(t[i]){if(t[i]==k)return false;i=(i+1)&(t.size()-1);}t[i]=k;n++;return true;}
+ uint64_t bytes()const{return t.size()*8;}
+};
+struct BeamHeuristic{
+ const Board&b;int penalty=20;vector<int> goalCell,goalCol;vector<vector<int>> dist;vector<int> goalsOfColor[4],ballsOfColor[4];
+ // All cells where a lone ball stops after sliding from `start` in direction h0 (rotating arrows branch in every direction).
+ void lone(int start,int h0,int color,vector<int>&out)const{
+  struct Fr{int p,h,steps;bool entered;};vector<Fr> st{{start,h0,0,false}};const int cap=4*b.w*b.h+16;
+  while(!st.empty()){
+   Fr f=st.back();st.pop_back();int p=f.p,h=f.h;bool entered=f.entered,stopped=false;
+   for(int steps=f.steps;steps<cap;steps++){
+    int x=p%b.w+dx[h],y=p/b.w+dy[h];if(!b.inside(x,y)){stopped=true;break;}
+    int np=b.at(x,y);if(b.fixed[np]){stopped=true;break;}
+    int gi=b.gateAt[np];if(gi>=0&&b.gateInit[gi]){stopped=true;break;}
+    entered=true;p=np;
+    int ai=b.arrowAt[p];if(ai>=0){auto a=b.arrows[ai];if(a.rotating){for(int q=1;q<4;q++)st.push_back({p,q,steps+1,true});h=0;}else h=a.dir;}
+    int ti=b.teleAt[p];if(ti>=0&&b.teleInit[ti]&&(b.teleports[ti].color==4||b.teleports[ti].color==color)){auto t=b.teleports[ti];p=(t.a==p?t.b:t.a);}
+   }
+   if(stopped&&entered)out.push_back(p);
+  }
+ }
+ explicit BeamHeuristic(const Board&bd,int pen):b(bd),penalty(pen){
+  int N=b.w*b.h;for(int g:b.goals){goalCell.push_back(g%MAX_CELLS);goalCol.push_back(g/MAX_CELLS);}
+  for(int g=0;g<(int)goalCell.size();g++)goalsOfColor[goalCol[g]].push_back(g);
+  for(int i=0;i<b.n;i++)ballsOfColor[b.balls[i].color].push_back(i);
+  vector<vector<int>> rev[4];
+  for(int c=0;c<4;c++){rev[c].assign(N,{});for(int p=0;p<N;p++)if(!b.fixed[p])for(int d=0;d<4;d++){vector<int> ends;lone(p,d,c,ends);for(int e:ends)if(e!=p)rev[c][e].push_back(p);}}
+  dist.assign(goalCell.size(),vector<int>(N,penalty));
+  for(int g=0;g<(int)goalCell.size();g++){auto&D=dist[g];D[goalCell[g]]=0;deque<int> q{goalCell[g]};while(!q.empty()){int t=q.front();q.pop_front();for(int c:rev[goalCol[g]][t])if(D[c]==penalty&&c!=goalCell[g]){D[c]=D[t]+1;q.push_back(c);}}}
+ }
+ int rec(const int*bp,int k,const int*gs,int m,int i,unsigned used)const{
+  if(i==k)return 0;
+  int best=INT32_MAX/2;
+  for(int j=0;j<m;j++)if(!(used>>j&1))best=min(best,dist[gs[j]][bp[i]]+rec(bp,k,gs,m,i+1,used|1u<<j));
+  return best;
+ }
+ int eval(const State&s)const{
+  int h=0;
+  for(int c=0;c<4;c++){
+   if(ballsOfColor[c].empty())continue;
+   int bp[128],k=0,gs[128],m=0;
+   for(int g:goalsOfColor[c]){bool filled=false;for(int i:ballsOfColor[c])if(s.p[i]==goalCell[g])filled=true;if(!filled)gs[m++]=g;}
+   for(int i:ballsOfColor[c])if(b.goalColor[s.p[i]]!=c)bp[k++]=s.p[i];
+   if(k==0)continue;
+   if(k<=4&&m<=12&&m>=k)h+=rec(bp,k,gs,m,0,0);
+   else{unsigned used=0;for(int i=0;i<k;i++){int bj=-1,bd=INT32_MAX;for(int j=0;j<m&&j<32;j++)if(!(used>>j&1)&&dist[gs[j]][bp[i]]<bd){bd=dist[gs[j]][bp[i]];bj=j;}if(bj>=0){used|=1u<<bj;h+=bd;}else h+=penalty;}}
+  }
+  return h;
+ }
+};
+SearchResult beamSearch(const Board&b,const Limits&lim,ClockLimit&timer,const Packer&pk){
+ SearchResult out;out.algorithm="beam search (width "+to_string(lim.beamWidth)+")";
+ const size_t W=lim.beamWidth,K=pk.K;
+ // Static boards (no switches, no rotating arrows) use an allocation-free move generator; others fall back to successors().
+ const bool fast=b.switches.empty()&&!pk.rotating;
+ BeamHeuristic H(b,20);
+ long long totalNeg=0;for(auto&h:b.hexes)if(h.value<0)totalNeg+=h.value;
+ struct Layer{vector<uint8_t> key;vector<uint32_t> parent;vector<uint16_t> source;vector<uint8_t> color,dir;vector<string> choices;size_t size()const{return parent.size();}};
+ vector<Layer> layers(1);
+ {State s0=initial(b);if(complete(b,s0)){out.solved=true;out.depth=0;return out;}
+  layers[0].key.resize(K);pk.pack(s0,layers[0].key.data());layers[0].parent.push_back(0);layers[0].source.push_back(0);layers[0].color.push_back(0);layers[0].dir.push_back(0);layers[0].choices.push_back("");}
+ HashSet64 seen;seen.insert(hashBytes(layers[0].key.data(),K));
+ mt19937_64 rng(lim.seed);
+ struct Meta{int sc;uint32_t parent;uint16_t source;uint8_t color,dir;};
+ long long bestScore=LLONG_MAX;int bestDepth=-1;uint32_t bestParent=0;Move bestMove;
+ const int maxLayers=lim.maxDepth>0?lim.maxDepth:(b.hexes.empty()?1000:200);
+ uint64_t transitions=0,layerBytes=K+16;bool limited=false;
+ vector<uint8_t> ckey,buf(K);vector<Meta> cm;vector<string> cch;
+ vector<uint8_t> occ(b.w*b.h,0);vector<int> touched;
+ for(int depth=0;depth<maxLayers&&!limited;depth++){
+  const Layer cur=move(layers[depth]); // the layer is only read here; its path data is restored below
+  ckey.clear();cm.clear();cch.clear();HashSet64 local;
+  auto prune=[&](size_t keep){ // keep the `keep` best candidates
+   vector<uint32_t> order(cm.size());iota(order.begin(),order.end(),0);
+   nth_element(order.begin(),order.begin()+keep,order.end(),[&](uint32_t x,uint32_t y){return cm[x].sc<cm[y].sc;});order.resize(keep);sort(order.begin(),order.end());
+   vector<uint8_t> nk;nk.reserve(keep*K);vector<Meta> nm;nm.reserve(keep);vector<string> nc;
+   for(uint32_t i:order){nk.insert(nk.end(),ckey.begin()+(size_t)i*K,ckey.begin()+(size_t)(i+1)*K);nm.push_back(cm[i]);if(!fast)nc.push_back(cch[i]);}
+   ckey.swap(nk);cm.swap(nm);cch.swap(nc);
+  };
+  auto consider=[&](const State&c,uint32_t parent,int source,int color,int dir,const string&choices){
+   transitions++;
+   if(complete(b,c)){long long sc=scoreHex(b,c,depth+1);if(sc<bestScore){bestScore=sc;bestDepth=depth+1;bestParent=parent;bestMove=Move();bestMove.source=source;bestMove.color=color;bestMove.dir=dir;bestMove.choices=choices;}return;}
+   pk.pack(c,buf.data());uint64_t hk=hashBytes(buf.data(),K);
+   if(seen.has(hk)||!local.insert(hk))return;
+   cm.push_back({(H.eval(c)+scoreHex(b,c,0))*16+(int)(rng()&15),parent,(uint16_t)source,(uint8_t)color,(uint8_t)dir});ckey.insert(ckey.end(),buf.begin(),buf.end());if(!fast)cch.push_back(choices);
+   if(cm.size()>=3*W+1024)prune(W);
+  };
+  State ps,scratch;
+  for(size_t ni=0;ni<cur.size()&&!limited;ni++){
+   if((ni&255)==0&&(timer.expired()||(lim.maxBytes&&seen.bytes()+layerBytes>lim.maxBytes))){limited=true;break;}
+   pk.unpack(&cur.key[ni*K],ps);
+   if(!fast){Stats st;successors(b,ps,lim.maxChoices,st,[&](Transition&&t){consider(t.s,(uint32_t)ni,t.m.source,t.m.color,t.m.dir,t.m.choices);});continue;}
+   fill(occ.begin(),occ.end(),0);for(int i=0;i<b.n;i++)occ[ps.p[i]]=1;scratch=ps;
+   for(int i=0;i<b.n;i++){
+    if(b.goalColor[ps.p[i]]==b.balls[i].color)continue;
+    occ[ps.p[i]]=0;
+    for(int d=0;d<4;d++){
+     int p=ps.p[i],h=d;bool entered=false,stopped=false;touched.clear();const int cap=4*b.w*b.h+8;
+     for(int steps=0;steps<cap;steps++){
+      int x=p%b.w+dx[h],y=p/b.w+dy[h];if(!b.inside(x,y)){stopped=true;break;}
+      int np=b.at(x,y);if(b.fixed[np]||occ[np]){stopped=true;break;}
+      int gi=b.gateAt[np];if(gi>=0&&ps.gate[gi]){stopped=true;break;}
+      entered=true;p=np;
+      int hi=b.hexAt[p];if(hi>=0&&!scratch.hex[hi]){scratch.hex[hi]=1;touched.push_back(hi);}
+      int ai=b.arrowAt[p];if(ai>=0)h=b.arrows[ai].dir;
+      int ti=b.teleAt[p];if(ti>=0&&ps.tele[ti]&&(b.teleports[ti].color==4||b.teleports[ti].color==b.balls[i].color)){auto t=b.teleports[ti];int ex=(t.a==p?t.b:t.a);if(occ[ex]){stopped=true;break;}p=ex;}
+     }
+     if(stopped&&entered){scratch.p[i]=p;consider(scratch,(uint32_t)ni,ps.p[i],b.balls[i].color,d,string());scratch.p[i]=ps.p[i];}
+     for(int hi:touched)scratch.hex[hi]=0;
+    }
+    occ[ps.p[i]]=1;
+   }
+  }
+  layers[depth]=cur;
+  if(limited)break;
+  if(bestDepth>=0&&(b.hexes.empty()||depth+2+totalNeg>=bestScore))break; // no later layer can beat the best route
+  if(cm.empty())break;
+  if(cm.size()>W)prune(W);
+  Layer nl;nl.key=ckey;for(size_t i=0;i<cm.size();i++){nl.parent.push_back(cm[i].parent);nl.source.push_back(cm[i].source);nl.color.push_back(cm[i].color);nl.dir.push_back(cm[i].dir);nl.choices.push_back(fast?string():cch[i]);seen.insert(hashBytes(&nl.key[i*K],K));}
+  layerBytes+=nl.size()*(K+9);
+  if(lim.verbose){int best=INT32_MAX;for(auto&m:cm)best=min(best,m.sc>>4);cerr<<"beam depth "<<depth+1<<" kept "<<nl.size()<<" best rank "<<best<<" elapsed "<<timer.elapsed()<<"s\n";}
+  layers.push_back(move(nl));
+ }
+ out.states=seen.n;out.transitions=transitions;out.bytes=seen.bytes()+layerBytes;
+ if(bestDepth>=0){
+  out.solved=true;out.exhaustive=false;out.depth=bestDepth;vector<Move> rv{bestMove};uint32_t at=bestParent;
+  for(int d=bestDepth-1;d>=1;d--){Move m;m.source=layers[d].source[at];m.color=layers[d].color[at];m.dir=layers[d].dir[at];m.choices=layers[d].choices[at];rv.push_back(m);at=layers[d].parent[at];}
+  reverse(rv.begin(),rv.end());out.path=move(rv);
+ }
+ return out;
+}
 // Convert source-position moves to the specific, stable IDs of the original labeled balls.
 struct LabeledMove{int ball,dir;string choices;};
 vector<LabeledMove> labelAndVerify(const Board&b,const vector<Move>& path,int& finalScore){
@@ -510,14 +654,14 @@ string codeWithSolution(const Board&b,const vector<LabeledMove>& path){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open levels.js: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0)return trim(line.substr(prefix.size()));}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.8"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.9"; // Solver's own version, independent of the web app's APP_VERSION.
 int main(int argc,char**argv){
  try{
   Limits lim;string input,level,catalog="levels.js";bool wantK3=true;
   for(int i=1;i<argc;i++){string a=argv[i];auto value=[&](){if(++i>=argc)throw runtime_error("missing argument for "+a);return string(argv[i]);};
    if(a=="--version"){cout<<"kunsolve v"<<SOLVER_VERSION<<"\n";return 0;}
-   if(a=="--help"||a=="-h"){cout<<"Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional] [--max-states N] [--seconds N] [--max-memory MB] [--max-choices N] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";return 0;}
-   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states"){lim.maxStates=stoull(value());if(lim.maxStates==0)lim.maxStates=UINT64_MAX;}else if(a=="--max-memory"){lim.maxBytes=stoull(value())<<20;}else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-choices")lim.maxChoices=stoi(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantK3=false;else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
+   if(a=="--help"||a=="-h"){cout<<"Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--seed N] [--max-states N] [--seconds N] [--max-memory MB] [--max-choices N] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nbeam = heuristic upper bound (never certifies optimality; exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";return 0;}
+   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states"){lim.maxStates=stoull(value());if(lim.maxStates==0)lim.maxStates=UINT64_MAX;}else if(a=="--max-memory"){lim.maxBytes=stoull(value())<<20;}else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-choices")lim.maxChoices=stoi(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--beam-width"){lim.beamWidth=stoull(value());if(lim.beamWidth<1)throw runtime_error("--beam-width must be at least 1");}else if(a=="--seed")lim.seed=stoull(value());else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantK3=false;else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
   }
   if(input.empty()&&level.empty())throw runtime_error("missing board code/file or --level");
   if(!level.empty())input=catalogCode(level,catalog);else if(input=="-"){input=string((istreambuf_iterator<char>(cin)),{});}else input=readInput(input);
@@ -535,6 +679,7 @@ int main(int argc,char**argv){
   bool canBi=b.staticReverse&&b.goals.size()==b.balls.size()&&feasibleSeeds;
   if(lim.algorithm=="bidirectional"&&!canBi)throw runtime_error("bidirectional search requires no hexagons/rotating arrows, equal goals/balls and an affordable terminal-state enumeration");
   if((lim.algorithm=="auto"&&canBi&&b.n>=3)||lim.algorithm=="bidirectional")res=bidirectional(b,lim,timer,pk);
+  else if(lim.algorithm=="beam")res=beamSearch(b,lim,timer,pk);
   else if(lim.algorithm=="auto"||lim.algorithm=="forward")res=forwardBFS(b,lim,timer,pk);
   else throw runtime_error("unknown algorithm");
   cout<<"Algorithm: "<<res.algorithm<<"\n"<<(userDepth>0?"Depth limit: "+to_string(userDepth)+"\n":string())+(lim.scoreCap?"Score limit: "+to_string(lim.maxScore)+"\n":string())<<"States: "<<res.states<<"\nTransitions: "<<res.transitions<<"\nMemory: "<<(res.bytes>>20)<<" MB\nElapsed: "<<timer.elapsed()<<" s\n";

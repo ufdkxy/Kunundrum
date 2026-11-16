@@ -1,4 +1,4 @@
-# Kunundrum native C++ solver — prototype 0.7 (`SOLVER_VERSION` in `solver.cpp`, `kunsolve --version`; independent of the web app)
+# Kunundrum native C++ solver — prototype 0.9 (`SOLVER_VERSION` in `solver.cpp`, `kunsolve --version`; independent of the web app)
 
 A dependency-free C++17 exact search engine for the **K2/K3 Kunundrum board format**. The solver accepts a board code (or a file containing one), searches for the **lowest-score** solution (score = moves plus one-time hex bonuses and penalties; fewest moves among equal scores), checks the resulting path against its simulator, and exports a new K3 code with the solution embedded.
 
@@ -42,11 +42,12 @@ The solver reads `levels.js` from the current directory by default. In this repo
 
 Options:
 
-- `--algorithm auto|forward|bidirectional` — auto selects bidirectional search for boards with at least three balls and without hexagons/rotating arrows when terminal gate/teleport masks fit the state budget (and goals equal balls), otherwise forward BFS.
+- `--algorithm auto|forward|bidirectional|beam` — `beam` is the heuristic [beam search](#beam-search-heuristic-upper-bound) (never chosen by `auto`); auto selects bidirectional search for boards with at least three balls and without hexagons/rotating arrows when terminal gate/teleport masks fit the state budget (and goals equal balls), otherwise forward BFS.
 - `--max-states N` — maximum combined stored states, default 2,000,000; `0` = unlimited.
 - `--max-memory MB` — cap on the stored state bytes (default none). With no limits the memory of the machine is the real limit: v0.7/v0.8 store roughly 20-30 bytes per state.
 - `--seconds S` — wall-clock search limit, default 60; `0` = unlimited.
 - `--max-choices N` — maximum rotating-arrow choices within one move, default 8.
+- `--beam-width N` — states kept per layer by `--algorithm beam` (default 200,000); `--seed N` — its tie-break seed (default 1).
 - `--max-depth N` — only consider solutions of at most N moves (N >= 1, default unlimited); see [Depth limit](#depth-limit-certifying-a-known-solution).
 - `--max-score N` — only consider routes with score at most N (default: no bound); see [Score limit](#score-limit).
 - `--quiet` — hide per-depth progress; statistics and results still print.
@@ -60,6 +61,7 @@ Outcomes/exit codes:
 - **SOLUTION FOUND (optimality not certified)** (exit 2): solution verified, but incomplete layers prevent an optimality guarantee.
 - **NO SOLUTION WITHIN N MOVES** (exit 4, only with `--max-depth N`): every sequence of at most N moves was covered and none is accepted, so the optimum is at least N+1 moves (or the board is unsolvable).
 - **NO SOLUTION WITH SCORE <= N** (exit 4, only with `--max-score N`): every route that could score N or less was covered and none finishes the board, so the optimal score is at least N+1 (or the board is unsolvable). It is never reported as UNSOLVABLE, because pruned states mean the whole space was not covered.
+- Beam search always ends with **SOLUTION FOUND (optimality not certified)** (exit 2) or **INCONCLUSIVE** (exit 2); it never proves anything.
 - Invalid input or unsupported forced algorithm: exit 1.
 
 ## Depth limit: certifying a known solution
@@ -125,6 +127,16 @@ Benchmark (single run in this environment; timings are not portable):
 
 This is an **exact**, not heuristic, algorithm when it terminates successfully. Reaching resource limits remains inconclusive. Runtime and state count need not always improve relative to forward BFS; on easy switch boards, bidirectional reverse enumeration can have extra overhead.
 
+## Beam search (heuristic upper bound)
+
+`--algorithm beam` is for boards where the exact searches cannot finish (e.g. level 9.9: 8 balls, long corridors; exhaustive search proves only "no solution within 24 moves" before running out of memory, while a 300,000-state beam finds a 42-move route in about 45 s). It is meant to **lower the upper bound**; it never certifies optimality, so the output is always `SOLUTION FOUND (optimality not certified)` (exit 2) and the route is re-simulated by the solver before printing.
+
+- One layer per move; only the `--beam-width` best new states of each layer are kept (states already kept in earlier layers are dropped). Memory is roughly `3 x width x (state bytes + 20)` for the candidates of a layer plus the kept layers (needed to rebuild the route); `--max-memory` and `--seconds` stop the search (then `INCONCLUSIVE`).
+- Ranking: sum over unlocked balls of the moves a *lone* ball needs to reach a free goal of its color (walls, gates, fixed arrows, teleports as initially set; other balls ignored), minimised over the ball-to-goal assignment (exact for up to 4 balls per color, greedy beyond), plus the hex score collected so far, plus a small random tie-break (`--seed`). The heuristic is inadmissible (other balls can act as stoppers) which is fine for an upper bound.
+- Static boards (no switches, no rotating arrows) use an allocation-free move generator (on 9.9, width 300,000 takes about 45 s and width 20,000 about 3 s); boards with switches or rotating arrows use the generic `successors()` and are much slower. Hexes are supported: the search continues past the first route while a lower score is still possible.
+- Level 9.9 (user route: 47 moves): widths 20,000 / 300,000 / 1,000,000 gave 59 / 42 / 42 moves.
+- Tip: wider beams and different `--seed` values give different routes; the best route found can be passed to the exact search as `--max-depth (length - 1)` once it is affordable.
+
 ## Tests
 
 Node.js (optional, for independent cross-validation) is needed only for tests; the C++ solver itself has no Node dependency:
@@ -136,6 +148,8 @@ node tests/random-switch.js
 ```
 
 `tests/verify.js` runs several real catalog levels and simple feature fixtures, decodes the native solver's exported K3 codes with the app's JavaScript codec, and replays every solution using the *original* JS `engine.js`.
+
+`tests/verify.js` also runs beam search on 1.7, 1.8, 2.2 (known optimal scores 3, 5, 9), 7.3 and 8.1 plus basic, rotating-arrow and switch fixtures: each route must replay in the JavaScript engine and the output must say "optimality not certified".
 
 `tests/random-compare.js` generates 50 small random static boards (including identical-color balls, walls, fixed arrows and colored/universal teleports) and compares C++ forward BFS against C++ bidirectional BFS on every board. For each solvable board both algorithms are also run with `--max-depth` equal to the optimum (must return `OPTIMAL` with the same length) and optimum − 1 (must return `NO SOLUTION WITHIN`); unsolvable boards must stay unsolvable under a depth limit. `tests/random-switch.js` does the same on random switch boards (see below).
 
