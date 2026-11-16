@@ -188,7 +188,7 @@ void successors(const Board&b,const State&s,int maxChoices,Stats&stats,const fun
  }
 }
 struct SearchResult{bool solved=false,exhaustive=false,truncated=false,boundProved=false;vector<Move> path;uint64_t states=0,transitions=0,bytes=0;int depth=0;string algorithm;};
-struct Limits{uint64_t maxStates=2000000;/* UINT64_MAX = unlimited */uint64_t maxBytes=0;/* 0 = unlimited */double seconds=60;/* 0 = unlimited */int maxChoices=8;int maxDepth=0;/* 0 = unlimited */bool scoreCap=false;long long maxScore=0;/* --max-score: only routes with score <= maxScore matter */bool verbose=true;string algorithm="auto";size_t beamWidth=200000;uint64_t seed=1;/* --algorithm beam: states kept per layer, tie-break seed */};
+struct Limits{uint64_t maxStates=2000000;/* UINT64_MAX = unlimited */uint64_t maxBytes=0;/* 0 = unlimited */double seconds=60;/* 0 = unlimited */int maxChoices=8;int maxDepth=0;/* 0 = unlimited */bool scoreCap=false;long long maxScore=0;/* --max-score: only routes with score <= maxScore matter */bool verbose=true;string algorithm="auto";bool beamDynamic=false;size_t beamWidth=200000;uint64_t seed=1;/* --algorithm beam: states kept per layer, tie-break seed */};
 using Clock=chrono::steady_clock;
 struct ClockLimit{Clock::time_point start=Clock::now();double seconds;explicit ClockLimit(double s):seconds(s){} bool expired()const{return seconds>0&&chrono::duration<double>(Clock::now()-start).count()>=seconds;}double elapsed()const{return chrono::duration<double>(Clock::now()-start).count();}};
 // Lower bound on the final score of any accepted route continuing from state s (reached after `depth` moves): every
@@ -507,32 +507,54 @@ struct BeamHeuristic{
   dist.assign(goalCell.size(),vector<int>(N,penalty));
   for(int g=0;g<(int)goalCell.size();g++){auto&D=dist[g];D[goalCell[g]]=0;deque<int> q{goalCell[g]};while(!q.empty()){int t=q.front();q.pop_front();for(int c:rev[goalCol[g]][t])if(D[c]==penalty&&c!=goalCell[g]){D[c]=D[t]+1;q.push_back(c);}}}
  }
- int rec(const int*bp,int k,const int*gs,int m,int i,unsigned used)const{
+ bool dynamic=false;vector<vector<int>> dyn;vector<uint8_t> occ;vector<int> bq; // dyn[ball][cell]: moves for that ball with the other balls fixed where they stand now
+ int slideState(const State&s,int color,int p,int h)const{ // where a ball of `color` stops sliding from p in direction h, other balls = occ; -1 if it cannot move or loops
+  const int cap=4*b.w*b.h+8;bool entered=false;
+  for(int st=0;st<cap;st++){
+   int x=p%b.w+dx[h],y=p/b.w+dy[h];if(!b.inside(x,y))return entered?p:-1;
+   int np=b.at(x,y);if(b.fixed[np]||occ[np])return entered?p:-1;
+   int gi=b.gateAt[np];if(gi>=0&&s.gate[gi])return entered?p:-1;
+   entered=true;p=np;
+   int ai=b.arrowAt[p];if(ai>=0)h=b.arrows[ai].dir;
+   int ti=b.teleAt[p];if(ti>=0&&s.tele[ti]&&(b.teleports[ti].color==4||b.teleports[ti].color==color)){auto t=b.teleports[ti];int ex=(t.a==p?t.b:t.a);if(occ[ex])return p;p=ex;}
+  }
+  return -1;
+ }
+ void dynBFS(const State&s,int i){
+  auto&D=dyn[i];fill(D.begin(),D.end(),1000);vector<int>&q=bq;q.assign(1,s.p[i]);D[s.p[i]]=0;
+  for(size_t qi=0;qi<q.size();qi++){int c=q[qi];for(int d=0;d<4;d++){int t=slideState(s,b.balls[i].color,c,d);if(t>=0&&D[t]>D[c]+1){D[t]=D[c]+1;q.push_back(t);}}}
+ }
+ int D(const State&s,int g,int ball)const{ // lone-ball distance, lowered where the current positions of other balls make it shorter
+  int st=dist[g][s.p[ball]];if(!dynamic)return st;int dy=dyn[ball][goalCell[g]];return dy<st?dy:st;
+ }
+ int rec(const State&s,const int*bp,int k,const int*gs,int m,int i,unsigned used)const{
   if(i==k)return 0;
   int best=INT32_MAX/2;
-  for(int j=0;j<m;j++)if(!(used>>j&1))best=min(best,dist[gs[j]][bp[i]]+rec(bp,k,gs,m,i+1,used|1u<<j));
+  for(int j=0;j<m;j++)if(!(used>>j&1))best=min(best,D(s,gs[j],bp[i])+rec(s,bp,k,gs,m,i+1,used|1u<<j));
   return best;
  }
- int eval(const State&s)const{
+ int eval(const State&s){
   int h=0;
+  if(dynamic){occ.assign(b.w*b.h,0);for(int i=0;i<b.n;i++)occ[s.p[i]]=1;for(int i=0;i<b.n;i++)if(b.goalColor[s.p[i]]!=b.balls[i].color){occ[s.p[i]]=0;dynBFS(s,i);occ[s.p[i]]=1;}}
   for(int c=0;c<4;c++){
    if(ballsOfColor[c].empty())continue;
    int bp[128],k=0,gs[128],m=0;
    for(int g:goalsOfColor[c]){bool filled=false;for(int i:ballsOfColor[c])if(s.p[i]==goalCell[g])filled=true;if(!filled)gs[m++]=g;}
-   for(int i:ballsOfColor[c])if(b.goalColor[s.p[i]]!=c)bp[k++]=s.p[i];
+   for(int i:ballsOfColor[c])if(b.goalColor[s.p[i]]!=c)bp[k++]=i;
    if(k==0)continue;
-   if(k<=4&&m<=12&&m>=k)h+=rec(bp,k,gs,m,0,0);
-   else{unsigned used=0;for(int i=0;i<k;i++){int bj=-1,bd=INT32_MAX;for(int j=0;j<m&&j<32;j++)if(!(used>>j&1)&&dist[gs[j]][bp[i]]<bd){bd=dist[gs[j]][bp[i]];bj=j;}if(bj>=0){used|=1u<<bj;h+=bd;}else h+=penalty;}}
+   if(k<=4&&m<=12&&m>=k)h+=rec(s,bp,k,gs,m,0,0);
+   else{unsigned used=0;for(int i=0;i<k;i++){int bj=-1,bd=INT32_MAX;for(int j=0;j<m&&j<32;j++)if(!(used>>j&1)&&D(s,gs[j],bp[i])<bd){bd=D(s,gs[j],bp[i]);bj=j;}if(bj>=0){used|=1u<<bj;h+=bd;}else h+=penalty;}}
   }
   return h;
  }
 };
 SearchResult beamSearch(const Board&b,const Limits&lim,ClockLimit&timer,const Packer&pk){
- SearchResult out;out.algorithm="beam search (width "+to_string(lim.beamWidth)+")";
+ SearchResult out;out.algorithm="beam search (width "+to_string(lim.beamWidth)+(lim.beamDynamic?", dynamic heuristic":"")+")";
  const size_t W=lim.beamWidth,K=pk.K;
  // Static boards (no switches, no rotating arrows) use an allocation-free move generator; others fall back to successors().
  const bool fast=b.switches.empty()&&!pk.rotating;
  BeamHeuristic H(b,20);
+ if(lim.beamDynamic){if(fast){H.dynamic=true;H.dyn.assign(b.n,vector<int>(b.w*b.h,1000));}else if(lim.verbose)cerr<<"note: --beam-heuristic dynamic needs a board without switches and rotating arrows; using static\n";}
  long long totalNeg=0;for(auto&h:b.hexes)if(h.value<0)totalNeg+=h.value;
  struct Layer{vector<uint8_t> key;vector<uint32_t> parent;vector<uint16_t> source;vector<uint8_t> color,dir;vector<string> choices;size_t size()const{return parent.size();}};
  vector<Layer> layers(1);
@@ -654,14 +676,14 @@ string codeWithSolution(const Board&b,const vector<LabeledMove>& path){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open levels.js: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0)return trim(line.substr(prefix.size()));}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.9"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.10"; // Solver's own version, independent of the web app's APP_VERSION.
 int main(int argc,char**argv){
  try{
   Limits lim;string input,level,catalog="levels.js";bool wantK3=true;
   for(int i=1;i<argc;i++){string a=argv[i];auto value=[&](){if(++i>=argc)throw runtime_error("missing argument for "+a);return string(argv[i]);};
    if(a=="--version"){cout<<"kunsolve v"<<SOLVER_VERSION<<"\n";return 0;}
-   if(a=="--help"||a=="-h"){cout<<"Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--seed N] [--max-states N] [--seconds N] [--max-memory MB] [--max-choices N] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nbeam = heuristic upper bound (never certifies optimality; exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";return 0;}
-   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states"){lim.maxStates=stoull(value());if(lim.maxStates==0)lim.maxStates=UINT64_MAX;}else if(a=="--max-memory"){lim.maxBytes=stoull(value())<<20;}else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-choices")lim.maxChoices=stoi(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--beam-width"){lim.beamWidth=stoull(value());if(lim.beamWidth<1)throw runtime_error("--beam-width must be at least 1");}else if(a=="--seed")lim.seed=stoull(value());else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantK3=false;else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
+   if(a=="--help"||a=="-h"){cout<<"Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--max-states N] [--seconds N] [--max-memory MB] [--max-choices N] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nbeam = heuristic upper bound (never certifies optimality; exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";return 0;}
+   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states"){lim.maxStates=stoull(value());if(lim.maxStates==0)lim.maxStates=UINT64_MAX;}else if(a=="--max-memory"){lim.maxBytes=stoull(value())<<20;}else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-choices")lim.maxChoices=stoi(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--beam-width"){lim.beamWidth=stoull(value());if(lim.beamWidth<1)throw runtime_error("--beam-width must be at least 1");}else if(a=="--beam-heuristic"){string v=value();if(v!="static"&&v!="dynamic")throw runtime_error("--beam-heuristic must be static or dynamic");lim.beamDynamic=v=="dynamic";}else if(a=="--seed")lim.seed=stoull(value());else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantK3=false;else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
   }
   if(input.empty()&&level.empty())throw runtime_error("missing board code/file or --level");
   if(!level.empty())input=catalogCode(level,catalog);else if(input=="-"){input=string((istreambuf_iterator<char>(cin)),{});}else input=readInput(input);

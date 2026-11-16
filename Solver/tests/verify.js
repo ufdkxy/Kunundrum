@@ -27,6 +27,9 @@ for(const [id,score] of [['1.7',3],['1.8',5],['2.2',9],['7.3',null],['8.1',null]
  const code=p.stdout.match(/^K3: (\S+)/m)?.[1],sol=p.stdout.match(/^Solution: (\S+)/m)?.[1];assert(code&&sol);const out=solutionCheck(code,sol);
  if(score!==null)assert.equal(out.score,score,`beam ${id} score`);console.log('beam',id,'score',out.score,'moves',out.count);
 }
+{const p=spawnSync(path.join(root,'kunsolve'),['--level','2.2','--catalog',path.join(repo,'levels.js'),'--algorithm','beam','--beam-heuristic','dynamic','--beam-width','20000','--quiet','--seconds','30'],{cwd:root,encoding:'utf8',timeout:50000});
+ assert.equal(p.status,2,p.stderr+p.stdout);assert(/dynamic heuristic/.test(p.stdout)&&/optimality not certified/.test(p.stdout));
+ const out=solutionCheck(p.stdout.match(/^K3: (\S+)/m)[1],p.stdout.match(/^Solution: (\S+)/m)[1]);assert.equal(out.score,9,'beam dynamic 2.2 score');console.log('beam dynamic 2.2 score',out.score);}
 fixture('beam basic',{version:1,width:4,height:1,id:'basic',title:'basic',balls:[{x:1,y:1,color:'R'}],goals:[{x:4,y:1,color:'R'}]},'beam');
 fixture('beam rotating',{version:1,width:4,height:3,id:'rotate',title:'rotate',balls:[{x:1,y:1,color:'R'}],goals:[{x:2,y:3,color:'R'}],arrows:[{x:2,y:1,direction:'u',rotating:true}],walls:[{x:4,y:1},{x:4,y:2},{x:4,y:3}]},'beam');
 fixture('beam switch',{version:1,width:5,height:2,id:'switch',title:'switch',balls:[{x:1,y:1,color:'R'}],goals:[{x:5,y:1,color:'R'}],gates:[{x:3,y:1,id:'W1',group:'a',active:true}],switches:[{x:2,y:1,id:'S1',wallGroups:['a'],teleportIds:[]}]},'beam');

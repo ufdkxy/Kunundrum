@@ -47,6 +47,7 @@ Options:
 - `--max-memory MB` — cap on the stored state bytes (default none). With no limits the memory of the machine is the real limit: v0.7/v0.8 store roughly 20-30 bytes per state.
 - `--seconds S` — wall-clock search limit, default 60; `0` = unlimited.
 - `--max-choices N` — maximum rotating-arrow choices within one move, default 8.
+- `--beam-heuristic static|dynamic` — beam ranking (default `static`); see [Beam search](#beam-search-heuristic-upper-bound).
 - `--beam-width N` — states kept per layer by `--algorithm beam` (default 200,000); `--seed N` — its tie-break seed (default 1).
 - `--max-depth N` — only consider solutions of at most N moves (N >= 1, default unlimited); see [Depth limit](#depth-limit-certifying-a-known-solution).
 - `--max-score N` — only consider routes with score at most N (default: no bound); see [Score limit](#score-limit).
@@ -134,7 +135,8 @@ This is an **exact**, not heuristic, algorithm when it terminates successfully. 
 - One layer per move; only the `--beam-width` best new states of each layer are kept (states already kept in earlier layers are dropped). Memory is roughly `3 x width x (state bytes + 20)` for the candidates of a layer plus the kept layers (needed to rebuild the route); `--max-memory` and `--seconds` stop the search (then `INCONCLUSIVE`).
 - Ranking: sum over unlocked balls of the moves a *lone* ball needs to reach a free goal of its color (walls, gates, fixed arrows, teleports as initially set; other balls ignored), minimised over the ball-to-goal assignment (exact for up to 4 balls per color, greedy beyond), plus the hex score collected so far, plus a small random tie-break (`--seed`). The heuristic is inadmissible (other balls can act as stoppers) which is fine for an upper bound.
 - Static boards (no switches, no rotating arrows) use an allocation-free move generator (on 9.9, width 300,000 takes about 45 s and width 20,000 about 3 s); boards with switches or rotating arrows use the generic `successors()` and are much slower. Hexes are supported: the search continues past the first route while a lower score is still possible.
-- Level 9.9 (user route: 47 moves): widths 20,000 / 300,000 / 1,000,000 gave 59 / 42 / 42 moves.
+- `--beam-heuristic dynamic` (boards without switches and rotating arrows) replaces each lone-ball distance by `min(static, distance with the other balls fixed where they stand now)`, so moving a ball into a spot where it stops another ball is rewarded immediately. It is about 5x slower per state but much better at small widths; at very large widths the static ranking wins (see below). Use `dynamic` for quick runs (width 5,000-50,000) and `static` with a very wide beam when time allows.
+- Level 9.9 (user route: 47 moves), static: widths 5,000 / 20,000 / 100,000 / 300,000 / 600,000 / 1,000,000 give 63 / 59 / 53 / 42 / 42 / 42 moves (the jump between 100,000 and 300,000 is a threshold the beam must be wide enough to cross). Dynamic: widths 5,000 / 20,000 / 50,000 / 120,000 / 300,000 give 56 / 51 / 50 / 49 / 48 moves.
 - Tip: wider beams and different `--seed` values give different routes; the best route found can be passed to the exact search as `--max-depth (length - 1)` once it is affordable.
 
 ## Tests
