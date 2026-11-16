@@ -44,7 +44,7 @@ Options:
 
 - `--algorithm auto|forward|bidirectional` — auto selects bidirectional search for boards with at least three balls and without hexagons/rotating arrows when terminal gate/teleport masks fit the state budget (and goals equal balls), otherwise forward BFS.
 - `--max-states N` — maximum combined stored states, default 2,000,000; `0` = unlimited.
-- `--max-memory MB` — cap on the stored state bytes (default none). With no limits the memory of the machine is the real limit: v0.7 stores roughly 20-30 bytes per state.
+- `--max-memory MB` — cap on the stored state bytes (default none). With no limits the memory of the machine is the real limit: v0.7/v0.8 store roughly 20-30 bytes per state.
 - `--seconds S` — wall-clock search limit, default 60; `0` = unlimited.
 - `--max-choices N` — maximum rotating-arrow choices within one move, default 8.
 - `--max-depth N` — only consider solutions of at most N moves (N >= 1, default unlimited); see [Depth limit](#depth-limit-certifying-a-known-solution).
@@ -111,6 +111,7 @@ The starting reverse frontier includes **all possible terminal gate configuratio
 - **Switches are supported**, including simultaneous toggling of multiple gates and dynamic teleports.
 - **Consumable hexagons and rotating arrows** still use forward search. Fixed arrows, active and inactive teleports are supported.
 - If enumerating terminal configurations exceeds a conservative limit (16 bits or one quarter of the state budget), auto mode falls back to forward BFS.
+- Reverse expansion (v0.8) ray-casts backward from each ball's destination over the same move rules as the forward search (stoppers, fixed arrows, teleports), so its cost follows the number of real predecessors, not cells x 4. There is no fixed reverse depth cap; the state/byte/time budget and `--max-depth` bound it.
 - A reverse layer cut short by the time/state budget is discarded, and the solver issues an optimality certificate only after complete reverse and forward search layers cover all shorter candidate paths.
 
 Benchmark (single run in this environment; timings are not portable):

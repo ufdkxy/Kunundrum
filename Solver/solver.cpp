@@ -259,6 +259,53 @@ int fastEnd(const Board&b,const State&s,int i,int d){
  }
  return stopped&&entered?p:-1; // Reject loops (all 4*cell states exhausted).
 }
+// Backward ray-cast: appends (cell*4+heading), sorted, for every start from which fastEnd(b,s,i,heading) returns dest, i.e. every
+// way ball i can make one move that ends at dest. Walks the move automaton backwards from the stopping condition. Its states are
+// the pre-step (cell, heading) pairs of fastEnd; the forward map is deterministic, so every state is reached at most once and no
+// loop test is needed. The cost is the size of the preimage rather than cells x 4 simulated moves.
+void backReach(const Board&b,const State&s,int i,int dest,vector<int>&out){
+ static thread_local array<uint32_t,MAX_CELLS*4> seen{};
+ static thread_local uint32_t ticket=0;
+ static thread_local vector<int> queue;
+ if(++ticket==0){seen.fill(0);ticket=1;}
+ queue.clear();out.clear();
+ const int color=b.balls[i].color;
+ auto occupied=[&](int c){for(int j=0;j<b.n;j++)if(j!=i&&s.p[j]==c)return true;return false;};
+ auto enterable=[&](int c){if(b.fixed[c])return false;int g=b.gateAt[c];if(g>=0&&s.gate[g])return false;return !occupied(c);};
+ auto trigger=[&](int c){int t=b.teleAt[c];return t>=0&&s.tele[t]&&(b.teleports[t].color==4||b.teleports[t].color==color);};
+ auto push=[&](int c,int h){int x=c%b.w-dx[h],y=c/b.w-dy[h];if(!b.inside(x,y))return;int k=b.at(x,y)*4+h;if(seen[k]!=ticket){seen[k]=ticket;queue.push_back(k);}};
+ auto pushState=[&](int c,int h){int k=c*4+h;if(seen[k]!=ticket){seen[k]=ticket;queue.push_back(k);}};
+ // Seeds. (1) The ball stands on dest heading h and the next cell blocks it.
+ for(int h=0;h<4;h++){
+  int x=dest%b.w+dx[h],y=dest/b.w+dy[h];
+  if(!b.inside(x,y)||!enterable(b.at(x,y)))pushState(dest,h);
+ }
+ // (2) The ball enters a teleport cell (dest) whose exit is occupied and stops on it.
+ if(trigger(dest)&&enterable(dest)){
+  const Teleport&t=b.teleports[b.teleAt[dest]];int exit=t.a==dest?t.b:t.a;
+  if(occupied(exit))for(int h=0;h<4;h++)push(dest,h);
+ }
+ // Preimages of the pre-step state (c,h): one entry into a cell (plus arrow and teleport effects) that leaves the ball there.
+ for(size_t qi=0;qi<queue.size();qi++){
+  const int c=queue[qi]>>2,h=queue[qi]&3;
+  if(trigger(c)){
+   // c is the exit of a teleport the ball entered at the other end (exit must be free; the entry cell needs only to be enterable).
+   if(occupied(c))continue;
+   const Teleport&t=b.teleports[b.teleAt[c]];int entry=t.a==c?t.b:t.a;
+   if(!enterable(entry))continue;
+   int ai=b.arrowAt[entry];
+   if(ai>=0){if(b.arrows[ai].dir==h)for(int hh=0;hh<4;hh++)push(entry,hh);}
+   else push(entry,h);
+  }else{
+   if(!enterable(c))continue;
+   int ai=b.arrowAt[c];
+   if(ai>=0){if(b.arrows[ai].dir==h)for(int hh=0;hh<4;hh++)push(c,hh);}
+   else push(c,h);
+  }
+ }
+ for(int k:queue)if((k>>2)!=dest)out.push_back(k);
+ sort(out.begin(),out.end());
+}
 SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const Packer&pk){
  SearchResult out;out.algorithm="bidirectional BFS";const int D=lim.maxDepth>0?lim.maxDepth:INT32_MAX; // D: only paths of at most D moves matter
  if(!b.staticReverse||b.goals.size()!=b.balls.size())return out;
@@ -298,56 +345,60 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
  const uint64_t reverseBudget=lim.maxStates==UINT64_MAX?1000000:max<uint64_t>(1,lim.maxStates/2);
  const uint64_t reverseBytes=lim.maxBytes/2;
  bool reverseLimited=false;
+ vector<int> starts;
  while(revHead<rev.size()&&!timer.expired()){
-  size_t layerEnd=rev.size();if(rev.depth(revHead)>=12||rev.depth(revHead)>=D)break;
+  size_t layerEnd=rev.size();if(rev.depth(revHead)>=D)break;
   bool finished=true;
   for(;revHead<layerEnd;revHead++){
    if(rev.size()>=reverseBudget||(reverseBytes&&rev.bytes()>=reverseBytes)||timer.expired()){finished=false;break;}
    State targetState;pk.unpack(rev.key(revHead),targetState);pk.pack(targetState,targetKey.data());const int curDepth=rev.depth(revHead);
+   // Predecessors of the target for each ball i: ball i made one move from p in direction d and ended at dest while every other ball stayed put.
+   // The predecessor board (other balls, gates, teleports, with the preceding switch undone) does not depend on the start cell, so all valid
+   // starts come from one backward ray-cast from dest over the move automaton instead of simulating every (cell, direction) pair.
    for(int i=0;i<b.n&&finished;i++){
-    int dest=targetState.p[i];
-    for(int p=0;p<b.w*b.h&&finished;p++){
+    const int dest=targetState.p[i];
+    State tmpl=targetState;
+    // Undo the switch activated by the preceding move. The blocked-closing
+    // rule is determined by the *post*-move occupancy, not source occupancy.
+    const int swi=b.switchAt[dest];
+    if(swi>=0){
+     tmpl.sw[swi]^=1;
+     for(int g:b.switchGroups[swi]){
+      bool occupiedGate=false;
+      for(int j:b.groupGates[g])for(int ball:targetState.p)
+       if(ball==b.gates[j].p)occupiedGate=true;
+      if(!occupiedGate)for(int j:b.groupGates[g])tmpl.gate[j]^=1;
+     }
+     for(int t:b.switchTele[swi])tmpl.tele[t]^=1;
+    }
+    backReach(b,tmpl,i,dest,starts);
+    for(int sd:starts){
+     const int p=sd>>2,d=sd&3;
      // Previously occupied target goal cannot be departed; all other balls stay fixed.
-     if(p==dest||b.fixed[p]||b.goalColor[p]==b.balls[i].color)continue;
+     if(b.fixed[p]||b.goalColor[p]==b.balls[i].color)continue;
      int gi=b.gateAt[p];if(gi>=0&&targetState.gate[gi])continue;
      bool occupied=false;for(int j=0;j<b.n;j++)if(j!=i&&targetState.p[j]==p){occupied=true;break;}if(occupied)continue;
-     State predecessor=targetState;predecessor.p[i]=p;
-     // Undo the switch activated by the preceding move. The blocked-closing
-     // rule is determined by the *post*-move occupancy, not source occupancy.
-     int swi=b.switchAt[dest];
+     if(gi>=0&&tmpl.gate[gi])continue;
+     transitions++;
+     State predecessor=tmpl;predecessor.p[i]=p;
+     // Replay the switch's effects to reject invalid reverse candidates.
+     State check=predecessor;check.p[i]=dest;
      if(swi>=0){
-      predecessor.sw[swi]^=1;
+      check.sw[swi]^=1;
       for(int g:b.switchGroups[swi]){
-       bool occupiedGate=false;
-       for(int j:b.groupGates[g])for(int ball:targetState.p)
-        if(ball==b.gates[j].p)occupiedGate=true;
-       if(!occupiedGate)for(int j:b.groupGates[g])predecessor.gate[j]^=1;
+       bool blocked=false;
+       for(int j:b.groupGates[g])if(!check.gate[j])for(int ball:check.p)
+        if(ball==b.gates[j].p)blocked=true;
+       if(!blocked)for(int j:b.groupGates[g])check.gate[j]^=1;
       }
-      for(int t:b.switchTele[swi])predecessor.tele[t]^=1;
+      for(int t:b.switchTele[swi])check.tele[t]^=1;
      }
-     if(gi>=0&&predecessor.gate[gi])continue;
-     for(int d=0;d<4;d++){
-      transitions++;
-      if(fastEnd(b,predecessor,i,d)!=dest)continue;
-      // Replay the switch's effects to reject invalid reverse candidates.
-      State check=predecessor;check.p[i]=dest;
-      if(swi>=0){
-       check.sw[swi]^=1;
-       for(int g:b.switchGroups[swi]){
-        bool blocked=false;
-        for(int j:b.groupGates[g])if(!check.gate[j])for(int ball:check.p)
-         if(ball==b.gates[j].p)blocked=true;
-        if(!blocked)for(int j:b.groupGates[g])check.gate[j]^=1;
-       }
-       for(int t:b.switchTele[swi])check.tele[t]^=1;
-      }
-      pk.pack(check,checkKey.data());if(memcmp(checkKey.data(),targetKey.data(),pk.K))continue;
-      pk.pack(predecessor,key.data());
-      if(rev.find(key.data())!=Store::NONE)continue;
-      if(rev.size()>=reverseBudget||(reverseBytes&&rev.bytes()>=reverseBytes)){finished=false;break;}
-      Move m;m.source=(uint16_t)p;m.color=(Byte)b.balls[i].color;m.dir=(Byte)d;
-      rev.add(key.data(),(uint32_t)revHead,curDepth+1,m);
-     }
+     pk.pack(check,checkKey.data());if(memcmp(checkKey.data(),targetKey.data(),pk.K))continue;
+     pk.pack(predecessor,key.data());
+     if(rev.find(key.data())!=Store::NONE)continue;
+     if(rev.size()>=reverseBudget||(reverseBytes&&rev.bytes()>=reverseBytes)){finished=false;break;}
+     Move m;m.source=(uint16_t)p;m.color=(Byte)b.balls[i].color;m.dir=(Byte)d;
+     rev.add(key.data(),(uint32_t)revHead,curDepth+1,m);
     }
    }
   }
@@ -459,7 +510,7 @@ string codeWithSolution(const Board&b,const vector<LabeledMove>& path){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open levels.js: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0)return trim(line.substr(prefix.size()));}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.7"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.8"; // Solver's own version, independent of the web app's APP_VERSION.
 int main(int argc,char**argv){
  try{
   Limits lim;string input,level,catalog="levels.js";bool wantK3=true;
