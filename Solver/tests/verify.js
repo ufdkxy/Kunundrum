@@ -19,6 +19,11 @@ fixture('switch',{version:1,width:5,height:2,id:'switch',title:'switch',balls:[{
 for(const [cap,status] of [[4,4],[5,0]]){const q=spawnSync(path.join(root,'kunsolve'),['--level','1.8','--catalog',path.join(repo,'levels.js'),'--max-score',String(cap),'--quiet','--no-code'],{cwd:root,encoding:'utf8',timeout:35000});assert.equal(q.status,status,'1.8 --max-score '+cap);if(status===0)assert(/Score: 5\b/.test(q.stdout));}
 console.log('PASS --max-score bound on 1.8 (4 -> proved none, 5 -> optimal)');
 console.log('PASS '+n+' end-to-end fixture(s)');
+// Balanced bidirectional search: certified optimum on a chapter-10 level, and the proven lower bound printed when the budget runs out.
+{const cat=path.join(repo,'levels.js'),run=(id,extra)=>spawnSync(path.join(root,'kunsolve'),['--level',id,'--catalog',cat,'--algorithm','balanced','--quiet','--no-code','--seconds','60',...extra],{cwd:root,encoding:'utf8',timeout:90000});
+ const a=run('10.8',['--max-states','0']);assert.equal(a.status,0,a.stdout);assert(/^OPTIMAL/m.test(a.stdout)&&/^Moves: 28$/m.test(a.stdout),'balanced 10.8 must prove 28 moves optimal');
+ const b=run('10.9',['--max-states','200000']);assert.equal(b.status,2,b.stdout);const lb=+(b.stdout.match(/^Lower bound: at least (\d+) moves/m)?.[1]??0);assert(lb>=10&&lb<=28,'balanced 10.9 lower bound '+lb);
+ console.log('PASS balanced search (10.8 optimal 28; 10.9 lower bound',lb,'with 200,000 states)');}
 // Beam search (heuristic upper bound): every route must replay in the JS engine; it never claims optimality (exit 2, "not certified").
 // On these tiny boards a 20,000-state beam never prunes, so it also finds the known optimal score.
 for(const [id,score] of [['1.7',3],['1.8',5],['2.2',9],['7.3',null],['8.1',null]]){
