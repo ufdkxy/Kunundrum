@@ -46,7 +46,8 @@ def normalized(board):
     for v in data['balls']:
         c=v['color'];counters[c]=counters.get(c,0)+1
         v['id']=(c+str(counters[c])) if groups[c]>1 else c
-    data['teleports']=sorted(data.get('teleports',[]),key=lambda a:a['id'])
+    natural=lambda a:[(0,int(t),'') if t.isdigit() else (1,0,t) for t in re.split(r'(\d+)',a['id'])]  # matches JS localeCompare(numeric)
+    data['teleports']=sorted(data.get('teleports',[]),key=natural)
     for v in data['teleports']:v['ends']=sorted(v['ends'],key=order)
     return data
 
@@ -114,12 +115,11 @@ def encode(board):
     items(board['balls'],ball);items(board['goals'],ball)
     def arrow(p):at(p);ui(DIRS.index(p['direction'])*2+int(p.get('rotating',False)))
     items(board['arrows'],arrow)
-    def gate(p):at(p);string(p['id']);string(p.get('group',p['id']));ui(int(p.get('active',True)))
+    def gate(p):at(p);string(p['id']);ui(int(p.get('active',True)))
     items(board['gates'],gate)
     def sw(p):
         at(p);string(p['id']);ui(int(p.get('on',False)))
-        items(sorted(p.get('wallGroups',[])),string)
-        items(sorted(p.get('teleportIds',[])),string)
+        items(sorted(p.get('controls',[])),string)
     items(board['switches'],sw)
     def tp(p):
         string(p['id']);color(p['color']);ui(int(p.get('active',True)));at(p['ends'][0]);at(p['ends'][1])

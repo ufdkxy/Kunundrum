@@ -32,8 +32,8 @@ After a legal move finishes at its **final** cell:
 
 - If that cell is a goal matching the moving ball's color, the ball is **permanently locked/docked**; it cannot be selected again. Balls initially occupying their matching goals start locked.
 - If that cell contains a switch, the switch fires **once at the end of the move**, not merely when crossed. Its visual `on` flag toggles; the flag is not itself used to determine move legality.
-- The switch tries to toggle every gate belonging to each group named in its `wallGroups`, and every teleport named in `teleportIds`. A group may contain several gates, and its members may have different initial active states.
-- **Blocked closing rule:** for a particular gate group, if any currently inactive gate in that group would become active under a ball, **none of that group's gates change** on this activation. Other groups and controlled teleports still toggle. The switch visual indicator still changes.
+- A switch controls one list, `controls`, of gate and teleport IDs (gate IDs `G1`, …; teleport IDs `T1`, …; switch IDs `S1`, …). Several switches may list the same element. Elements of one list may have different initial active states; they all flip together.
+- **Blocked closing rule:** if any currently inactive gate in the switch's list would become active under a ball, the switch **cannot change state**: none of its gates or teleports toggle, and its visual `on` flag stays as it is.
 - A move changes the score by `1 + sum(values of hexes first consumed during that move)`. Each hex may contribute its signed value (`-10000` through `10000`, excluding zero) **at most once per run**, even if traversed repeatedly. Score starts at `0`; moves start at `0`.
 
 `Core.isComplete(state)` means every ball is locked, and the puzzle is solved exactly then. There is no score threshold: the score may be zero or negative. **Objective:** each puzzle is solved for the **lowest possible score**: the number of moves plus the one-time hex bonuses and penalties collected along the route (lower is better, so a negative hex is a bonus and a positive hex a penalty). The solver minimizes the score, and among equal scores the number of moves. On boards without hexes the score equals the move count.
@@ -77,8 +77,8 @@ Text parsing checks syntax and identifiers; applying the moves against successiv
   "balls": [{"color": "R", "x": 1, "y": 1}],
   "goals": [{"color": "R", "x": 4, "y": 1}],
   "arrows": [],
-  "gates": [{"id": "W1", "group": "doors", "x": 3, "y": 2, "active": true}],
-  "switches": [{"id": "S1", "x": 2, "y": 2, "wallGroups": ["doors"], "teleportIds": []}],
+  "gates": [{"id": "G1", "x": 3, "y": 2, "active": true}],
+  "switches": [{"id": "S1", "x": 2, "y": 2, "controls": ["G1"]}],
   "teleports": [],
   "hexes": []
 }
@@ -92,12 +92,12 @@ Additional feature shapes:
 {"id": "H1", "x": 3, "y": 1, "value": -5}
 ```
 
-The three snippets above illustrate arrow, teleport and hexagon entries respectively; insert them into the appropriate arrays, **not all on top of existing features**. Validation limits include 1–32 cells per dimension, 1–128 balls, up to 4,096 entries per feature array, and valid references from switches to gate groups and teleport IDs. Duplicate feature IDs, overlapping floor features, insufficient goals by color, and initial balls inside fixed/active walls are rejected.
+The three snippets above illustrate arrow, teleport and hexagon entries respectively; insert them into the appropriate arrays, **not all on top of existing features**. Validation limits include 1–32 cells per dimension, 1–128 balls, up to 4,096 entries per feature array, and valid references from switches to gate and teleport IDs (a gate and a teleport may not share an ID). Duplicate feature IDs, overlapping floor features, insufficient goals by color, and initial balls inside fixed/active walls are rejected.
 
 ## 6a. How features look in the game (for screenshot parsing)
 
 - **Arrows:** red chevrons are **rotating** arrows (the player picks the exit); blue chevrons are **fixed** arrows. There are no green arrows. Chevron colours do not follow the level theme.
-- **Switchable elements** (gates and some teleports) are drawn on a metal tile split into quadrants by a dark central cross. Every switchable element is controlled by exactly one switch, and every switch controls at least one element, so a board with a single switch is unambiguous.
+- **Switchable elements** (gates and some teleports) are drawn on a metal tile split into quadrants by a dark central cross. A board with a single switch is unambiguous: it controls every switchable element.
 - **Gates:** plain grey metal = **inactive** (floor); metal with a yellow/brown striped border = **active** (acts as a wall).
 - **Teleports:** four coloured corner arcs, a bright centre dot and dim concentric circles. Drawn on bare floor = always on (not switchable); drawn over the metal cross tile = switchable. An **inactive** teleport loses its colour (grey concentric circles on the metal tile).
 - **Switches:** solid glossy disc; red = off, green with a depressed shadow = on (display state only, see 3).

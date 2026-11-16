@@ -128,7 +128,7 @@ function expandSolution(board, bytes) {
 
 /** K2 is a compact, lossless binary encoding of the validated board.
  * Positions are zero-based cell offsets; integers are unsigned LEB128.
- * Strings use a small back-reference dictionary, including feature/group IDs.
+ * Strings use a small back-reference dictionary, including feature IDs.
  * The format is self-contained; no server, compression library or catalog required.
  */
 const CODE_COLORS = 'RGBY*';
@@ -160,10 +160,10 @@ function binaryBoard(board, k3 = true) {
   list(board.balls, p => { at(p); color(p.color); });
   list(board.goals, p => { at(p); color(p.color); });
   list(board.arrows, p => { at(p); uint(CODE_DIRECTIONS.indexOf(p.direction) * 2 + (p.rotating ? 1 : 0)); });
-  list(board.gates, p => { at(p); str(p.id); str(p.group); uint(p.active ? 1 : 0); });
+  list(board.gates, p => { at(p); str(p.id); uint(p.active ? 1 : 0); });
   list(board.switches, p => {
     at(p); str(p.id); uint(p.on ? 1 : 0);
-    list(p.wallGroups, str); list(p.teleportIds, str);
+    list(p.controls, str);
   });
   list(board.teleports, p => { str(p.id); color(p.color); uint(p.active ? 1 : 0); at(p.ends[0]); at(p.ends[1]); });
   list(board.hexes, p => { at(p); str(p.id); uint(p.value < 0 ? -2 * p.value - 1 : 2 * p.value); });
@@ -235,11 +235,11 @@ function unbinaryBoard(bytes, problems) {
     if (option > 7) throw new Error('Invalid K2 arrow.');
     return {...p, direction:CODE_DIRECTIONS[Math.floor(option / 2)], ...(option % 2 ? {rotating:true} : {})};
   });
-  raw.gates = list(() => ({...at(), id:str(), group:str(), active:bool()}));
+  raw.gates = list(() => ({...at(), id:str(), active:bool()}));
   function bool() { const v=uint(); if (v > 1) throw new Error('Invalid K2 boolean.'); return !!v; }
   raw.switches = list(() => {
-    const p = at(), id = str(), on = bool(), wallGroups = list(str), teleportIds = list(str);
-    return {...p,id,wallGroups,teleportIds,...(on ? {on:true} : {})};
+    const p = at(), id = str(), on = bool(), controls = list(str);
+    return {...p,id,controls,...(on ? {on:true} : {})};
   });
   raw.teleports = list(() => ({id:str(),color:color(true),active:bool(),ends:[at(),at()]}));
   raw.hexes = list(() => { const p=at(),id=str(),value=uint();return {...p,id,value:value % 2 ? -(value+1)/2 : value/2}; });

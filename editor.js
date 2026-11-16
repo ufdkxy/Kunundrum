@@ -7,11 +7,12 @@ const clone = x => JSON.parse(JSON.stringify(x));
 const colorNames={R:'Red',G:'Green',B:'Blue',Y:'Yellow','*':'Universal'};
 const singular={walls:'Wall',balls:'Ball',goals:'Goal',arrows:'Arrow',gates:'Gate',switches:'Switch',teleports:'Teleport',hexes:'Hexagon'};
 const tools=['select','ball','goal','wall','gate','switch','arrow','teleport','hex','erase'];
-const mutable = {active:false,draft:null,grab:null,floatDrag:null,preferFloor:false,tool:'select',color:'R',direction:'r',rotating:false,activeTile:true,group:'group1',hexValue:-5,selected:null,pending:null,history:[],future:[],dragging:false,dragChanged:false,dragBefore:null,lastCell:'',dirty:false};
+const mutable = {active:false,draft:null,grab:null,floatDrag:null,preferFloor:false,tool:'select',color:'R',direction:'r',rotating:false,activeTile:true,hexValue:-5,selected:null,pending:null,history:[],future:[],dragging:false,dragChanged:false,dragBefore:null,lastCell:'',dirty:false};
 const E = mutable;
 const host = () => window.KunundrumHost;
 const same=(a,b)=>a&&b&&a.x===b.x&&a.y===b.y;
 const clean = s => String(s||'').trim();
+const prune = b => {const ids=new Set([...b.gates,...b.teleports].map(v=>v.id));for(const sw of b.switches)sw.controls=sw.controls.filter(id=>ids.has(id));};
 const list = s => clean(s).split(',').map(clean).filter(Boolean);
 const at = (p,x,y)=>p.x===x&&p.y===y;
 const nextId = (arr, prefix) => {let i=1;while(arr.some(v=>v.id===prefix+i))i++;return prefix+i;};
@@ -35,8 +36,8 @@ function putProps(){
  let html=`<div class="editor-object-title">${singular[match.type]||esc(match.type)}${item.id?' · '+esc(item.id):''}</div>`;
  if(item.color)html+=select('Color',colors,item.color);
  if(match.type==='arrows'){html+=select('Direction',[['u','Up'],['d','Down'],['l','Left'],['r','Right']],item.direction);html+=select('Rotating',[["false","No"],["true","Yes"]],String(!!item.rotating));}
- if(match.type==='gates'){html+=input('Group',item.group);html+=select('Active',[["true","On"],["false","Off"]],String(item.active));}
- if(match.type==='switches'){html+=input('Wall groups',item.wallGroups.join(', '));html+=input('Teleport IDs',item.teleportIds.join(', '));html+=select('Active',[["true","On"],["false","Off"]],String(!!item.on));}
+ if(match.type==='gates'){html+=select('Active',[["true","On"],["false","Off"]],String(item.active));}
+ if(match.type==='switches'){html+=input('Gate/Teleport IDs',item.controls.join(', '));html+=select('Active',[["true","On"],["false","Off"]],String(!!item.on));}
  if(match.type==='teleports'){html+=select('Active',[["true","On"],["false","Off"]],String(item.active));html+=`<p class="editor-coordinates">Endpoints: (${item.ends[0].x}, ${item.ends[0].y}) · (${item.ends[1].x}, ${item.ends[1].y})</p>`;}
  if(match.type==='hexes')html+=input('Value',item.value,'number');
  html+='<button class="secondary-button editor-delete" id="editor-delete-object" type="button">Delete object</button>';
@@ -51,7 +52,6 @@ function refresh(){
  document.body.classList.toggle('edit-mode',E.active);
  for(const id of ['open-levels','open-board-data','open-share'])$(id).disabled=E.active;
  $('editor-width').value=E.draft?.width??10;$('editor-height').value=E.draft?.height??7;
- $('editor-group').value=E.group;
  $('editor-hex').value=E.hexValue;
  $('editor-rotating').checked=E.rotating;
  $('editor-active').checked=E.activeTile;
@@ -65,7 +65,6 @@ function refresh(){
  $('editor-colors').hidden=!['ball','goal','teleport'].includes(t);
  $('editor-universal-color').hidden=t!=='teleport';
  $('editor-directions').hidden=t!=='arrow';
- $('editor-group-label').hidden=t!=='gate';
  $('editor-hex-label').hidden=t!=='hex';
  $('editor-active-label').hidden=!['gate','teleport'].includes(t);
  $('editor-rotating-label').hidden=t!=='arrow';
@@ -227,6 +226,7 @@ function moveObject(start,end,selection){
    item.x=end.x;item.y=end.y;
  }
  delete E.draft.solution;
+ prune(E.draft);
  const changed=remember(original);
  if(changed){E.selected={...selection,x:end.x,y:end.y};renderDraft();refresh();setStatus('Object moved.');}
  return changed;
@@ -243,17 +243,18 @@ function editAt(x,y,eraser=false){
   if(!E.pending){E.pending={x,y};refresh();renderDraft();return false;}
   if(at(E.pending,x,y)){E.pending=null;refresh();renderDraft();return false;}
   clearFloor(E.pending.x,E.pending.y);clearFloor(x,y);
-  b.teleports.push({id:nextId(b.teleports,'teleport'),color:E.color,active:E.activeTile,ends:[E.pending,{x,y}]});E.pending=null;
+  b.teleports.push({id:nextId(b.teleports,'T'),color:E.color,active:E.activeTile,ends:[E.pending,{x,y}]});E.pending=null;
  }else{
   clearFloor(x,y);
   const point={x,y};
   if(t==='wall')b.walls.push(point);
   if(t==='goal')b.goals.push({...point,color:E.color});
-  if(t==='gate')b.gates.push({...point,id:nextId(b.gates,'gate'),group:clean(E.group)||'group1',active:E.activeTile});
-  if(t==='switch')b.switches.push({...point,id:nextId(b.switches,'switch'),wallGroups:b.gates.some(v=>v.group===E.group)?[E.group]:[],teleportIds:[],on:false});
+  if(t==='gate')b.gates.push({...point,id:nextId(b.gates,'G'),active:E.activeTile});
+  if(t==='switch')b.switches.push({...point,id:nextId(b.switches,'S'),controls:[],on:false});
   if(t==='arrow')b.arrows.push({...point,direction:E.direction,...(E.rotating?{rotating:true}:{})});
   if(t==='hex')b.hexes.push({...point,id:nextId(b.hexes,'hex'),value:E.hexValue||-5});
  }
+ prune(b);
  const changed=previous!==snapshot();
  if(changed){E.dragChanged=true;E.dirty=true;E.selected=null;refresh();renderDraft();setStatus('Draft edited — choose Play to validate and test.');}
  return changed;
@@ -267,11 +268,9 @@ function applyProperty(key,value){
  if(key==='Color')data.color=value;
  if(key==='Direction')data.direction=value;
  if(key==='Rotating')data.rotating=value==='true';
- if(key==='Group')data.group=clean(value)||'group1';
  if(key==='Active'){if(sel.type==='switches')data.on=value==='true';else data.active=value==='true';}
 
- if(key==='Wall groups')data.wallGroups=list(value);
- if(key==='Teleport IDs')data.teleportIds=list(value);
+ if(key==='Gate/Teleport IDs')data.controls=list(value);
  if(key==='Value')data.value=Number(value);
  if(remember(prev)){refresh();renderDraft();setStatus('Property updated.');}
 }
@@ -286,7 +285,7 @@ function updateDimensions(){
  const prev=snapshot();E.draft.width=w;E.draft.height=h;
  const inside=p=>p.x<=w&&p.y<=h;
  for(const type of keys){if(type==='teleports')E.draft.teleports=E.draft.teleports.filter(p=>p.ends.every(inside));else E.draft[type]=E.draft[type].filter(inside);}
- remember(prev);refresh();renderDraft();setStatus('Grid resized. Out-of-bounds objects were removed.');
+ prune(E.draft);remember(prev);refresh();renderDraft();setStatus('Grid resized. Out-of-bounds objects were removed.');
 }
 function newBoard(){E.draft=template();E.fromHost=false;E.history=[];E.future=[];E.pending=null;E.selected=null;refresh();renderDraft();setStatus('New board.');}
 function ensureEditing(){if(!E.active)setMode(true);}
@@ -298,7 +297,7 @@ $('editor-undo').addEventListener('click',()=>editorUndo());$('editor-redo').add
 $('editor-resize').addEventListener('click',updateDimensions);
 $('editor-title').addEventListener('change',event=>{const prev=snapshot();E.draft.title=clean(event.target.value)||'Custom board';E.draft.id=E.draft.title.toLowerCase().replace(/[^a-z0-9_.-]/g,'-').replace(/^-+/,'').slice(0,80)||'custom';remember(prev);renderDraft();refresh();});
 $('editor-properties').addEventListener('change',event=>{const key=event.target.dataset.edit;if(key)applyProperty(key,event.target.value);});
-$('editor-properties').addEventListener('click',event=>{if(event.target.id==='editor-delete-object'&&E.selected){const prev=snapshot();const s=E.selected;if(s.type==='teleports')E.draft.teleports=E.draft.teleports.filter(p=>p.id!==s.id);else E.draft[s.type]=E.draft[s.type].filter(p=>!at(p,s.x,s.y));E.selected=null;remember(prev);refresh();renderDraft();}});
+$('editor-properties').addEventListener('click',event=>{if(event.target.id==='editor-delete-object'&&E.selected){const prev=snapshot();const s=E.selected;if(s.type==='teleports')E.draft.teleports=E.draft.teleports.filter(p=>p.id!==s.id);else E.draft[s.type]=E.draft[s.type].filter(p=>!at(p,s.x,s.y));prune(E.draft);E.selected=null;remember(prev);refresh();renderDraft();}});
 for(const button of panel.querySelectorAll('[data-editor-tool]')) {
  button.draggable=true;
  button.addEventListener('dragstart',event=>{E.tool=button.dataset.editorTool;E.pending=null;event.dataTransfer.setData('text/plain',E.tool);event.dataTransfer.effectAllowed='copy';refresh();});
@@ -308,7 +307,6 @@ panel.addEventListener('click',event=>{
  const c=event.target.closest('[data-editor-color]');if(c){E.color=c.dataset.editorColor;refresh();return;}
  const d=event.target.closest('[data-editor-direction]');if(d){E.direction=d.dataset.editorDirection;refresh();return;}
 });
-$('editor-group').addEventListener('change',e=>E.group=clean(e.target.value)||'group1');
 $('editor-hex').addEventListener('change',e=>E.hexValue=Number(e.target.value)||-5);
 $('editor-rotating').addEventListener('change',e=>E.rotating=e.target.checked);
 $('editor-active').addEventListener('change',e=>E.activeTile=e.target.checked);

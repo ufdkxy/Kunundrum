@@ -5,7 +5,7 @@ Requires numpy and opencv-python. See README.md. Screen coordinates are
 converted to bottom-left-origin, one-based game coordinates.
 """
 from __future__ import annotations
-PARSER_VERSION = '0.9.5'  # Parser's own version, independent of the web app's APP_VERSION.
+PARSER_VERSION = '0.10.0'  # Parser's own version, independent of the web app's APP_VERSION.
 import argparse
 import json
 import math
@@ -582,41 +582,38 @@ def parse_label(label):
 
 
 def guess_switch_mapping(switches,gates,teleports,switch_info,unresolved):
-    """Fill in switch -> wallGroups/teleportIds for switches without an override.
-    Nearest switch (Manhattan distance, ties to the earliest switch in lexicographic
-    order) for each unclaimed element, then reassign so no switch is left empty.
-    Returns a description of a guess, or '' when nothing was ambiguous."""
-    claimed_groups={g for sw in switches if sw['id'] in switch_info for g in sw['wallGroups']}
-    claimed_tp={t for sw in switches if sw['id'] in switch_info for t in sw['teleportIds']}
-    groups={}
-    for gate in gates:groups.setdefault(gate['group'],[]).append((gate['x'],gate['y']))
-    elements=[('g',gid,pts) for gid,pts in groups.items() if gid not in claimed_groups]
-    elements+=[('t',t['id'],[(e['x'],e['y']) for e in t['ends']]) for t in teleports
-               if t.get('switchable') and t['id'] not in claimed_tp]
+    """Fill in each switch's `controls` list for switches without an override.
+    Every unclaimed switchable element (gate or switchable teleport) goes to its nearest
+    switch (Manhattan distance; ties to the earliest switch), then elements are moved so
+    that no switch is left empty. Returns a description of a guess, or '' when nothing
+    was ambiguous."""
+    claimed={i for sw in switches if sw['id'] in switch_info for i in sw['controls']}
+    elements=[(g['id'],[(g['x'],g['y'])]) for g in gates if g['id'] not in claimed]
+    elements+=[(t['id'],[(e['x'],e['y']) for e in t['ends']]) for t in teleports
+               if t.get('switchable') and t['id'] not in claimed]
     free=[sw for sw in switches if sw['id'] not in switch_info]
     if not free and elements:free=list(switches)  # leftovers go to the nearest of all switches
     if not free:return ''
     for sw in free:
-        sw['wallGroups']=[];sw['teleportIds']=[]
+        if sw['id'] not in switch_info:sw['controls']=[]
         unresolved[:]=[w for w in unresolved if w!=f'Switch at ({sw["x"]},{sw["y"]}) has unknown mapping']
-    def dist(sw,el):return min(abs(sw['x']-x)+abs(sw['y']-y) for x,y in el[2])
+    def dist(sw,el):return min(abs(sw['x']-x)+abs(sw['y']-y) for x,y in el[1])
     owner={}
     for el in elements:
-        owner[el[:2]]=min(range(len(free)),key=lambda i:(dist(free[i],el),i))
+        owner[el[0]]=min(range(len(free)),key=lambda i:(dist(free[i],el),i))
     # Surjectivity: an empty switch takes the nearest element from a switch that has several.
     for i,sw in enumerate(free):
         if any(o==i for o in owner.values()):continue
-        donors=[el for el in elements if sum(o==owner[el[:2]] for o in owner.values())>1]
+        donors=[el for el in elements if sum(o==owner[el[0]] for o in owner.values())>1]
         if not donors:break
-        el=min(donors,key=lambda e:(dist(sw,e),e[1]))
-        owner[el[:2]]=i
+        el=min(donors,key=lambda e:(dist(sw,e),e[0]))
+        owner[el[0]]=i
     for el in elements:
-        sw=free[owner[el[:2]]]
-        (sw['wallGroups'] if el[0]=='g' else sw['teleportIds']).append(el[1])
+        free[owner[el[0]]]['controls'].append(el[0])
     if len(switches)==1:return ''
-    empty=[sw['id'] for sw in free if not sw['wallGroups'] and not sw['teleportIds']]
+    empty=[sw['id'] for sw in free if not sw['controls']]
     if empty:unresolved.append('Switch(es) '+', '.join(empty)+' control nothing: fewer switchable elements than switches')
-    return '; '.join(f"{sw['id']}->{','.join(sw['wallGroups']+sw['teleportIds']) or '-'}" for sw in free)
+    return '; '.join(f"{sw['id']}->{','.join(sw['controls']) or '-'}" for sw in free)
 
 def assemble_board(labels,geom,level,overrides):
     walls=[]; balls=[]; goals=[]; arrows=[]; gates=[]; switches=[]; hexes=[]; telecells=defaultdict(list); teleswitchable=defaultdict(list); teleinactive=defaultdict(list)
@@ -650,17 +647,17 @@ def assemble_board(labels,geom,level,overrides):
                 unresolved.append(f'Hexagon at ({x},{y}) needs its signed value')
             elif kind.startswith('hex_'):hexes.append(dict(**pos,id=f'H{len(hexes)+1}',value=int(kind[4:])))
             elif kind in ('gate_detected','gate_inactive'):
-                gid=f'W{len(gates)+1}'
-                gates.append(dict(**pos,id=gid,group=gid,active=kind=='gate_detected'))
+                gid=f'G{len(gates)+1}'
+                gates.append(dict(**pos,id=gid,active=kind=='gate_detected'))
             elif kind.startswith('gate_'):
                 bits=kind.split('_')
                 gate_id=bits[1]
                 active=not (len(bits)>2 and bits[2] in ('off','inactive','false'))
-                gates.append(dict(**pos,id=gate_id,group=gate_id,active=active))
+                gates.append(dict(**pos,id=gate_id,active=active))
             elif kind.startswith('switch'):
                 is_on=kind=='switch_on'  # green, depressed switch; red = off
                 sid=kind.split('_',1)[1] if '_' in kind and not is_on else f'S{len(switches)+1}'
-                switches.append(dict(**pos,id=sid,wallGroups=[],teleportIds=[],**({'on':True} if is_on else {})))
+                switches.append(dict(**pos,id=sid,controls=[],**({'on':True} if is_on else {})))
                 unresolved.append(f'Switch at ({x},{y}) has unknown mapping')
             else:unresolved.append(f'Unrecognized object at ({x},{y})')
     teleports=[]
@@ -675,15 +672,14 @@ def assemble_board(labels,geom,level,overrides):
                 flags=teleswitchable[color]
                 if flags[0]!=flags[1]:unresolved.append(f'{color} teleport pair: only one end is metal-textured (switchable); check both ends')
                 # Switchable teleports sit on the metal quadrant tile; always-on ones do not.
-                teleports.append(dict(id='T'+('W' if color=='*' else color),color=color,ends=ends,active=not all(teleinactive[color]),
+                teleports.append(dict(id=f'T{len(teleports)+1}',color=color,ends=ends,active=not all(teleinactive[color]),
                                       **({'switchable':True} if all(flags) else {})))
             elif len(ends):unresolved.append(f'{len(ends)} {color} teleport endpoints: explicit pairing required')
     switch_info=overrides.get('switches',{})
     for s in switches:
         if s['id'] in switch_info:
             spec=switch_info[s['id']]
-            s['wallGroups']=list(spec.get('wallGroups',[]))
-            s['teleportIds']=list(spec.get('teleportIds',[]))
+            s['controls']=list(spec.get('controls',[]))
             if 'on' in spec:
                 if spec['on']:s['on']=True
                 else:s.pop('on',None)
@@ -691,10 +687,7 @@ def assemble_board(labels,geom,level,overrides):
         mapped_positions={(s['x'],s['y']) for s in switches if s['id'] in switch_info}
         for mx,my in mapped_positions:
             unresolved=[w for w in unresolved if w != f'Switch at ({mx},{my}) has unknown mapping']
-    gate_groups=overrides.get('gateGroups',{})
-    for gate in gates:
-        gate['group']=gate_groups.get(gate['id'],gate['group'])
-    # Switchable elements: gates (grouped) and the teleports drawn on metal;
+    # Switchable elements: gates and the teleports drawn on metal;
     # always-on teleports are never switch-controlled. Every switchable element
     # belongs to exactly one switch and every switch controls at least one element,
     # so a lone switch is unambiguous. Otherwise guess by proximity.

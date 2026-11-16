@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.3.34'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.4.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -96,7 +96,7 @@ function renderHelpIcons() {
     version:1, id:'help-symbols', title:'Help symbols', width:6, height:2,
     balls:[{color:'B',x:1,y:1}], goals:[{color:'B',x:1,y:2}],
     arrows:[{x:2,y:1,direction:'r'}],
-    switches:[{id:'S',x:3,y:1,wallGroups:[],teleportIds:['T']}],
+    switches:[{id:'S',x:3,y:1,controls:['T']}],
     teleports:[{id:'T',color:'B',ends:[{x:4,y:1},{x:4,y:2}],active:true}],
     hexes:[{id:'minus',x:5,y:1,value:-5}],
   });
@@ -249,26 +249,16 @@ function persist() {
 }
 
 function mappingLabels(b) {
+  // Tile numbers say which switch controls which element; they only appear when a board has several switches.
   const labels={switches:new Map(),gates:new Map(),teleports:new Map()};
-  const groups=new Map(),switchGroups=new Map();
-  const switches=[...b.switches].sort((a,z)=>a.y-z.y||a.x-z.x||(a.id<z.id?-1:a.id>z.id?1:0));
-  for(const sw of switches){
-    const gateIds=b.gates.filter(gate=>sw.wallGroups.includes(gate.group)).map(gate=>gate.id).sort();
-    const teleportIds=[...new Set(sw.teleportIds)].sort();
-    if(!gateIds.length&&!teleportIds.length)continue;
-    const key=JSON.stringify([gateIds,teleportIds]);
-    if(!groups.has(key))groups.set(key,{number:groups.size+1,gateIds,teleportIds});
-    switchGroups.set(sw.id,groups.get(key).number);
-  }
-  // Numbers explain different control mappings, not individual tile IDs.
-  if(groups.size<2)return labels;
-  for(const [id,number] of switchGroups)labels.switches.set(id,String(number));
-  for(const group of groups.values()){
-    for(const [kind,ids] of [['gates',group.gateIds],['teleports',group.teleportIds]]){
-      for(const id of ids){
-        const previous=labels[kind].get(id);
-        labels[kind].set(id,previous?`${previous}, ${group.number}`:String(group.number));
-      }
+  if(b.switches.length<2)return labels;
+  const tag=id=>/^S\d+$/.test(id)?id.slice(1):id;
+  const gateIds=new Set(b.gates.map(g=>g.id));
+  for(const sw of b.switches){
+    labels.switches.set(sw.id,tag(sw.id));
+    for(const id of sw.controls){
+      const kind=gateIds.has(id)?'gates':'teleports',previous=labels[kind].get(id);
+      labels[kind].set(id,previous?`${previous}, ${tag(sw.id)}`:tag(sw.id));
     }
   }
   return labels;
@@ -324,7 +314,7 @@ function renderSvg(b, s, options = {}) {
   for (const gate of b.gates) {
     const p=xy(gate), on=s.gateActive[gate.id], label=labels.gates.get(gate.id);
     const inset=on?21:25;
-    svg += `<g role="img" aria-label="${on?'Active':'Inactive'} wall${label?' · control group '+label:''} ${pos(gate)}" transform="translate(${p.x},${p.y})">${on?`<rect x="-27" y="-27" width="54" height="54" rx="2" fill="none" stroke="#ffe85c" stroke-width="7" opacity=".25" filter="url(#${prefix}-glow)"/><rect class="gate-on" x="-27" y="-27" width="54" height="54" rx="2" fill="url(#${prefix}-gate)" stroke="url(#${prefix}-gate)" style="stroke-width:3.8"/>`:''}<rect class="${on?'gate-face':'gate-off'}" x="${-inset}" y="${-inset}" width="${inset*2}" height="${inset*2}" rx="1.5" fill="url(#${prefix}-gate-metal)" stroke="${on?'#b6aa45':'#77818c'}" style="opacity:1;stroke-dasharray:none;stroke-width:1.1"/><rect x="${1-inset}" y="${1-inset}" width="${inset*2-2}" height="${inset*2-2}" rx="1" fill="url(#${prefix}-gate-texture)"/><path d="M0 ${2-inset}V${inset-2}M${2-inset} 0H${inset-2}" fill="none" stroke="#242c34" stroke-width="2"/><path d="M2 ${2-inset}V${inset-2}M${2-inset} 2H${inset-2}" fill="none" stroke="#89939d" stroke-opacity=".32" stroke-width=".8"/>${label?`<text class="tile-label" x="0" y="0" dominant-baseline="central" fill="${on?'#fff1b8':'#dbe2e8'}" style="font-size:${label.length>4?10:14}px;font-weight:700;paint-order:stroke;stroke:#1c252e;stroke-width:3;stroke-linejoin:round">${label}</text>`:''}</g>`;
+    svg += `<g role="img" aria-label="${on?'Active':'Inactive'} wall${label?' · switch '+label:''} ${pos(gate)}" transform="translate(${p.x},${p.y})">${on?`<rect x="-27" y="-27" width="54" height="54" rx="2" fill="none" stroke="#ffe85c" stroke-width="7" opacity=".25" filter="url(#${prefix}-glow)"/><rect class="gate-on" x="-27" y="-27" width="54" height="54" rx="2" fill="url(#${prefix}-gate)" stroke="url(#${prefix}-gate)" style="stroke-width:3.8"/>`:''}<rect class="${on?'gate-face':'gate-off'}" x="${-inset}" y="${-inset}" width="${inset*2}" height="${inset*2}" rx="1.5" fill="url(#${prefix}-gate-metal)" stroke="${on?'#b6aa45':'#77818c'}" style="opacity:1;stroke-dasharray:none;stroke-width:1.1"/><rect x="${1-inset}" y="${1-inset}" width="${inset*2-2}" height="${inset*2-2}" rx="1" fill="url(#${prefix}-gate-texture)"/><path d="M0 ${2-inset}V${inset-2}M${2-inset} 0H${inset-2}" fill="none" stroke="#242c34" stroke-width="2"/><path d="M2 ${2-inset}V${inset-2}M${2-inset} 2H${inset-2}" fill="none" stroke="#89939d" stroke-opacity=".32" stroke-width=".8"/>${label?`<text class="tile-label" x="0" y="0" dominant-baseline="central" fill="${on?'#fff1b8':'#dbe2e8'}" style="font-size:${label.length>4?10:14}px;font-weight:700;paint-order:stroke;stroke:#1c252e;stroke-width:3;stroke-linejoin:round">${label}</text>`:''}</g>`;
   }
   for (const arrow of b.arrows) {
     const p=xy(arrow), degrees={r:0,d:90,l:180,u:270}[arrow.direction], color=arrow.rotating?'#ff8a9b':'#b9d8ff', glow=arrow.rotating?'#ff2a45':'#2f7dff';
@@ -340,7 +330,7 @@ function renderSvg(b, s, options = {}) {
   }
   for (const sw of b.switches) {
     const p=xy(sw), label=labels.switches.get(sw.id), on=s.switchOn?.[sw.id]??sw.on??false;
-    svg += `<g role="img" aria-label="${on?'On':'Off'} switch${label?' · control group '+label:''} ${pos(sw)}" transform="translate(${p.x},${p.y})"><circle r="24" fill="url(#${prefix}-switch-rim)" stroke="#123345" stroke-width="1.5"/><circle cy="${on?0:-.5}" r="20.5" fill="url(#${prefix}-switch-${on?'green':'red'})" stroke="${on?'#254d0b':'#750714'}" stroke-width="1.4"/>${on?`<circle r="20.5" fill="url(#${prefix}-switch-dent)"/>`:''}<path d="M-17-5C-15-24 15-24 17-5C8-9-8-9-17-5Z" fill="url(#${prefix}-switch-shine)" opacity="${on?'.18':'1'}"/>${label?`<text class="tile-label" x="0" y="0" dominant-baseline="central" fill="#fff9f4" style="font-size:14px;font-weight:700;paint-order:stroke;stroke:${on?'#214908':'#69000c'};stroke-width:2.5;stroke-linejoin:round">${label}</text>`:''}</g>`;
+    svg += `<g role="img" aria-label="${on?'On':'Off'} switch${label?' · switch '+label:''} ${pos(sw)}" transform="translate(${p.x},${p.y})"><circle r="24" fill="url(#${prefix}-switch-rim)" stroke="#123345" stroke-width="1.5"/><circle cy="${on?0:-.5}" r="20.5" fill="url(#${prefix}-switch-${on?'green':'red'})" stroke="${on?'#254d0b':'#750714'}" stroke-width="1.4"/>${on?`<circle r="20.5" fill="url(#${prefix}-switch-dent)"/>`:''}<path d="M-17-5C-15-24 15-24 17-5C8-9-8-9-17-5Z" fill="url(#${prefix}-switch-shine)" opacity="${on?'.18':'1'}"/>${label?`<text class="tile-label" x="0" y="0" dominant-baseline="central" fill="#fff9f4" style="font-size:14px;font-weight:700;paint-order:stroke;stroke:${on?'#214908':'#69000c'};stroke-width:2.5;stroke-linejoin:round">${label}</text>`:''}</g>`;
   }
   for (const hex of b.hexes) {
     if(s.consumedHexIds.includes(hex.id)) continue;

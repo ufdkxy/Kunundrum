@@ -108,7 +108,7 @@ States are quotiented by permutations of same-colored balls; route reconstructio
 
 The reverse search enumerates **genuine predecessor transitions** for static walls, fixed arrows, teleports, and now **switches controlling gates and teleports**, including the game's blocked-closing rule. As before, a backward edge is accepted only if the corresponding forward move reproduces its successor state; the final reported path is also independently replayed from the original initial board.
 
-The starting reverse frontier includes **all possible terminal gate configurations**, using one bit per gate *group*, not one bit per individual wall. This works because all gates in a group always flip together. Controlled teleports are similarly enumerated, while uncontrolled teleports retain their initial state. States differing only in the switch's visual on/off indicator are safely merged: the indicator never affects move legality or switch behavior, only the actual gate/teleport flags do.
+The starting reverse frontier includes **all possible terminal gate configurations**, using one bit per gate *group* (gates controlled by exactly the same switches), not one bit per individual wall. This works because all gates in a group always flip together. Controlled teleports are similarly enumerated, while uncontrolled teleports retain their initial state. States differing only in the switch's visual on/off indicator are safely merged: the indicator never affects move legality or switch behavior, only the actual gate/teleport flags do.
 
 - Equal numbers of goals and balls are required for bidirectional mode.
 - **Switches are supported**, including simultaneous toggling of multiple gates and dynamic teleports.

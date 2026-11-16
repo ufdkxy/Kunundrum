@@ -2,7 +2,7 @@
 
 *Living document: keep it current, delete resolved items instead of appending history (Git has the history). See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-**Last updated:** 2026-11-13 · **App version:** `APP_VERSION = '3.3.13'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. Invalid-but-readable boards (codes, links, JSON) now open in the editor with the problems listed instead of failing to load; Play stays gated by validation (`decodeBoard(code, problems)`, `validateBoard(raw, problems)`). The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
+**Last updated:** 2026-11-16 · **App version:** `APP_VERSION = '3.4.0'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. Invalid-but-readable boards (codes, links, JSON) now open in the editor with the problems listed instead of failing to load; Play stays gated by validation (`decodeBoard(code, problems)`, `validateBoard(raw, problems)`). The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
 
 ## 1. Components
 
@@ -33,6 +33,8 @@ Certified optimal scores (`verify.js`): 6.6 → 18, 7.1 → 15, 7.4 → 27, 7.6 
 **App 3.3.20, 2026-11-14: puzzle dialog polish.** Choosing a chapter no longer scrolls the chapter list (it only reveals the current chapter when the dialog opens), the previews scroll back to the top, and the dialog header is more compact.
 
 **App 3.3.19, 2026-11-14: puzzle dialog columns.** The puzzle dialog has a fixed height; the chapter list and the puzzle previews are equally tall and each scrolls on its own.
+
+**App 3.4.0, solver v0.13, parser v0.10.0, 2026-11-16: one control list per switch.** Switch mappings no longer use gate groups: each switch has a single `controls` list of gate and teleport IDs (K3 layout changed: gates `id, active`; switches `id, on, controls[]`; old codes are not readable). IDs are `S1…`, `G1…`, `T1…`. Blocked closing is now whole-switch: if any closing gate in the list is under a ball, nothing the switch controls toggles and its `on` flag does not change (before: per group, teleports always toggled). Editor: the switch has one field "Gate/Teleport IDs"; gates and teleports show only their ID; deleting/moving a gate or teleport drops it from the lists. Tile numbers show the controlling switch. Parser: elements go to their nearest switch by default; the `gateGroups` override and the single-switch shortcut (PARSE-002) are gone. Solver: gates with identical switch sets form one state bit. `levels.js` was migrated once by script (53 entries re-encoded; old W/teleport IDs renamed; 6.1 got board id `6.1`, it was `custom`); random-walk replays on every level matched the old engine except **9.3**: its saved solution relies on one of two gates closing while the other is blocked (move 13) and no longer completes. 8.9 has the same two-gate switch but its solution is unaffected. Checks: `verify.js` 13/13, `random-switch.js` 100/100 (overlapping lists, controlled teleport).
 
 **App 3.3.18, 2026-11-14: puzzle dialog.** The chapter list now fills the dialog height (up to the viewport) instead of a 520px cap, and the footer with "Import board data" was removed.
 
@@ -69,12 +71,11 @@ Stored solutions checked with `--max-depth (length − 1)` (`--max-states 300000
 ### P1 — to reproduce and fix
 
 - **PARSE-001: Saved diagnostics omit encoding failures.** `parse.py` writes `NAME_diagnostics.json` before the automatic K3 encode, so an encode failure is only in the console. Write diagnostics after encoding or rewrite on exception.
-- **PARSE-002: Single-switch auto-mapping overrides explicit input.** In `assemble_board`, the single-switch/all-gates/no-teleports shortcut replaces `wallGroups` even when a `switches` override is supplied, and runs before `gateGroups` overrides (stale group references possible). Apply gate-group overrides first, honor explicit switch mappings, deduplicate, and validate the board before K3 output. Until then, inspect and fix the JSON by hand.
 - **PARSE-003: Zero warnings does not mean a correct transcription.** Uncertain sprites, color/goal overlays and unusual scaling can fail silently. Check every `*_review.png` against its screenshot, and add regression tests for false negatives.
 
 ### P1 — mechanics screenshots cannot determine
 
-- **MECH-001: Switch mappings.** A screenshot does not establish a switch's `wallGroups`/`teleportIds`; the one-switch auto-mapping is a heuristic. Default IDs (`W1`, `S1`, …) are not verified mappings.
+- **MECH-001: Switch mappings.** A screenshot does not establish a switch's `controls` list; the one-switch mapping and the nearest-switch default are heuristics (they disagree with the real mapping of 4.8, 10.8 and 10.9). Default IDs (`G1`, `S1`, `T1`, …) are not verified mappings.
 - **MECH-002: Hexagon signed values.** Detected score cells stay `hex_pending` until values are supplied; do not promote incomplete data to authoritative K3 codes.
 - **MECH-003: Other ambiguous state.** Gates are encoded initially active; rotating arrows need `arrow_rotating` overrides; teleports pair automatically only with exactly two same-color endpoints. Verify against gameplay.
 

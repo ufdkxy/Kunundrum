@@ -9,6 +9,7 @@
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <memory>
 #include <cstring>
 #include <climits>
@@ -33,14 +34,20 @@ string b64encode(const vector<Byte>& b){static const char* abc="ABCDEFGHIJKLMNOP
 void putuint(vector<Byte>& b,uint64_t v){do{Byte c=v&127;v>>=7;b.push_back(c|(v?128:0));}while(v);}
 struct Reader{const vector<Byte>& b;size_t i=0;vector<string> dictionary; Reader(const vector<Byte>&b):b(b){} Byte byte(){if(i>=b.size())throw runtime_error("truncated board");return b[i++];} uint64_t u(){uint64_t x=0;for(int z=0;z<8;z++){Byte k=byte();x|=(uint64_t)(k&127)<<(7*z);if(!(k&128))return x;}throw runtime_error("invalid varint");}string str(){uint64_t t=u();if(t&1){size_t j=(t-1)/2;if(j>=dictionary.size())throw runtime_error("invalid string reference");return dictionary[j];}size_t n=t/2;if(n>20000||i+n>b.size())throw runtime_error("invalid string length");string s(b.begin()+i,b.begin()+i+n);i+=n;dictionary.push_back(s);return s;}int count(){auto n=u();if(n>4096)throw runtime_error("unreasonably large feature list");return (int)n;}};
 struct Ball{int p,color,ordinal;string name;};
-struct Gate{int p;string id,group;bool active;};
-struct Switch{int p;string id;bool on;vector<string> groups,teleports;};
+struct Gate{int p;string id;bool active;};
+struct Switch{int p;string id;bool on;vector<string> controls;};
 struct Teleport{int a,b,color;string id;bool active;};
 struct Hex{int p,value;string id;};
 struct Arrow{int p,dir;bool rotating;};
 struct Board{
  int w=0,h=0;string id,title,description; bool hasDescription=false;vector<Ball> balls;vector<int> wall,goals;vector<Gate> gates;vector<Switch> switches;vector<Teleport> teleports;vector<Hex> hexes;vector<Arrow> arrows;vector<Byte> prefix,tail;string storedSolution;
- array<int,MAX_CELLS> fixed,arrowAt,gateAt,switchAt,teleAt,hexAt,goalColor;vector<vector<int>> groupGates,switchGroups,switchTele;
+ array<int,MAX_CELLS> fixed,arrowAt,gateAt,switchAt,teleAt,hexAt,goalColor;vector<vector<int>> groupGates,switchGroups,switchTele; // groupGates: gates controlled by exactly the same switches (they always toggle together)
+ template<class S> void fireSwitch(int sw,S&s)const{ // all-or-nothing: one blocked closing gate freezes the whole switch
+  for(int g:switchGroups[sw])for(int j:groupGates[g])if(!s.gate[j])for(auto ball:s.p)if(ball==gates[j].p)return;
+  s.sw[sw]^=1;for(int g:switchGroups[sw])for(int j:groupGates[g])s.gate[j]^=1;for(int t:switchTele[sw])s.tele[t]^=1;}
+ template<class S> void undoSwitch(int sw,S&s,const S&post)const{ // reverse of fireSwitch; blocked is judged on the post-move occupancy
+  for(int g:switchGroups[sw])for(int j:groupGates[g])for(auto ball:post.p)if(ball==gates[j].p)return;
+  s.sw[sw]^=1;for(int g:switchGroups[sw])for(int j:groupGates[g])s.gate[j]^=1;for(int t:switchTele[sw])s.tele[t]^=1;}
  vector<uint8_t> gateInit,teleInit,switchInit;int n=0;bool staticReverse=false;int initialScore=0;
  int at(int x,int y)const{return y*w+x;}bool inside(int x,int y)const{return x>=0&&x<w&&y>=0&&y<h;}
  void initialize(){
@@ -53,10 +60,16 @@ struct Board{
   for(int i=0;i<(int)switches.size();i++)switchAt[switches[i].p]=i;
   for(int i=0;i<(int)hexes.size();i++)hexAt[hexes[i].p]=i;
   for(int i=0;i<(int)teleports.size();i++){teleAt[teleports[i].a]=i;teleAt[teleports[i].b]=i;}
-  unordered_map<string,int> groups, teleids;for(int i=0;i<(int)gates.size();i++)if(!groups.count(gates[i].group))groups[gates[i].group]=groups.size();
-  groupGates.resize(groups.size());for(int i=0;i<(int)gates.size();i++)groupGates[groups[gates[i].group]].push_back(i);
+  unordered_map<string,int> gateIdx,teleids;for(int i=0;i<(int)gates.size();i++)gateIdx[gates[i].id]=i;
   for(int i=0;i<(int)teleports.size();i++)teleids[teleports[i].id]=i;
-  for(const auto &s:switches){vector<int> gs,ts;for(auto g:s.groups){if(!groups.count(g))throw runtime_error("unknown switch wall group");gs.push_back(groups[g]);}for(auto t:s.teleports){if(!teleids.count(t))throw runtime_error("unknown switch teleport ID");ts.push_back(teleids[t]);}switchGroups.push_back(gs);switchTele.push_back(ts);}
+  // Gates controlled by exactly the same set of switches always toggle together (a blocked switch freezes its whole list), so each such set is one "group".
+  vector<vector<int>> signature(gates.size());
+  for(int si=0;si<(int)switches.size();si++)for(auto&id:switches[si].controls){
+   auto g=gateIdx.find(id);if(g!=gateIdx.end()){if(teleids.count(id))throw runtime_error("gate and teleport share an ID");if(signature[g->second].empty()||signature[g->second].back()!=si)signature[g->second].push_back(si);}
+   else if(!teleids.count(id))throw runtime_error("switch controls unknown gate or teleport ID");}
+  map<vector<int>,int> groupOf;vector<int> gateGroup(gates.size());
+  for(int i=0;i<(int)gates.size();i++){auto it=groupOf.find(signature[i]);if(it==groupOf.end()){it=groupOf.emplace(signature[i],(int)groupOf.size()).first;groupGates.emplace_back();}gateGroup[i]=it->second;groupGates[it->second].push_back(i);}
+  for(const auto &s:switches){vector<int> gs,ts;for(auto&id:s.controls){auto g=gateIdx.find(id);if(g!=gateIdx.end()){int grp=gateGroup[g->second];if(find(gs.begin(),gs.end(),grp)==gs.end())gs.push_back(grp);}else{int t=teleids[id];if(find(ts.begin(),ts.end(),t)==ts.end())ts.push_back(t);}}switchGroups.push_back(gs);switchTele.push_back(ts);}
   for(auto g:gates)gateInit.push_back(g.active);
   for(auto t:teleports)teleInit.push_back(t.active);
   for(auto s:switches)switchInit.push_back(s.on);
@@ -71,8 +84,8 @@ Board parseCode(string code){code=trim(code);if(code.rfind("K3.",0)!=0&&code.rfi
  for(int i=r.count();i>0;i--){int p=at(),c=r.u();if(c>=4)throw runtime_error("invalid ball color");b.balls.push_back({p,c,0,""});}
  for(int i=r.count();i>0;i--){int p=at(),c=r.u();if(c>=4)throw runtime_error("invalid goal color");b.goals.push_back((int)c*MAX_CELLS+p);}
  for(int i=r.count();i>0;i--){int p=at(),v=r.u();if(v>7)throw runtime_error("invalid arrow");b.arrows.push_back({p,(int)v/2,(bool)(v%2)});}
- for(int i=r.count();i>0;i--){int p=at();string id=r.str(),g=r.str();bool act=r.u();b.gates.push_back({p,id,g,act});}
- for(int i=r.count();i>0;i--){int p=at();string id=r.str();bool on=r.u();vector<string> gs,ts;for(int k=r.count();k>0;k--)gs.push_back(r.str());for(int k=r.count();k>0;k--)ts.push_back(r.str());b.switches.push_back({p,id,on,gs,ts});}
+ for(int i=r.count();i>0;i--){int p=at();string id=r.str();bool act=r.u();b.gates.push_back({p,id,act});}
+ for(int i=r.count();i>0;i--){int p=at();string id=r.str();bool on=r.u();vector<string> cs;for(int k=r.count();k>0;k--)cs.push_back(r.str());b.switches.push_back({p,id,on,cs});}
  for(int i=r.count();i>0;i--){string id=r.str();int c=r.u(),act=r.u(),p=at(),q=at();if(c>=5)throw runtime_error("invalid teleport color");b.teleports.push_back({p,q,c,id,(bool)act});}
  for(int i=r.count();i>0;i--){int p=at();string id=r.str();uint64_t value=r.u();int signedValue=value&1?-(int)((value+1)/2):(int)(value/2);b.hexes.push_back({p,signedValue,id});}
  if(r.i!=raw.size())throw runtime_error("trailing board data");
@@ -169,7 +182,7 @@ int simulate(const Board&b,const State&s,int bi,int direction,const string& choi
  }
  if(!stopped||!entered||choicesUsed!=(int)choices.size())return 0;
  ns=s;ns.p[bi]=p;ns.hex=move(consumed);
- int sw=b.switchAt[p];if(sw>=0){ns.sw[sw]^=1;for(int group:b.switchGroups[sw]){bool blocked=false;for(int g:b.groupGates[group])if(!ns.gate[g]){for(auto ball:ns.p)if(ball==b.gates[g].p)blocked=true;}if(!blocked)for(int g:b.groupGates[group])ns.gate[g]^=1;}for(int t:b.switchTele[sw])ns.tele[t]^=1;}
+ int sw=b.switchAt[p];if(sw>=0){b.fireSwitch(sw,ns);}
  return 1;
 }
 int scoreHex(const Board&b,const State&s,int depth){int v=depth;for(int i=0;i<(int)b.hexes.size();i++)if(s.hex[i])v+=b.hexes[i].value;return v;}
@@ -364,14 +377,7 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
     // rule is determined by the *post*-move occupancy, not source occupancy.
     const int swi=b.switchAt[dest];
     if(swi>=0){
-     tmpl.sw[swi]^=1;
-     for(int g:b.switchGroups[swi]){
-      bool occupiedGate=false;
-      for(int j:b.groupGates[g])for(int ball:targetState.p)
-       if(ball==b.gates[j].p)occupiedGate=true;
-      if(!occupiedGate)for(int j:b.groupGates[g])tmpl.gate[j]^=1;
-     }
-     for(int t:b.switchTele[swi])tmpl.tele[t]^=1;
+     b.undoSwitch(swi,tmpl,targetState);
     }
     backReach(b,tmpl,i,dest,starts);
     for(int sd:starts){
@@ -386,14 +392,7 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
      // Replay the switch's effects to reject invalid reverse candidates.
      State check=predecessor;check.p[i]=dest;
      if(swi>=0){
-      check.sw[swi]^=1;
-      for(int g:b.switchGroups[swi]){
-       bool blocked=false;
-       for(int j:b.groupGates[g])if(!check.gate[j])for(int ball:check.p)
-        if(ball==b.gates[j].p)blocked=true;
-       if(!blocked)for(int j:b.groupGates[g])check.gate[j]^=1;
-      }
-      for(int t:b.switchTele[swi])check.tele[t]^=1;
+      b.fireSwitch(swi,check);
      }
      pk.pack(check,checkKey.data());if(memcmp(checkKey.data(),targetKey.data(),pk.K))continue;
      pk.pack(predecessor,key.data());
@@ -429,14 +428,7 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
      transitions++;int np=fastEnd(b,st,i,d);if(np<0)continue;
      State next=st;next.p[i]=np;
      int swi=b.switchAt[np];if(swi>=0){
-      next.sw[swi]^=1;
-      for(int g:b.switchGroups[swi]){
-       bool blocked=false;
-       for(int j:b.groupGates[g])if(!next.gate[j])for(int ball:next.p)
-        if(ball==b.gates[j].p)blocked=true;
-       if(!blocked)for(int j:b.groupGates[g])next.gate[j]^=1;
-      }
-      for(int t:b.switchTele[swi])next.tele[t]^=1;
+      b.fireSwitch(swi,next);
      }
      pk.pack(next,key.data());if(fwd.find(key.data())!=Store::NONE)continue;
      if(full()){limited=true;break;}
@@ -526,14 +518,7 @@ SearchResult bidirectionalBalanced(const Board&b,const Limits&lim,ClockLimit&tim
      transitions++;int np=fastEnd(b,st,i,d);if(np<0)continue;
      State next=st;next.p[i]=np;
      int swi=b.switchAt[np];if(swi>=0){
-      next.sw[swi]^=1;
-      for(int g:b.switchGroups[swi]){
-       bool blocked=false;
-       for(int j:b.groupGates[g])if(!next.gate[j])for(int ball:next.p)
-        if(ball==b.gates[j].p)blocked=true;
-       if(!blocked)for(int j:b.groupGates[g])next.gate[j]^=1;
-      }
-      for(int t:b.switchTele[swi])next.tele[t]^=1;
+      b.fireSwitch(swi,next);
      }
      pk.pack(next,key.data());if(fwd.find(key.data())!=Store::NONE)continue;
      if(full()){limited=true;break;}
@@ -561,14 +546,7 @@ SearchResult bidirectionalBalanced(const Board&b,const Limits&lim,ClockLimit&tim
     // rule is determined by the *post*-move occupancy, not source occupancy.
     const int swi=b.switchAt[dest];
     if(swi>=0){
-     tmpl.sw[swi]^=1;
-     for(int g:b.switchGroups[swi]){
-      bool occupiedGate=false;
-      for(int j:b.groupGates[g])for(int ball:targetState.p)
-       if(ball==b.gates[j].p)occupiedGate=true;
-      if(!occupiedGate)for(int j:b.groupGates[g])tmpl.gate[j]^=1;
-     }
-     for(int t:b.switchTele[swi])tmpl.tele[t]^=1;
+     b.undoSwitch(swi,tmpl,targetState);
     }
     backReach(b,tmpl,i,dest,starts);
     for(int sd:starts){
@@ -583,14 +561,7 @@ SearchResult bidirectionalBalanced(const Board&b,const Limits&lim,ClockLimit&tim
      // Replay the switch's effects to reject invalid reverse candidates.
      State check=predecessor;check.p[i]=dest;
      if(swi>=0){
-      check.sw[swi]^=1;
-      for(int g:b.switchGroups[swi]){
-       bool blocked=false;
-       for(int j:b.groupGates[g])if(!check.gate[j])for(int ball:check.p)
-        if(ball==b.gates[j].p)blocked=true;
-       if(!blocked)for(int j:b.groupGates[g])check.gate[j]^=1;
-      }
-      for(int t:b.switchTele[swi])check.tele[t]^=1;
+      b.fireSwitch(swi,check);
      }
      pk.pack(check,checkKey.data());if(memcmp(checkKey.data(),targetKey.data(),pk.K))continue;
      pk.pack(predecessor,key.data());
@@ -820,15 +791,15 @@ string codeWithSolution(const Board&b,const vector<LabeledMove>& path){
  putuint(raw,b.balls.size());for(auto ball:b.balls){pos(ball.p);putuint(raw,ball.color);}
  putuint(raw,b.goals.size());for(int g:b.goals){pos(g%MAX_CELLS);putuint(raw,g/MAX_CELLS);}
  putuint(raw,b.arrows.size());for(auto a:b.arrows){pos(a.p);putuint(raw,2*a.dir+(a.rotating?1:0));}
- putuint(raw,b.gates.size());for(auto g:b.gates){pos(g.p);str(g.id);str(g.group);putuint(raw,g.active);}
- putuint(raw,b.switches.size());for(auto t:b.switches){pos(t.p);str(t.id);putuint(raw,t.on);putuint(raw,t.groups.size());for(auto g:t.groups)str(g);putuint(raw,t.teleports.size());for(auto id:t.teleports)str(id);}
+ putuint(raw,b.gates.size());for(auto g:b.gates){pos(g.p);str(g.id);putuint(raw,g.active);}
+ putuint(raw,b.switches.size());for(auto t:b.switches){pos(t.p);str(t.id);putuint(raw,t.on);putuint(raw,t.controls.size());for(auto&id:t.controls)str(id);}
  putuint(raw,b.teleports.size());for(auto t:b.teleports){str(t.id);putuint(raw,t.color);putuint(raw,t.active);pos(t.a);pos(t.b);}
  putuint(raw,b.hexes.size());for(auto h:b.hexes){pos(h.p);str(h.id);putuint(raw,h.value<0?(uint64_t)(-2LL*h.value-1):(uint64_t)(2LL*h.value));}
  return "K3."+b64encode(raw);
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open levels.js: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0)return trim(line.substr(prefix.size()));}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.12"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.13"; // Solver's own version, independent of the web app's APP_VERSION.
 int main(int argc,char**argv){
  try{
   Limits lim;string input,level,catalog="levels.js";bool wantK3=true;

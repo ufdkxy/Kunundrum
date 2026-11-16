@@ -111,12 +111,12 @@ function validateBoard(raw         , problems         )        {
   const gates = entries(source, "gates").map((value, i) => {
     const item = object(value, `Gate ${i + 1}`);
     const id = identifier(item.id, `Gate ${i + 1} ID`, `gate${i + 1}`);
-    return { ...point(item, `Gate ${i + 1}`), id, group: identifier(item.group, `Gate ${i + 1} group`, id), active: boolean(item.active, `Gate ${i + 1} active`, true) };
+    return { ...point(item, `Gate ${i + 1}`), id, active: boolean(item.active, `Gate ${i + 1} active`, true) };
   }).sort(rowOrder);
   const switches = entries(source, "switches").map((value, i) => {
     const item = object(value, `Switch ${i + 1}`);
     const on = boolean(item.on, `Switch ${i + 1} on`, false);
-    return { ...point(item, `Switch ${i + 1}`), id: identifier(item.id, `Switch ${i + 1} ID`, `switch${i + 1}`), wallGroups: ids(item.wallGroups, `Switch ${i + 1} wallGroups`), teleportIds: ids(item.teleportIds, `Switch ${i + 1} teleportIds`), ...(on ? { on: true } : {}) };
+    return { ...point(item, `Switch ${i + 1}`), id: identifier(item.id, `Switch ${i + 1} ID`, `switch${i + 1}`), controls: ids(item.controls, `Switch ${i + 1} controls`), ...(on ? { on: true } : {}) };
   }).sort(rowOrder);
   const teleports = entries(source, "teleports").map((value, i)           => {
     const item = object(value, `Teleport ${i + 1}`);
@@ -125,7 +125,7 @@ function validateBoard(raw         , problems         )        {
     if (samePos(...ends)) throw new Error(`Teleport ${i + 1} endpoints must be different cells.`);
     ends.sort(rowOrder);
     return { id: identifier(item.id, `Teleport ${i + 1} ID`, `teleport${i + 1}`), color: teleportColor(item.color, `Teleport ${i + 1} color`), ends, active: boolean(item.active, `Teleport ${i + 1} active`, true) };
-  }).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  }).sort((a, b) => a.id.localeCompare(b.id, "en", { numeric: true }));
   const hexes = entries(source, "hexes").map((value, i) => {
     const item = object(value, `Hexagon ${i + 1}`);
     const valueNumber = integer(item.value, `Hexagon ${i + 1} value`, -10000, 10000);
@@ -134,11 +134,10 @@ function validateBoard(raw         , problems         )        {
   }).sort(rowOrder);
 
   uniqueIds(gates, "gate", fail); uniqueIds(switches, "switch", fail); uniqueIds(teleports, "teleport", fail); uniqueIds(hexes, "hexagon", fail);
-  const groups = new Set(gates.map(g => g.group));
-  const teleportIds = new Set(teleports.map(t => t.id));
+  const switchable = new Set(gates.map(g => g.id));
+  for (const t of teleports) { if (switchable.has(t.id)) fail(`Gate and teleport share the ID ${t.id}; a switch could not tell them apart.`); switchable.add(t.id); }
   for (const sw of switches) {
-    for (const id of sw.wallGroups) if (!groups.has(id)) fail(`Switch ${sw.id} refers to unknown wall group ${id}.`);
-    for (const id of sw.teleportIds) if (!teleportIds.has(id)) fail(`Switch ${sw.id} refers to unknown teleport ${id}.`);
+    for (const id of sw.controls) if (!switchable.has(id)) fail(`Switch ${sw.id} controls unknown gate or teleport ${id}.`);
   }
   const tileKinds = new Map                ();
   const occupy = (p     , name        )       => {
@@ -261,20 +260,19 @@ function applyMove(state           , board       , ballId        , direction    
   if (locked) events.push(`${ballId} docked.`);
   const sw = board.switches.find(s => samePos(s, end));
   if (sw) {
-    nextState.switchOn[sw.id] = !(nextState.switchOn[sw.id] ?? sw.on ?? false);
     const allOccupied = new Set(nextState.balls.map(posKey));
-    for (const group of sw.wallGroups) {
-      const gates = board.gates.filter(g => g.group === group);
-      if (gates.some(g => !nextState.gateActive[g.id] && allOccupied.has(posKey(g)))) {
-        events.push(`Wall group ${group} stayed unchanged because a closing wall is occupied.`);
-      } else {
-        for (const gate of gates) nextState.gateActive[gate.id] = !nextState.gateActive[gate.id];
-        events.push(`Wall group ${group} toggled.`);
+    const gates = board.gates.filter(g => sw.controls.includes(g.id));
+    if (gates.some(g => !state.gateActive[g.id] && allOccupied.has(posKey(g)))) {
+      // A gate that cannot close blocks the whole switch: nothing it controls toggles, and the switch itself stays put.
+      events.push(`Switch ${sw.id} did not change because a closing gate is occupied.`);
+    } else {
+      nextState.switchOn[sw.id] = !(state.switchOn[sw.id] ?? sw.on ?? false);
+      for (const gate of gates) nextState.gateActive[gate.id] = !nextState.gateActive[gate.id];
+      for (const id of sw.controls) if (id in nextState.teleportActive) {
+        nextState.teleportActive[id] = !nextState.teleportActive[id];
+        events.push(`Teleport ${id} ${nextState.teleportActive[id] ? "activated" : "deactivated"}.`);
       }
-    }
-    for (const id of sw.teleportIds) {
-      nextState.teleportActive[id] = !nextState.teleportActive[id];
-      events.push(`Teleport ${id} ${nextState.teleportActive[id] ? "activated" : "deactivated"}.`);
+      events.push(`Switch ${sw.id} toggled.`);
     }
   }
   const record             = {

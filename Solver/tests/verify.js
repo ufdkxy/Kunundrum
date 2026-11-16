@@ -15,7 +15,7 @@ function fixture(name,board,algo='forward'){let original=Codec.encodeBoard(board
 fixture('basic',{version:1,width:4,height:1,id:'basic',title:'basic',balls:[{x:1,y:1,color:'R'}],goals:[{x:4,y:1,color:'R'}]});
 fixture('rotating',{version:1,width:4,height:3,id:'rotate',title:'rotate',balls:[{x:1,y:1,color:'R'}],goals:[{x:2,y:3,color:'R'}],arrows:[{x:2,y:1,direction:'u',rotating:true}],walls:[{x:4,y:1},{x:4,y:2},{x:4,y:3}]});
 fixture('hex',{version:1,width:4,height:2,id:'hex',title:'hex',balls:[{x:1,y:1,color:'R'}],goals:[{x:4,y:1,color:'R'}],hexes:[{x:2,y:1,value:-1,id:'H1'}]});
-fixture('switch',{version:1,width:5,height:2,id:'switch',title:'switch',balls:[{x:1,y:1,color:'R'}],goals:[{x:5,y:1,color:'R'}],gates:[{x:3,y:1,id:'W1',group:'a',active:true}],switches:[{x:2,y:1,id:'S1',wallGroups:['a'],teleportIds:[]}]});
+fixture('switch',{version:1,width:5,height:2,id:'switch',title:'switch',balls:[{x:1,y:1,color:'R'}],goals:[{x:5,y:1,color:'R'}],gates:[{x:3,y:1,id:'G1',active:true}],switches:[{x:2,y:1,id:'S1',controls:['G1']}]});
 for(const [cap,status] of [[4,4],[5,0]]){const q=spawnSync(path.join(root,'kunsolve'),['--level','1.8','--catalog',path.join(repo,'levels.js'),'--max-score',String(cap),'--quiet','--no-code'],{cwd:root,encoding:'utf8',timeout:35000});assert.equal(q.status,status,'1.8 --max-score '+cap);if(status===0)assert(/Score: 5\b/.test(q.stdout));}
 console.log('PASS --max-score bound on 1.8 (4 -> proved none, 5 -> optimal)');
 console.log('PASS '+n+' end-to-end fixture(s)');
@@ -37,5 +37,5 @@ for(const [id,score] of [['1.7',3],['1.8',5],['2.2',9],['7.3',null],['8.1',null]
  const out=solutionCheck(p.stdout.match(/^K3: (\S+)/m)[1],p.stdout.match(/^Solution: (\S+)/m)[1]);assert.equal(out.score,9,'beam dynamic 2.2 score');console.log('beam dynamic 2.2 score',out.score);}
 fixture('beam basic',{version:1,width:4,height:1,id:'basic',title:'basic',balls:[{x:1,y:1,color:'R'}],goals:[{x:4,y:1,color:'R'}]},'beam');
 fixture('beam rotating',{version:1,width:4,height:3,id:'rotate',title:'rotate',balls:[{x:1,y:1,color:'R'}],goals:[{x:2,y:3,color:'R'}],arrows:[{x:2,y:1,direction:'u',rotating:true}],walls:[{x:4,y:1},{x:4,y:2},{x:4,y:3}]},'beam');
-fixture('beam switch',{version:1,width:5,height:2,id:'switch',title:'switch',balls:[{x:1,y:1,color:'R'}],goals:[{x:5,y:1,color:'R'}],gates:[{x:3,y:1,id:'W1',group:'a',active:true}],switches:[{x:2,y:1,id:'S1',wallGroups:['a'],teleportIds:[]}]},'beam');
+fixture('beam switch',{version:1,width:5,height:2,id:'switch',title:'switch',balls:[{x:1,y:1,color:'R'}],goals:[{x:5,y:1,color:'R'}],gates:[{x:3,y:1,id:'G1',active:true}],switches:[{x:2,y:1,id:'S1',controls:['G1']}]},'beam');
 console.log('PASS beam search (replay-verified routes, no optimality claim)');

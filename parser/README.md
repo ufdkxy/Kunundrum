@@ -46,8 +46,8 @@ keys are screenshot basenames *without extension*, for example `8-5`.
       "9-8": {
         "cells": {"5,5": "hex_10", "2,4": "hex_-20", "6,3": "hex_-5"},
         "switches": {
-          "S1": {"wallGroups": ["W1"], "teleportIds": []},
-          "S2": {"wallGroups": ["W2"], "teleportIds": []}
+          "S1": {"controls": ["G1"]},
+          "S2": {"controls": ["G2", "T1"]}
         }
       }
     }
@@ -56,10 +56,11 @@ keys are screenshot basenames *without extension*, for example `8-5`.
 
 **Switch mappings above are placeholders, not a known mapping.** For example,
 9.8 has four switches; all four must be supplied to clear its mapping warnings.
-`W1`, etc. are the automatically assigned gate IDs (visible in JSON). For
-multi-gate groups use `gateGroups` and set each switch's `wallGroups` to the
-chosen group identifiers. A board with exactly one switch is assigned all
-switchable elements (gates and teleports) automatically and needs no mapping.
+`G1`, etc. are the automatically assigned gate IDs and `T1`, etc. the teleport IDs
+(visible in JSON); each switch lists the gates and teleports it controls in
+`controls`. Elements you do not map are assigned to their nearest switch
+(Manhattan distance), so only corrections are needed. A board with exactly one
+switch is assigned all switchable elements automatically and needs no mapping.
 
 Hexagon values are not visible in a screenshot, so the parser guesses them by
 sprite colour (red = +5, anything else = -5) and reports each guess as a pending
