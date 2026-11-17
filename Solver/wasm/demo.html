@@ -1,0 +1,18 @@
+<!doctype html><meta charset="utf-8"><title>Kunundrum WASM solver demo</title>
+<body style="font:14px system-ui;margin:16px;max-width:900px">
+<h3>WASM solver demo</h3>
+<p>Level <select id="lvl"></select> Algorithm <select id="alg"><option>auto<option>forward<option>balanced<option>beam</select>
+Seconds <input id="sec" value="60" size="4"> Max memory MB <input id="mem" value="1500" size="5">
+<button id="go">Solve</button> <button id="stop" disabled>Cancel</button></p>
+<pre id="out" style="background:#eee;padding:8px;min-height:6em;white-space:pre-wrap"></pre>
+<script src="../../levels.js"></script><script src="../../engine.js"></script><script src="../../codec.js"></script><script src="solver-client.js"></script>
+<script>
+const codes={};String(window.KUNUNDRUM_LEVEL_CODES).split('\n').forEach(l=>{const m=/^(\S+) = (\S+)/.exec(l);if(m)codes[m[1]]=m[2];});
+const $=id=>document.getElementById(id);for(const id in codes)$('lvl').add(new Option(id));
+let job=null;
+$('go').onclick=()=>{$('out').textContent='';$('go').disabled=true;$('stop').disabled=false;
+ job=KunSolver.solve(codes[$('lvl').value],{algorithm:$('alg').value,seconds:$('sec').value,maxMemoryMB:$('mem').value},p=>{$('out').textContent=p.line+'\n';});
+ job.promise.then(r=>{const v=KunSolver.verifyResult(r);$('out').textContent=r.status+(r.hasSolution?'\nscore '+r.score+', '+r.moves+' moves\n'+r.solution+'\nreplay check: '+(v.ok?'ok':'FAILED '+v.error):'')+'\nstates '+r.states+', '+r.elapsed.toFixed(2)+' s, heap '+r.heapMB+' MB';})
+  .catch(e=>{$('out').textContent=e.cancelled?'cancelled':'error: '+e.message;}).finally(()=>{$('go').disabled=false;$('stop').disabled=true;});};
+$('stop').onclick=()=>job&&job.cancel();
+</script>
