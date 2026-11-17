@@ -44,8 +44,9 @@ function solve(code,options,onProgress){
   }).catch(e=>{settled=true;cleanup();reject(e);});});
  const cancel=()=>{if(settled)return;settled=true;cleanup();const e=new Error('cancelled');e.cancelled=true;rejectFn(e);};
  return {promise,cancel};}
+// (`Codec` is a top-level const in codec.js: a global binding, not a window property.)
 // A returned route is only trusted after the app's own codec has decoded the K3 and replayed it through Core (Codec.decodeBoard throws if not).
 function verifyResult(result){if(!result||!result.hasSolution)return {ok:true,checked:false};
- try{window.Codec.decodeBoard(result.k3);return {ok:true,checked:true};}catch(e){return {ok:false,checked:true,error:e.message};}}
+ try{Codec.decodeBoard(result.k3);return {ok:true,checked:true};}catch(e){return {ok:false,checked:true,error:e.message};}}
 window.KunSolver={solve,buildFlags,parseProgress,verifyResult,loadSource};
 })();
