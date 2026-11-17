@@ -15,7 +15,7 @@ function parse(text){const g=re=>{const m=text.match(re);return m?m[1].trim():nu
 async function runWasm(code){const out=[];let exit=null;const t=Date.now();
  const m=await createKunsolve({print:l=>out.push(l),printErr:()=>{},onExit:c=>{exit=c;},quit:(c)=>{exit=c;}});
  try{const r=m.callMain([code,...ARGS]);if(exit===null&&typeof r==='number')exit=r;}catch(e){if(e&&e.status!==undefined)exit=e.status;else throw e;}
- return {...parse(out.join('\n')),exit,sec:((Date.now()-t)/1000).toFixed(1),heapMB:(m.HEAPU8.length>>20)};}
+ return {...parse(out.join('\n')),exit,sec:((Date.now()-t)/1000).toFixed(1),heapMB:m.HEAPU8?(m.HEAPU8.length>>20):'n/a'};}
 function runNative(code){if(!native)return null;const t=Date.now();const p=spawnSync(native,[code,...ARGS],{encoding:'utf8',maxBuffer:1<<26});return {...parse(p.stdout),exit:p.status,sec:((Date.now()-t)/1000).toFixed(1)};}
 (async()=>{let bad=0;console.log('native: '+(native||'(none found; showing WASM only - run `make` in Solver/ to compare)'));
  for(const id of ids){const code=codeOf(id);if(!code){console.log(id+': not in levels.js, skipped');continue;}
