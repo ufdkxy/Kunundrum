@@ -67,7 +67,7 @@ function refresh(){
  $('edit-mode-icon-play').hidden=!E.active;
  $('edit-mode-button').setAttribute('aria-pressed',String(E.active));
  document.body.classList.toggle('edit-mode',E.active);
- for(const id of ['open-levels','open-board-data','open-share'])$(id).disabled=E.active;
+ for(const id of ['open-levels','open-board-data','open-share','open-solver'])$(id).disabled=E.active;
  $('editor-width').value=E.draft?.width??10;$('editor-height').value=E.draft?.height??7;
  $('editor-hex').value=E.hexValue;
  $('editor-rotating').checked=E.rotating;

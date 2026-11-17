@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.7.3'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.8.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -929,6 +929,14 @@ window.KunundrumHost = {
   play:draft=>{adoptEdited(draft);},
   resume:()=>{render();},
   toast:message=>toast(message),
+  // Solver dialog (solver-ui.js): the current board as a K3 code without a route, plus the saved solution's score and moves when it replays to completion. Stops any playback.
+  prepareSolver:()=>{
+    stopPlayback();
+    const {solution,...bare}=board,info={code:encodeBoard(bare),title:board.title,id:currentPresetId,saved:null};
+    if(solution){try{const f=buildReplay(board,solution),s=f[f.length-1].state;if(isComplete(s))info.saved={notation:solution,score:s.score,moves:s.moves};}catch{}}
+    return info;
+  },
+  copy:(text,message)=>copyText(text,message),
   showReview:()=>openDialog('shot-dialog'),
   // Genuine board artwork for one tile, cropped from a 3x3 board so it looks exactly as on the board.
   icon:spec=>{

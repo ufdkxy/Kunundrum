@@ -29,7 +29,7 @@ Existing JSON / K2 / K3 --> Codec.decodeBoard ----------+--> Core.validateBoard
                                                   Codec.decodeBoard + Core.applyMove
 ```
 
-No server or framework is required by the JavaScript sources. The native solver and Python screenshot parser are **separate command-line programs**, not browser integrations. There is presently no WebAssembly bridge, worker protocol, or browser solver UI.
+No server or framework is required by the JavaScript sources. The native solver and Python screenshot parser are **separate command-line programs**, not browser integrations. The solver is also available in the browser: `Solver/wasm/` builds it with Emscripten to one ASCII file (`kunsolve-bundle.js`, WASM embedded as base64) that `solver-client.js` runs in a Blob worker, so it works from `file://` and over http(s) alike. `solver-ui.js` is the Solver dialog (button in the Replay panel, disabled while editing). Results are verified by replaying the returned route through `Codec.decodeBoard`; the native CLI stays the reference implementation.
 
 ## 2. Browser modules and responsibilities
 
@@ -199,7 +199,7 @@ The C++17 CLI is a separate process (`solver.cpp`) with no external runtime libr
 - Search limits may make a result **INCONCLUSIVE** (exit 2). `OPTIMAL` (exit 0) means a verified accepted route with the lowest possible score (fewest moves among equal scores); `UNSOLVABLE` (exit 3) means exhaustive proof; `NO SOLUTION WITHIN N MOVES` (exit 4, only with `--max-depth N`) means every sequence of at most N moves was covered without an accepted completion (a proved lower bound of N+1); `NO SOLUTION WITH SCORE <= N` (exit 4, only with `--max-score N`) means no route that could score N or less finishes the board (a proved score bound of N+1, never reported as UNSOLVABLE); invalid input / unsupported forced mode exits 1. A found but uncertified solution also exits 2. To certify a known L-move solution on a board without hexes (score = moves), run with `--max-depth L-1` and expect exit 4; with hexes, compare the score of the unrestricted `OPTIMAL` result instead.
 - For any solution, the C++ program re-simulates the route and exports solution notation and an updated K3 code. The JavaScript regression suite independently decodes and replays the exported code.
 
-`--max-states` caps stored search states, **not bytes or memory use**. Searches are currently single-threaded. No browser-facing WASM or worker interface exists yet.
+`--max-states` caps stored search states, **not bytes or memory use**. Searches are currently single-threaded. In the browser the same search runs in a worker (about 2x slower than native, wasm32 heap limit 2 GB, UI memory limit at most 1500 MB); cancelling terminates the worker.
 
 ## 7. Regression and compatibility contract
 
