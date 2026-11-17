@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.6.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.7.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -26,6 +26,7 @@ const ICON_PATHS = {
   'copy': '<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
   'share': '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.7 10.5 6.6-4m-6.6 7 6.6 4"/>',
   'help': '<circle cx="12" cy="12" r="9"/><path d="M9.2 9a3 3 0 0 1 5.6 1.2c0 1.7-2.8 1.8-2.8 3.6M12 17h.01"/>',
+  'import': '<path d="M12 3v12m-5-5 5 5 5-5M4 20h16"/>',
   'braces': '<path d="M8 3H6v6l-3 3 3 3v6h2m8-18h2v6l3 3-3 3v6h-2"/>',
   'grid': '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18m6-18v18"/>',
   'route': '<circle cx="5" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 6h9a4 4 0 0 1 0 8H8a2 2 0 0 0 0 4h9"/>',
@@ -713,7 +714,7 @@ function renderShare() {
   let link='',code='',error='';
   try{link=shareLink(withRoute);code=shareCode(withRoute);}catch(e){error=e.message;}
   $('share-link').value=link;$('share-code').value=code;
-  $('share-code-help').textContent=error||('Paste in Board data'+(withRoute?'. Route is the saved solution: click "Use saved solution" to recover it.':'.'));
+  $('share-code-help').textContent=error||('Paste in Import'+(withRoute?'. Route is the saved solution: click "Use saved solution" to recover it.':'.'));
   $('share-link-help').textContent=error||(withRoute?`Opens at move ${cursor}.`:'');
 }
 async function copyText(text,success) {
@@ -773,7 +774,7 @@ async function importScreenshot(file){
     window.KunEditor.openDraft(draft,problems,true);
     KunParser.renderReview($('shot-review'),result.bitmap,result);
     const b=result.board,n=result.warnings.length;
-    $('shot-summary').textContent=`${b.width}×${b.height} board, ${b.balls.length} balls, ${b.goals.length} goals, ${b.teleports.length} teleport pairs. ${n?`${n} warning${n>1?'s':''} to review:`:'No warnings, but check the overlay against your screenshot.'}`;
+    $('shot-summary').textContent=`${b.width}×${b.height} board, ${b.balls.length} balls, ${b.goals.length} goals, ${b.teleports.length} teleport pairs. ${n?`${n} warning${n>1?'s':''} to review:`:''}`;
     const list=$('shot-warnings');list.replaceChildren(...result.warnings.map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
     window.KunEditor.setReview($('shot-review'));
     openDialog('shot-dialog');
@@ -814,7 +815,7 @@ $('load-board').addEventListener('click',importBoard);
 $('import-shot').addEventListener('click',()=>$('shot-file').click());
 $('shot-file').addEventListener('change',event=>{const file=event.target.files[0];event.target.value='';importScreenshot(file);});
 window.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('Files'))event.preventDefault();});
-window.addEventListener('drop',event=>{const file=[...(event.dataTransfer?.files||[])].find(f=>/^image\//.test(f.type));if(!file)return;event.preventDefault();importScreenshot(file);});
+window.addEventListener('drop',event=>{const file=[...(event.dataTransfer?.files||[])].find(f=>/^image\//.test(f.type));if(!file)return;event.preventDefault();if($('board-dialog').open)importScreenshot(file);});
 $('board-input').addEventListener('input',()=>showError('board-error'));
 document.querySelectorAll('[data-close]').forEach(button=>button.addEventListener('click',()=>closeDialog(button.closest('dialog'))));
 document.querySelectorAll('dialog').forEach(dialog=>{

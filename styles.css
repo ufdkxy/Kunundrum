@@ -646,3 +646,8 @@ body.edit-mode .selected-info { display:none; }
 .editor-json-row{display:flex}
 #editor-json-box{display:grid;gap:6px}
 .editor-json{min-height:140px;max-height:260px;word-break:normal;white-space:pre}
+
+.editor-review-thumb{display:block;width:100%}
+.editor-review-thumb canvas{width:100%}
+.editor-json-box .schema-help,#editor-json-box .schema-help{font-size:11px}
+#editor-json-box pre{overflow:auto;font-size:10px}

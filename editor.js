@@ -7,7 +7,7 @@ const clone = x => JSON.parse(JSON.stringify(x));
 const colorNames={R:'Red',G:'Green',B:'Blue',Y:'Yellow','*':'Universal'};
 const singular={walls:'Wall',balls:'Ball',goals:'Goal',arrows:'Arrow',gates:'Gate',switches:'Switch',teleports:'Teleport',hexes:'Hexagon'};
 const tools=['select','ball','goal','wall','gate','switch','arrow','teleport','hex','erase'];
-const mutable = {active:false,draft:null,grab:null,floatDrag:null,preferFloor:false,tool:'select',color:'R',direction:'r',rotating:false,activeTile:true,hexValue:-5,selected:null,pending:null,history:[],future:[],dragging:false,dragChanged:false,dragBefore:null,lastCell:'',dirty:false};
+const mutable = {active:false,draft:null,grab:null,floatDrag:null,preferFloor:false,tool:'select',color:'G',direction:'r',rotating:false,activeTile:true,hexValue:-5,selected:null,pending:null,history:[],future:[],dragging:false,dragChanged:false,dragBefore:null,lastCell:'',dirty:false};
 const E = mutable;
 const host = () => window.KunundrumHost;
 const same=(a,b)=>a&&b&&a.x===b.x&&a.y===b.y;
@@ -56,7 +56,7 @@ function syncJson(){const box=$('editor-json');if(!$('editor-json-box').hidden&&
 function setReview(source,show=true){
  const thumb=$('editor-review-thumb'),canvas=$('editor-review-canvas');
  if(!show||!source||!source.width){thumb.hidden=true;return;}
- const k=Math.min(150/source.width,150/source.height,1),w=Math.max(1,Math.round(source.width*k)),h=Math.max(1,Math.round(source.height*k));
+ const k=Math.min(480/source.width,1),w=Math.max(1,Math.round(source.width*k)),h=Math.max(1,Math.round(source.height*k));
  canvas.width=w;canvas.height=h;canvas.getContext('2d').drawImage(source,0,0,w,h);thumb.hidden=false;
 }
 function refresh(){
