@@ -169,8 +169,10 @@ function setMode(active){
    // The current run (board + route) survives editing until the draft is actually changed:
    // only a draft copied from the running board with an empty undo history resumes it.
    const unchanged=E.fromHost&&!E.history.length;
-   if(!unchanged)host().play(Core.validateBoard(E.draft));
+   const notes=[];
+   if(!unchanged)host().play(Core.validateBoard(E.draft,undefined,notes));
    E.active=false;E.pending=null;E.selected=null;clearFloatingDrag();refresh();setStatus('');
+   if(notes.length)host().toast(notes.join('; '));
    if(unchanged)host().resume();
   }catch(err){setStatus(`Cannot test yet: ${err.message}`,true);$('editor-status').scrollIntoView({block:'nearest'});}
  }
@@ -268,7 +270,7 @@ function applyProperty(key,value){
  if(key==='Color')data.color=value;
  if(key==='Direction')data.direction=value;
  if(key==='Rotating')data.rotating=value==='true';
- if(key==='Active'){if(sel.type==='switches')data.on=value==='true';else data.active=value==='true';}
+ if(key==='Active'){if(sel.type==='switches'){const on=value==='true',same=data.controls.join(',');for(const sw of E.draft.switches)if(sw===data||(same&&sw.controls.join(',')===same)){if(on)sw.on=true;else delete sw.on;}}else data.active=value==='true';}
 
  if(key==='Gate/Teleport IDs')data.controls=list(value);
  if(key==='Value')data.value=Number(value);

@@ -58,7 +58,7 @@ function uniqueIds                          (values     , label        , fail   
 }
 
 /** Validate imported data and return only the supported, normalized version-1 fields. */
-function validateBoard(raw         , problems         )        {
+function validateBoard(raw         , problems         , notes         )        {
   // With a `problems` array, semantic problems (as opposed to unreadable data) are
   // collected instead of thrown, so a damaged board can still be opened for repair.
   const fail = (message        ) => { if (problems) problems.push(message); else throw new Error(message); };
@@ -134,6 +134,17 @@ function validateBoard(raw         , problems         )        {
   }).sort(rowOrder);
 
   uniqueIds(gates, "gate", fail); uniqueIds(switches, "switch", fail); uniqueIds(teleports, "teleport", fail); uniqueIds(hexes, "hexagon", fail);
+  // Switches with the same non-empty list always toggle together and share one indicator (display only):
+  // the set takes the value of its lowest-numbered switch.
+  const sets = new Map();
+  for (const sw of switches) if (sw.controls.length) { const key = sw.controls.join(","); sets.set(key, [...(sets.get(key) ?? []), sw]); }
+  for (const set of sets.values()) {
+    const [first, ...rest] = set.sort((a, b) => a.id.localeCompare(b.id, "en", { numeric: true }));
+    for (const sw of rest) if (!!sw.on !== !!first.on) {
+      if (first.on) sw.on = true; else delete sw.on;
+      if (notes) notes.push(`${sw.id} indicator set to match ${first.id}`);
+    }
+  }
   const switchable = new Set(gates.map(g => g.id));
   for (const t of teleports) { if (switchable.has(t.id)) fail(`Gate and teleport share the ID ${t.id}; a switch could not tell them apart.`); switchable.add(t.id); }
   for (const sw of switches) {
@@ -266,7 +277,8 @@ function applyMove(state           , board       , ballId        , direction    
       // A gate that cannot close blocks the whole switch: nothing it controls toggles, and the switch itself stays put.
       events.push(`Switch ${sw.id} did not change because a closing gate is occupied.`);
     } else {
-      nextState.switchOn[sw.id] = !(state.switchOn[sw.id] ?? sw.on ?? false);
+      const nowOn = !(state.switchOn[sw.id] ?? sw.on ?? false), key = sw.controls.join(",");
+      for (const twin of board.switches) if (twin.id === sw.id || (key && twin.controls.join(",") === key)) nextState.switchOn[twin.id] = nowOn;
       for (const gate of gates) nextState.gateActive[gate.id] = !nextState.gateActive[gate.id];
       for (const id of sw.controls) if (id in nextState.teleportActive) {
         nextState.teleportActive[id] = !nextState.teleportActive[id];

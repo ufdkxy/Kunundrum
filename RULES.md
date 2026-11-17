@@ -32,7 +32,7 @@ After a legal move finishes at its **final** cell:
 
 - If that cell is a goal matching the moving ball's color, the ball is **permanently locked/docked**; it cannot be selected again. Balls initially occupying their matching goals start locked.
 - If that cell contains a switch, the switch fires **once at the end of the move**, not merely when crossed. Its visual `on` flag toggles; the flag is not itself used to determine move legality.
-- A switch controls one list, `controls`, of gate and teleport IDs (gate IDs `G1`, …; teleport IDs `T1`, …; switch IDs `S1`, …). Several switches may list the same element. Elements of one list may have different initial active states; they all flip together.
+- A switch controls one list, `controls`, of gate and teleport IDs (gate IDs `G1`, …; teleport IDs `T1`, …; switch IDs `S1`, …). Switches with the same non-empty list are identical: pressing any of them toggles the whole set once, and they share one indicator, so the indicator is derived, not independent data (a set takes the `on` value of its lowest-numbered switch when input disagrees). Lists are expected to be identical or disjoint. Elements of one list may have different initial active states; they all flip together.
 - **Blocked closing rule:** if any currently inactive gate in the switch's list would become active under a ball, the switch **cannot change state**: none of its gates or teleports toggle, and its visual `on` flag stays as it is.
 - A move changes the score by `1 + sum(values of hexes first consumed during that move)`. Each hex may contribute its signed value (`-10000` through `10000`, excluding zero) **at most once per run**, even if traversed repeatedly. Score starts at `0`; moves start at `0`.
 
