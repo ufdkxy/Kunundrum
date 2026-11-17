@@ -43,7 +43,24 @@ function putProps(){
  html+='<button class="secondary-button editor-delete" id="editor-delete-object" type="button">Delete object</button>';
  panel.innerHTML=html;
 }
+const iconCache={};
+function renderIcons(){
+ const color=E.color,spec={ball:{color},goal:{color},wall:{},gate:{active:E.activeTile},switch:{},arrow:{direction:E.direction,rotating:E.rotating},teleport:{color,active:E.activeTile},hex:{value:E.hexValue||-5}};
+ for(const el of document.querySelectorAll('[data-tool-icon]')){
+  const type=el.dataset.toolIcon,args={type,...spec[type]},key=JSON.stringify(args);
+  if(el.dataset.iconKey===key)continue;
+  el.dataset.iconKey=key;el.innerHTML=iconCache[key]||(iconCache[key]=host().icon(args));
+ }
+}
+function syncJson(){const box=$('editor-json');if(!$('editor-json-box').hidden&&document.activeElement!==box&&E.draft)box.value=JSON.stringify(E.draft,null,2);}
+function setReview(source,show=true){
+ const thumb=$('editor-review-thumb'),canvas=$('editor-review-canvas');
+ if(!show||!source||!source.width){thumb.hidden=true;return;}
+ const k=Math.min(150/source.width,150/source.height,1),w=Math.max(1,Math.round(source.width*k)),h=Math.max(1,Math.round(source.height*k));
+ canvas.width=w;canvas.height=h;canvas.getContext('2d').drawImage(source,0,0,w,h);thumb.hidden=false;
+}
 function refresh(){
+ renderIcons();
  if(E.active&&document.activeElement!==$('editor-title'))$('editor-title').value=E.draft.title;
  $('edit-mode-label').textContent=E.active?'Play':'Edit';
  $('edit-mode-icon-edit').hidden=E.active;
@@ -157,12 +174,14 @@ function renderDraft(){
  $('board-stage').innerHTML=svg.replace('</svg>',overlay()+'</svg>');
  $('board-dimensions').textContent=`${E.draft.width} × ${E.draft.height}`;
  $('level-title').textContent=E.draft.title;
+ syncJson();
 }
 function setMode(active){
  if(active===E.active)return;
  if(active){
   host().stop();
   E.draft=clone(host().getBoard());E.fromHost=true;E.history=[];E.future=[];E.pending=null;E.selected=null;E.tool='select';E.dirty=false;
+  setReview(null,false);
   E.active=true;$('editor-export-code').hidden=true;setStatus('');refresh();renderDraft();
  }else{
   try{
@@ -177,11 +196,11 @@ function setMode(active){
   }catch(err){setStatus(`Cannot test yet: ${err.message}`,true);$('editor-status').scrollIntoView({block:'nearest'});}
  }
 }
-function openDraft(draft,problems=[]){
+function openDraft(draft,problems=[],fromScreenshot=false){
  // Open a board that failed validation for repair; Play stays gated by validateBoard in setMode(false).
  host().stop();
  E.draft=clone(draft);E.fromHost=false;E.history=[];E.future=[];E.pending=null;E.selected=null;E.tool='select';E.dirty=true;
- E.active=true;$('editor-export-code').hidden=true;refresh();
+ E.active=true;$('editor-export-code').hidden=true;if(!fromScreenshot)setReview(null,false);refresh();
  try{renderDraft();}catch(err){setStatus(`Opened for repair, but the board cannot be drawn: ${err.message}`,true);return;}
  setStatus(problems.length?`This board is not playable yet — fix it, then press Play. ${problems.join(' ')}`:'',problems.length>0);
 }
@@ -289,7 +308,7 @@ function updateDimensions(){
  for(const type of keys){if(type==='teleports')E.draft.teleports=E.draft.teleports.filter(p=>p.ends.every(inside));else E.draft[type]=E.draft[type].filter(inside);}
  prune(E.draft);remember(prev);refresh();renderDraft();setStatus('Grid resized. Out-of-bounds objects were removed.');
 }
-function newBoard(){E.draft=template();E.fromHost=false;E.history=[];E.future=[];E.pending=null;E.selected=null;refresh();renderDraft();setStatus('New board.');}
+function newBoard(){setReview(null,false);E.draft=template();E.fromHost=false;E.history=[];E.future=[];E.pending=null;E.selected=null;refresh();renderDraft();setStatus('New board.');}
 function ensureEditing(){if(!E.active)setMode(true);}
 const panel=document.getElementById('editor-panel');
 $('edit-mode-button').addEventListener('click',()=>setMode(!E.active));
@@ -364,6 +383,15 @@ document.addEventListener('keydown',event=>{
  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){event.preventDefault();event.stopImmediatePropagation();editorUndo(event.shiftKey);return;}
  if(event.key==='Escape'&&E.pending){E.pending=null;refresh();renderDraft();event.preventDefault();}
 },true);
-window.KunEditor={get active(){return E.active;},render:renderDraft,open:()=>setMode(true),openDraft};
+$('editor-review-thumb').addEventListener('click',()=>host().showReview());
+$('editor-json-toggle').addEventListener('click',()=>{const box=$('editor-json-box'),open=box.hidden;box.hidden=!open;$('editor-json-toggle').setAttribute('aria-expanded',String(open));$('editor-json-toggle').textContent=open?'Hide JSON':'Edit JSON';if(open&&E.draft)$('editor-json').value=JSON.stringify(E.draft,null,2);});
+$('editor-json-apply').addEventListener('click',()=>{
+ try{
+  const notes=[],valid=Core.validateBoard(JSON.parse($('editor-json').value),undefined,notes);
+  const prev=snapshot();E.draft=clone(valid);delete E.draft.solution;E.pending=null;E.selected=null;remember(prev);
+  refresh();renderDraft();setStatus(notes.length?`JSON applied. ${notes.join('; ')}`:'JSON applied.');
+ }catch(err){setStatus(`Invalid JSON board: ${err.message}`,true);}
+});
+window.KunEditor={get active(){return E.active;},render:renderDraft,open:()=>setMode(true),openDraft,setReview};
 refresh();
 })();

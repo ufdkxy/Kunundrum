@@ -567,16 +567,6 @@ body.edit-mode #board-stage.editor-grabbable {cursor:grab}
 body.edit-mode #board-stage.editor-grabbing,body.edit-mode #board-stage.editor-grabbing * {cursor:grabbing!important}
 .editor-drag-preview {filter:drop-shadow(0 0 6px #4fe9ff)}
 .editor-tools button .editor-glyph{display:flex;align-items:center;justify-content:center;width:25px;height:25px;flex-shrink:0;box-sizing:border-box}
-.editor-ball-glyph{border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff0f0,#ff3c43 25%,#b60a28 55%,#470719 75%);box-shadow:0 0 5px 2px #ff334b,0 0 12px 2px #e21737}
-.editor-goal-glyph{border-radius:50%;border:3px solid #f63954;box-shadow:0 0 6px #f92c53,inset 0 0 5px #f92c53}
-.editor-goal-glyph i{display:block;width:9px;height:9px;border:2px solid #ff8596;border-radius:50%;box-shadow:0 0 5px #ff3460}
-.editor-wall-glyph{background:linear-gradient(130deg,#8996a0,#47555f 50%,#a2acb4);border:2px solid #9cabb6;box-shadow:inset 0 0 0 2px #38444e}
-.editor-gate-glyph{background:repeating-linear-gradient(135deg,#3d3520 0px,#3d3520 5px,#ffe04a 5px,#ffe04a 9px);border:3px solid #fff158;box-shadow:0 0 8px #f9d437}
-.editor-switch-glyph{border-radius:50%;background:radial-gradient(circle at 40% 25%,#ff888b 0%,#ff2b34 40%,#9a091f 80%);border:2px solid #8a1428;box-shadow:0 0 6px #e8304a}
-.editor-arrow-glyph{font-size:22px;color:#ff6565;text-shadow:0 0 6px #fc4343;font-weight:900;letter-spacing:-6px;padding-right:6px}
-.editor-teleport-glyph{border-radius:50%;border:3px dashed #8feeff;box-shadow:0 0 8px #27e7ff,inset 0 0 6px #43d6ff}
-.editor-teleport-glyph i{width:7px;height:7px;border-radius:50%;background:#fff;box-shadow:0 0 7px #fff}
-.editor-hex-glyph{background:#268b16;clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%);color:#fff;text-shadow:0 1px 3px #111;font-size:17px;font-weight:bold}
 .editor-erase-glyph{color:#b6d5e2;font-size:22px}
 
 /* v1.3.2 — contextual palette and live object drag */
@@ -645,3 +635,14 @@ body.edit-mode .selected-info { display:none; }
 .shot-modal { max-width: 720px; }
 .shot-modal canvas { display: block; max-width: 100%; max-height: 60vh; width: auto; height: auto; margin: 0 auto 12px; border-radius: 8px; }
 .shot-modal ul { margin: 0; padding-left: 20px; max-height: 20vh; overflow: auto; font-size: .9rem; }
+
+.editor-tools button .editor-glyph{width:34px;height:34px}
+.tool-icon-svg{display:block;width:100%;height:100%;overflow:hidden}
+.editor-glyph[data-tool-icon="wall"] .tool-icon-svg{background:#02080c;border-radius:2px}
+.editor-review-thumb{display:block;padding:3px;margin:0;background:#101f28;border:1px solid #304855;border-radius:6px;cursor:pointer;width:max-content;max-width:100%}
+.editor-review-thumb[hidden],#editor-json-box[hidden]{display:none}
+.editor-review-thumb canvas{display:block;max-width:100%;height:auto;border-radius:4px}
+.editor-review-thumb:hover{border-color:#48d7fa}
+.editor-json-row{display:flex}
+#editor-json-box{display:grid;gap:6px}
+.editor-json{min-height:140px;max-height:260px;word-break:normal;white-space:pre}

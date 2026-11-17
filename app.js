@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.5.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.6.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -166,7 +166,6 @@ let pendingMove = null;
 let animationEpoch = 0;
 let playEpoch = 0;
 let toastTimer;
-let dataTab = 'code';
 let bestScores = {};
 let settings = { coordinates: false, trail: false, outline: false, speed: 1, viewDefaultsVersion: 1, outlineDefaultsVersion: 1 };
 let viewSettingsInitialized = false;
@@ -725,16 +724,7 @@ async function copyText(text,success) {
     let ok=false;try{ok=document.execCommand('copy');}catch{}finally{temp.remove();}toast(ok?success:'Automatic copy is unavailable. Select the text and copy it manually.',!ok);return ok;
   }
 }
-function setDataTab(tab) {
-  dataTab=tab;
-  $('data-code-tab').classList.toggle('active',tab==='code');$('data-code-tab').setAttribute('aria-pressed',String(tab==='code'));
-  $('data-json-tab').classList.toggle('active',tab==='json');$('data-json-tab').setAttribute('aria-pressed',String(tab==='json'));
-  $('board-input-label').textContent=tab==='json'?'BOARD JSON':'BOARD CODE';
-  $('board-input').value=tab==='json'?JSON.stringify(board,null,2):'';
-  $('board-input').placeholder=tab==='json'?'Edit the board definition…':'Paste a K3. board code…';
-  $('board-data-help').textContent=tab==='json'?'Loading starts a new run. Validated before loading.':'Paste a board or replay code. Validated before loading.';
-  showError('board-error');
-}
+function resetBoardInput() {$('board-input').value='';showError('board-error');}
 function importBoard() {
   const input=$('board-input').value.trim();
   try {
@@ -780,11 +770,12 @@ async function importScreenshot(file){
     const draft=decodeBoard(JSON.stringify(result.board),problems);
     clearLocation();
     if($('board-dialog').open)$('board-dialog').close();
-    window.KunEditor.openDraft(draft,problems);
+    window.KunEditor.openDraft(draft,problems,true);
     KunParser.renderReview($('shot-review'),result.bitmap,result);
     const b=result.board,n=result.warnings.length;
     $('shot-summary').textContent=`${b.width}×${b.height} board, ${b.balls.length} balls, ${b.goals.length} goals, ${b.teleports.length} teleport pairs. ${n?`${n} warning${n>1?'s':''} to review:`:'No warnings, but check the overlay against your screenshot.'}`;
     const list=$('shot-warnings');list.replaceChildren(...result.warnings.map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
+    window.KunEditor.setReview($('shot-review'));
     openDialog('shot-dialog');
   }catch(error){toast(`Screenshot import failed: ${error.message}`,true);}
 }
@@ -818,9 +809,7 @@ $('share-include-route').addEventListener('change',event=>{shareRoute=event.targ
 $('copy-link').addEventListener('click',()=>copyText($('share-link').value,'Permalink copied.'));
 $('copy-code').addEventListener('click',()=>copyText($('share-code').value,'K3 code copied.'));
 for(const id of ['share-link','share-code'])$(id).addEventListener('click',event=>event.target.select());
-$('open-board-data').addEventListener('click',()=>{setDataTab('code');openDialog('board-dialog');});
-$('data-code-tab').addEventListener('click',()=>setDataTab('code'));
-$('data-json-tab').addEventListener('click',()=>setDataTab('json'));
+$('open-board-data').addEventListener('click',()=>{resetBoardInput();openDialog('board-dialog');});
 $('load-board').addEventListener('click',importBoard);
 $('import-shot').addEventListener('click',()=>$('shot-file').click());
 $('shot-file').addEventListener('change',event=>{const file=event.target.files[0];event.target.value='';importScreenshot(file);});
@@ -929,6 +918,21 @@ window.KunundrumHost = {
   play:draft=>{adoptEdited(draft);},
   resume:()=>{render();},
   toast:message=>toast(message),
+  showReview:()=>openDialog('shot-dialog'),
+  // Genuine board artwork for one tile, cropped from a 3x3 board so it looks exactly as on the board.
+  icon:spec=>{
+    const at={x:2,y:2},c=['R','G','B','Y'].includes(spec.color)?spec.color:'R';
+    const b={id:'icon-'+spec.type,title:'',width:3,height:3,walls:[],balls:[],goals:[],arrows:[],gates:[],switches:[],teleports:[],hexes:[]};
+    if(spec.type==='ball')b.balls.push({...at,color:c,id:c});
+    if(spec.type==='goal')b.goals.push({...at,color:c});
+    if(spec.type==='wall')b.walls.push(at);
+    if(spec.type==='gate')b.gates.push({...at,id:'G1',active:spec.active!==false});
+    if(spec.type==='switch')b.switches.push({...at,id:'S',controls:[],on:false});
+    if(spec.type==='arrow')b.arrows.push({...at,direction:spec.direction||'r',...(spec.rotating?{rotating:true}:{})});
+    if(spec.type==='teleport')b.teleports.push({id:'T1',color:spec.color||'*',active:spec.active!==false,ends:[at,{x:1,y:1}]});
+    if(spec.type==='hex')b.hexes.push({...at,id:'hex1',value:spec.value||-5});
+    return renderSvg(b,createInitialState(b),{mini:true}).replace(/<text class="tile-label"[^>]*>[^<]*<\/text>/g,'').replace(/viewBox="[^"]*"/,'viewBox="74 74 64 64"').replace('<svg class="board-svg"','<svg class="tool-icon-svg"');
+  },
 };
 function boot() {
   let saved=null;
