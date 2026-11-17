@@ -228,20 +228,20 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .modal-heading p { margin-top: 9px; font-size: 12px; color: #8ea6b4; }
 .modal-heading > .icon-button { width: 31px; height: 31px; flex-shrink: 0; }
 .modal-bottom { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 20px; margin-top: 22px; border-top: 1px solid #293e4b; color: #7c97a6; font-size: 11px; }
-.levels-modal { overflow: hidden; padding-top: 16px; padding-bottom: 20px; }
+.levels-modal { width: min(1100px, calc(100vw - 48px)); overflow: hidden; padding-top: 16px; padding-bottom: 20px; }
 .levels-modal .modal-heading { margin-bottom: 12px; align-items: center; }
 .levels-modal .modal-heading h2 { margin-top: 0; font-size: 20px; }
 .levels-modal[open] { display: flex; flex-direction: column; height: calc(100dvh - 48px); }
-.levels-layout { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: 92px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 18px; align-items: stretch; }
+.levels-layout { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: 52px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 16px; align-items: stretch; }
 .chapter-bar { display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; padding-right: 6px; border-right: 1px solid #293e4b; }
-.chapter-button { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; padding: 7px 10px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #9fb6c3; text-align: left; }
+.chapter-button { display: flex; align-items: baseline; justify-content: center; gap: 6px; padding: 7px 4px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #9fb6c3; text-align: left; }
 .chapter-button strong { font-size: 14px; font-weight: 600; }
 .chapter-button span { font-size: 9px; color: #6b8594; }
 .chapter-button:hover { background: #1a2b35; }
 .chapter-button.empty { opacity: .45; }
 .chapter-button.active { border-color: var(--mint); background: #13222c; color: var(--text); opacity: 1; }
 .level-empty { grid-column: 1 / -1; padding: 40px 0; text-align: center; color: #7d96a5; font-size: 12px; }
-.level-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-content: start; min-height: 0; overflow-y: auto; padding-right: 8px; margin-right: -8px; }
+.level-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-content: start; min-height: 0; overflow-y: auto; padding-right: 8px; margin-right: -8px; }
 .level-card { display: block; min-width: 0; text-align: left; padding: 10px; border: 1px solid #2e4553; border-radius: 9px; background: #13222c; }
 .level-card:hover { border-color: #6b928e; background: #1a2b35; }
 .level-card.active { border-color: var(--mint); box-shadow: 0 0 0 1px #b7efd829; }
