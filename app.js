@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.7.2'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.7.3'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -249,16 +249,26 @@ function persist() {
 }
 
 function mappingLabels(b) {
-  // Tile numbers say which switch controls which element; they only appear when a board has several switches.
+  // Tile numbers say which switch controls which element; display only (IDs stay distinct).
+  // Switches controlling exactly the same elements share one label (that of the first of them), and
+  // numbers only appear when the board has at least two such distinct switches.
   const labels={switches:new Map(),gates:new Map(),teleports:new Map()};
-  if(b.switches.length<2)return labels;
   const tag=id=>/^S\d+$/.test(id)?id.slice(1):id;
+  const groupLabel=new Map(), shown=new Map();
+  for(const sw of b.switches){
+    const key=[...new Set(sw.controls)].sort().join('|');
+    if(!groupLabel.has(key))groupLabel.set(key,tag(sw.id));
+    shown.set(sw.id,groupLabel.get(key));
+  }
+  if(groupLabel.size<2)return labels;
   const gateIds=new Set(b.gates.map(g=>g.id));
   for(const sw of b.switches){
-    labels.switches.set(sw.id,tag(sw.id));
+    const label=shown.get(sw.id);
+    labels.switches.set(sw.id,label);
     for(const id of sw.controls){
       const kind=gateIds.has(id)?'gates':'teleports',previous=labels[kind].get(id);
-      labels[kind].set(id,previous?`${previous}, ${tag(sw.id)}`:tag(sw.id));
+      if(!previous)labels[kind].set(id,label);
+      else if(!previous.split(', ').includes(label))labels[kind].set(id,`${previous}, ${label}`);
     }
   }
   return labels;
