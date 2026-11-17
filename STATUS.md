@@ -34,6 +34,8 @@ Certified optimal scores (`verify.js`): 6.6 → 18, 7.1 → 15, 7.4 → 27, 7.6 
 
 **App 3.3.19, 2026-11-14: puzzle dialog columns.** The puzzle dialog has a fixed height; the chapter list and the puzzle previews are equally tall and each scrolls on its own.
 
+**Solver v0.14, 2026-11-17: core/CLI split for WebAssembly (phase 1).** `main()` now only parses flags and reads input; `solveBoard()` returns a structured `Outcome` and writes progress to a log stream (`LOG`, stderr by default). New `--json` flag prints the outcome as JSON. Under Emscripten the same flags are accepted as a string by `kun_solve(code, flags)`, which streams progress lines to `Module.onProgress` and returns the JSON. CLI text output is unchanged (byte-identical to v0.13 on 10 outcome types; `verify.js` passes). Phase 0 (`Solver/wasm/`, `node wasm/spike.js`): WASM matches native on 9 catalog levels incl. identical state counts, about 2x slower (10.9: 7.4 s vs 4.0 s). Cancel will be worker termination (no flag in the solver). `wasm/api-test.js` checks the JSON API against native `--json`. Worker, UI and docs follow in phases 2-4.
+
 **App 3.7.3, 2026-11-17: shared tile numbers for identical switches.** Switches whose `controls` sets are identical show one shared number (the first of them) on the board, and gates/teleports list each distinct number once; numbers appear only if the board has at least two distinct switches (so 6.6 and 9.6 show none, 9.8 shows 1, 2, 2, 1). Display only: switch IDs, engine and solver are unchanged.
 
 **App 3.7.2, 2026-11-17: wider puzzle dialog.** The puzzle dialog is up to 1100px wide with 4 previews per row (2 / 1 on narrower screens as before); the chapter column is 52px.

@@ -1,8 +1,8 @@
-# Kunundrum native C++ solver — prototype 0.9 (`SOLVER_VERSION` in `solver.cpp`, `kunsolve --version`; independent of the web app)
+# Kunundrum native C++ solver — prototype 0.14 (`SOLVER_VERSION` in `solver.cpp`, `kunsolve --version`; independent of the web app)
 
 A dependency-free C++17 exact search engine for the **K2/K3 Kunundrum board format**. The solver accepts a board code (or a file containing one), searches for the **lowest-score** solution (score = moves plus one-time hex bonuses and penalties; fewest moves among equal scores), checks the resulting path against its simulator, and exports a new K3 code with the solution embedded.
 
-**This is a separate solver, not an update to the Replay Lab app.** The source is suitable for an eventual Emscripten/WebAssembly build, but a browser-facing WebAssembly module and browser UI are **not included** yet.
+**This is a separate solver, not an update to the Replay Lab app.** The solver core is `solveBoard()` (board code + limits in, structured `Outcome` out, progress lines to a log stream); `main()` is a thin CLI wrapper. `make wasm` (see `wasm/README.md`) builds it with Emscripten and exports `kun_solve(code, flags)`; the worker and browser UI are **not included** yet.
 
 ## Build
 
@@ -51,6 +51,7 @@ Options:
 - `--beam-width N` — states kept per layer by `--algorithm beam` (default 200,000); `--seed N` — its tie-break seed (default 1).
 - `--max-depth N` — only consider solutions of at most N moves (N >= 1, default unlimited); see [Depth limit](#depth-limit-certifying-a-known-solution).
 - `--max-score N` — only consider routes with score at most N (default: no bound); see [Score limit](#score-limit).
+- `--json` — print the result as one JSON object (status, score, moves, solution, K3, bounds, statistics, error) instead of text; the WebAssembly export returns the same object.
 - `--quiet` — hide per-depth progress; statistics and results still print.
 - `--no-code` — omit the long embedded K3 output.
 

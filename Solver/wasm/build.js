@@ -5,7 +5,7 @@ const {spawnSync}=require('child_process'),fs=require('fs'),path=require('path')
 const out=path.join(__dirname,'build');fs.mkdirSync(out,{recursive:true});
 const args=['-O3','-std=c++17','-DNDEBUG','-fexceptions',path.join(__dirname,'..','solver.cpp'),'-o',path.join(out,'kunsolve.js'),
  '-sMODULARIZE=1','-sEXPORT_NAME=createKunsolve','-sINVOKE_RUN=0','-sEXIT_RUNTIME=1','-sSINGLE_FILE=1',
- '-sENVIRONMENT=web,worker,node','-sEXPORTED_RUNTIME_METHODS=callMain,HEAPU8',
+ '-sENVIRONMENT=web,worker,node','-sEXPORTED_RUNTIME_METHODS=callMain,ccall,HEAPU8','-sEXPORTED_FUNCTIONS=_main,_kun_solve',
  '-sALLOW_MEMORY_GROWTH=1','-sINITIAL_MEMORY=67108864','-sMAXIMUM_MEMORY=2147483648','-sSTACK_SIZE=4194304'];
 console.log('em++ '+args.join(' '));
 const r=spawnSync('em++',args,{stdio:'inherit',shell:process.platform==='win32'});

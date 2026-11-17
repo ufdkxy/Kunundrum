@@ -22,6 +22,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <sstream>
+#include <cstdio>
 using namespace std;
 using Byte=uint8_t;
 static constexpr int MAX_CELLS=1024;
@@ -202,6 +204,8 @@ void successors(const Board&b,const State&s,int maxChoices,Stats&stats,const fun
 }
 struct SearchResult{bool solved=false,exhaustive=false,truncated=false,boundProved=false;vector<Move> path;uint64_t states=0,transitions=0,bytes=0;int depth=0;int provenMoves=0;/* balanced search: complete layers prove that no route of at most this many moves exists */string algorithm;};
 struct Limits{uint64_t maxStates=3000000;/* UINT64_MAX = unlimited */uint64_t maxBytes=0;/* 0 = unlimited */double seconds=60;/* 0 = unlimited */int maxChoices=8;int maxDepth=0;/* 0 = unlimited */bool scoreCap=false;long long maxScore=0;/* --max-score: only routes with score <= maxScore matter */bool verbose=true;string algorithm="auto";bool beamDynamic=false;size_t beamWidth=200000;uint64_t seed=1;/* --algorithm beam: states kept per layer, tie-break seed */};
+static ostream* g_log=&cerr; // progress/diagnostic stream: stderr for the CLI, a callback stream in the WebAssembly build
+#define LOG (*g_log)
 using Clock=chrono::steady_clock;
 struct ClockLimit{Clock::time_point start=Clock::now();double seconds;explicit ClockLimit(double s):seconds(s){} bool expired()const{return seconds>0&&chrono::duration<double>(Clock::now()-start).count()>=seconds;}double elapsed()const{return chrono::duration<double>(Clock::now()-start).count();}};
 // Lower bound on the final score of any accepted route continuing from state s (reached after `depth` moves): every
@@ -226,7 +230,7 @@ SearchResult forwardBFS(const Board&b,const Limits&lim,ClockLimit&timer,const Pa
  size_t head=0;uint32_t found=0;bool success=false,limit=false,depthCut=false;
  for(;head<store.size()&&!(success&&!byScore);head++){
   if(full()||timer.expired()){limit=true;break;}
-  const int dep=store.depth(head);if(dep!=old){old=dep;if(lim.verbose){cerr<<"forward depth "<<old<<" visited "<<store.size()<<" elapsed "<<timer.elapsed()<<"s";if(success)cerr<<" best score "<<best;cerr<<"\n";}}
+  const int dep=store.depth(head);if(dep!=old){old=dep;if(lim.verbose){LOG<<"forward depth "<<old<<" visited "<<store.size()<<" elapsed "<<timer.elapsed()<<"s";if(success)LOG<<" best score "<<best;LOG<<"\n";}}
   State parentState;pk.unpack(store.key(head),parentState);
   if(prune&&scoreLowerBound(b,parentState,dep)>=best)continue; // cannot beat the best route found so far or the --max-score bound
   successors(b,parentState,lim.maxChoices,stats,[&](Transition&& t){if(limit||(success&&!byScore))return;pk.pack(t.s,key.data());if(store.find(key.data())!=Store::NONE)return;
@@ -335,9 +339,9 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
  // Gate groups and teleports no switch controls never change, so they stay at their initial state.
  Store rev;rev.init(pk.K,false);vector<uint8_t> key(pk.K),targetKey(pk.K),checkKey(pk.K);
  const int groupCount=(int)pk.groups.size(),teleCount=(int)pk.teles.size();
- if(groupCount+teleCount>16){if(lim.verbose)cerr<<"too many terminal gate/teleport configurations for reverse seeds\n";return out;}
+ if(groupCount+teleCount>16){if(lim.verbose)LOG<<"too many terminal gate/teleport configurations for reverse seeds\n";return out;}
  uint64_t variants=1ULL<<(groupCount+teleCount);
- if(variants>lim.maxStates/4){if(lim.verbose)cerr<<"terminal configurations exceed reverse budget\n";return out;}
+ if(variants>lim.maxStates/4){if(lim.verbose)LOG<<"terminal configurations exceed reverse budget\n";return out;}
  for(uint64_t mask=0;mask<variants;mask++){
   State candidate=target;
   for(int g=0;g<groupCount;g++)if(mask&(1ULL<<g))for(int j:b.groupGates[pk.groups[g]])candidate.gate[j]^=1;
@@ -353,7 +357,7 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
   rev.add(key.data(),0,0,Move());
  }
  if(rev.size()==0)return out;
- if(lim.verbose)cerr<<"reverse target seeds "<<rev.size()<<" ("<<variants<<" configurations)\n";
+ if(lim.verbose)LOG<<"reverse target seeds "<<rev.size()<<" ("<<variants<<" configurations)\n";
  int reverseDepth=0;size_t revHead=0;uint64_t transitions=0;
  // Stop after complete layers, reserving at least half the state budget for the forward search. Without a state limit the reverse side
  // gets the budget of the default limit (1,000,000 states): the forward side is the one allowed to grow.
@@ -404,16 +408,16 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
    }
   }
   if(!finished){reverseLimited=true;break;}
-  reverseDepth++;if(lim.verbose)cerr<<"reverse depth "<<reverseDepth<<" states "<<rev.size()<<" elapsed "<<timer.elapsed()<<"s\n";
+  reverseDepth++;if(lim.verbose)LOG<<"reverse depth "<<reverseDepth<<" states "<<rev.size()<<" elapsed "<<timer.elapsed()<<"s\n";
   if(rev.size()>reverseBudget*3/5&&reverseDepth>=4)break;
  }
  // If the last reverse layer was interrupted, it is safe to discard it and use only earlier complete layers.
  if(reverseLimited){size_t n=rev.size();while(n>0&&rev.depth(n-1)>reverseDepth)n--;rev.shrinkTo(n);}
- if(lim.verbose)cerr<<"reverse side completed to depth "<<reverseDepth<<"\n";
+ if(lim.verbose)LOG<<"reverse side completed to depth "<<reverseDepth<<"\n";
  if(timer.expired()){out.states=rev.size();out.bytes=rev.bytes();out.transitions=transitions;return out;}
  Store fwd;fwd.init(pk.K,false);pk.pack(start,key.data());fwd.add(key.data(),0,0,Move());
  int best=INT32_MAX;uint32_t fMeet=0,rMeet=0;
- auto meet=[&](uint32_t fi){uint32_t ri=rev.find(fwd.key(fi));if(ri==Store::NONE)return;int len=fwd.depth(fi)+rev.depth(ri);if(len<best){best=len;fMeet=fi;rMeet=ri;if(lim.verbose)cerr<<"candidate "<<best<<" moves (forward "<<fwd.depth(fi)<<", reverse "<<rev.depth(ri)<<")\n";}};
+ auto meet=[&](uint32_t fi){uint32_t ri=rev.find(fwd.key(fi));if(ri==Store::NONE)return;int len=fwd.depth(fi)+rev.depth(ri);if(len<best){best=len;fMeet=fi;rMeet=ri;if(lim.verbose)LOG<<"candidate "<<best<<" moves (forward "<<fwd.depth(fi)<<", reverse "<<rev.depth(ri)<<")\n";}};
  meet(0);
  auto full=[&](){return rev.size()+fwd.size()>=lim.maxStates||(lim.maxBytes&&rev.bytes()+fwd.bytes()>=lim.maxBytes);};
  size_t head=0;bool limited=false,certified=false;
@@ -441,7 +445,7 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
    if(limited||timer.expired())break;
   }
   if(limited||timer.expired())break;
-  if(lim.verbose)cerr<<"forward depth "<<depth+1<<" states "<<fwd.size()<<" best "<<(best==INT32_MAX?-1:best)<<" elapsed "<<timer.elapsed()<<"s\n";
+  if(lim.verbose)LOG<<"forward depth "<<depth+1<<" states "<<fwd.size()<<" best "<<(best==INT32_MAX?-1:best)<<" elapsed "<<timer.elapsed()<<"s\n";
   // Every path of length < best must intersect a complete reverse ball of depth R
   // at forward depth max(0,best-1-R); all forward states through depth+1 are generated.
   // need = longest path length that must be covered: below the best candidate, but never beyond the depth limit D.
@@ -477,9 +481,9 @@ SearchResult bidirectionalBalanced(const Board&b,const Limits&lim,ClockLimit&tim
  // Gate groups and teleports no switch controls never change, so they stay at their initial state.
  Store rev;rev.init(pk.K,false);vector<uint8_t> key(pk.K),targetKey(pk.K),checkKey(pk.K);
  const int groupCount=(int)pk.groups.size(),teleCount=(int)pk.teles.size();
- if(groupCount+teleCount>16){if(lim.verbose)cerr<<"too many terminal gate/teleport configurations for reverse seeds\n";return out;}
+ if(groupCount+teleCount>16){if(lim.verbose)LOG<<"too many terminal gate/teleport configurations for reverse seeds\n";return out;}
  uint64_t variants=1ULL<<(groupCount+teleCount);
- if(variants>lim.maxStates/4){if(lim.verbose)cerr<<"terminal configurations exceed reverse budget\n";return out;}
+ if(variants>lim.maxStates/4){if(lim.verbose)LOG<<"terminal configurations exceed reverse budget\n";return out;}
  for(uint64_t mask=0;mask<variants;mask++){
   State candidate=target;
   for(int g=0;g<groupCount;g++)if(mask&(1ULL<<g))for(int j:b.groupGates[pk.groups[g]])candidate.gate[j]^=1;
@@ -495,10 +499,10 @@ SearchResult bidirectionalBalanced(const Board&b,const Limits&lim,ClockLimit&tim
   rev.add(key.data(),0,0,Move());
  }
  if(rev.size()==0)return out;
- if(lim.verbose)cerr<<"reverse target seeds "<<rev.size()<<" ("<<variants<<" configurations)\n";
+ if(lim.verbose)LOG<<"reverse target seeds "<<rev.size()<<" ("<<variants<<" configurations)\n";
  Store fwd;fwd.init(pk.K,false);pk.pack(start,key.data());fwd.add(key.data(),0,0,Move());
  int best=INT32_MAX;uint32_t fMeet=0,rMeet=0;uint64_t transitions=0;
- auto record=[&](uint32_t fi,uint32_t ri){int len=fwd.depth(fi)+rev.depth(ri);if(len<best){best=len;fMeet=fi;rMeet=ri;if(lim.verbose)cerr<<"candidate "<<best<<" moves (forward "<<fwd.depth(fi)<<", reverse "<<rev.depth(ri)<<")\n";}};
+ auto record=[&](uint32_t fi,uint32_t ri){int len=fwd.depth(fi)+rev.depth(ri);if(len<best){best=len;fMeet=fi;rMeet=ri;if(lim.verbose)LOG<<"candidate "<<best<<" moves (forward "<<fwd.depth(fi)<<", reverse "<<rev.depth(ri)<<")\n";}};
  auto meetF=[&](uint32_t fi){uint32_t ri=rev.find(fwd.key(fi));if(ri!=Store::NONE)record(fi,ri);};
  auto meetR=[&](uint32_t ri){uint32_t fi=fwd.find(rev.key(ri));if(fi!=Store::NONE)record(fi,ri);};
  meetF(0);
@@ -576,7 +580,7 @@ SearchResult bidirectionalBalanced(const Board&b,const Limits&lim,ClockLimit&tim
    if(limited)break;
    rd++;rEnd=rev.size();
   }
-  if(lim.verbose)cerr<<"forward depth "<<fd<<" reverse depth "<<rd<<" states "<<fwd.size()+rev.size()<<" best "<<(best==INT32_MAX?-1:best)<<" elapsed "<<timer.elapsed()<<"s\n";
+  if(lim.verbose)LOG<<"forward depth "<<fd<<" reverse depth "<<rd<<" states "<<fwd.size()+rev.size()<<" best "<<(best==INT32_MAX?-1:best)<<" elapsed "<<timer.elapsed()<<"s\n";
   {int need=min(best==INT32_MAX?INT32_MAX:best-1,D);if(need!=INT32_MAX&&(long long)fd+rd>=need){certified=true;break;}}
  }
  out.states=fwd.size()+rev.size();out.bytes=fwd.bytes()+rev.bytes();out.transitions=transitions;out.provenMoves=exhausted?0:fd+rd;
@@ -677,7 +681,7 @@ SearchResult beamSearch(const Board&b,const Limits&lim,ClockLimit&timer,const Pa
  // Static boards (no switches, no rotating arrows) use an allocation-free move generator; others fall back to successors().
  const bool fast=b.switches.empty()&&!pk.rotating;
  BeamHeuristic H(b,20);
- if(lim.beamDynamic){if(fast){H.dynamic=true;H.dyn.assign(b.n,vector<int>(b.w*b.h,1000));}else if(lim.verbose)cerr<<"note: --beam-heuristic dynamic needs a board without switches and rotating arrows; using static\n";}
+ if(lim.beamDynamic){if(fast){H.dynamic=true;H.dyn.assign(b.n,vector<int>(b.w*b.h,1000));}else if(lim.verbose)LOG<<"note: --beam-heuristic dynamic needs a board without switches and rotating arrows; using static\n";}
  long long totalNeg=0;for(auto&h:b.hexes)if(h.value<0)totalNeg+=h.value;
  struct Layer{vector<uint8_t> key;vector<uint32_t> parent;vector<uint16_t> source;vector<uint8_t> color,dir;vector<string> choices;size_t size()const{return parent.size();}};
  vector<Layer> layers(1);
@@ -742,7 +746,7 @@ SearchResult beamSearch(const Board&b,const Limits&lim,ClockLimit&timer,const Pa
   if(cm.size()>W)prune(W);
   Layer nl;nl.key=ckey;for(size_t i=0;i<cm.size();i++){nl.parent.push_back(cm[i].parent);nl.source.push_back(cm[i].source);nl.color.push_back(cm[i].color);nl.dir.push_back(cm[i].dir);nl.choices.push_back(fast?string():cch[i]);seen.insert(hashBytes(&nl.key[i*K],K));}
   layerBytes+=nl.size()*(K+9);
-  if(lim.verbose){int best=INT32_MAX;for(auto&m:cm)best=min(best,m.sc>>4);cerr<<"beam depth "<<depth+1<<" kept "<<nl.size()<<" best rank "<<best<<" elapsed "<<timer.elapsed()<<"s\n";}
+  if(lim.verbose){int best=INT32_MAX;for(auto&m:cm)best=min(best,m.sc>>4);LOG<<"beam depth "<<depth+1<<" kept "<<nl.size()<<" best rank "<<best<<" elapsed "<<timer.elapsed()<<"s\n";}
   layers.push_back(move(nl));
  }
  out.states=seen.n;out.transitions=transitions;out.bytes=seen.bytes()+layerBytes;
@@ -799,19 +803,31 @@ string codeWithSolution(const Board&b,const vector<LabeledMove>& path){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open levels.js: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0)return trim(line.substr(prefix.size()));}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.13"; // Solver's own version, independent of the web app's APP_VERSION.
-int main(int argc,char**argv){
- try{
-  Limits lim;string input,level,catalog="levels.js";bool wantK3=true;
-  for(int i=1;i<argc;i++){string a=argv[i];auto value=[&](){if(++i>=argc)throw runtime_error("missing argument for "+a);return string(argv[i]);};
-   if(a=="--version"){cout<<"kunsolve v"<<SOLVER_VERSION<<"\n";return 0;}
-   if(a=="--help"||a=="-h"){cout<<"Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|balanced|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--max-states N] [--seconds N] [--max-memory MB] [--max-choices N] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nauto = balanced bidirectional search when applicable (no hexes/rotating arrows, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic upper bound (never certifies optimality; exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";return 0;}
+static const char* SOLVER_VERSION="0.14"; // Solver's own version, independent of the web app's APP_VERSION.
+// ---- Core entry point (shared by the CLI and the WebAssembly build) ----
+struct Cli{Limits lim;string input,level,catalog="levels.js";bool wantK3=true,version=false,help=false,json=false;};
+static const char* HELP_TEXT="Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|balanced|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--max-states N] [--seconds N] [--max-memory MB] [--max-choices N] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nauto = balanced bidirectional search when applicable (no hexes/rotating arrows, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic upper bound (never certifies optimality; exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";
+// Same flags as the command line; the WebAssembly export passes its options as a flag string.
+static Cli parseArgs(const vector<string>&args){
+ Cli c;Limits&lim=c.lim;string&input=c.input,&level=c.level,&catalog=c.catalog;bool&wantK3=c.wantK3;
+ for(size_t i=0;i<args.size();i++){const string&a=args[i];auto value=[&](){if(++i>=args.size())throw runtime_error("missing argument for "+a);return args[i];};
+  if(a=="--version"){c.version=true;return c;}
+  if(a=="--help"||a=="-h"){c.help=true;return c;}
+  if(a=="--json"){c.json=true;continue;}
    else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states"){lim.maxStates=stoull(value());if(lim.maxStates==0)lim.maxStates=UINT64_MAX;}else if(a=="--max-memory"){lim.maxBytes=stoull(value())<<20;}else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-choices")lim.maxChoices=stoi(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--beam-width"){lim.beamWidth=stoull(value());if(lim.beamWidth<1)throw runtime_error("--beam-width must be at least 1");}else if(a=="--beam-heuristic"){string v=value();if(v!="static"&&v!="dynamic")throw runtime_error("--beam-heuristic must be static or dynamic");lim.beamDynamic=v=="dynamic";}else if(a=="--seed")lim.seed=stoull(value());else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantK3=false;else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
-  }
-  if(input.empty()&&level.empty())throw runtime_error("missing board code/file or --level");
-  if(!level.empty())input=catalogCode(level,catalog);else if(input=="-"){input=string((istreambuf_iterator<char>(cin)),{});}else input=readInput(input);
+ }
+ return c;
+}
+struct Outcome{int exit=1;string status,algorithm,solution,k3,error,text;bool hasSolution=false,hasLowerScore=false;long long score=0,lowerScore=0;int moves=0,lowerMoves=0;uint64_t states=0,transitions=0,memMB=0;double elapsed=0;};
+static string jstr(const string&s){string r="\"";for(unsigned char ch:s){if(ch=='"'||ch=='\\'){r+='\\';r+=(char)ch;}else if(ch<0x20){char b[8];snprintf(b,sizeof b,"\\u%04x",ch);r+=b;}else r+=(char)ch;}return r+"\"";}
+static string toJson(const Outcome&o){ostringstream j;j<<"{\"exit\":"<<o.exit<<",\"status\":"<<jstr(o.status)<<",\"hasSolution\":"<<(o.hasSolution?"true":"false")<<",\"score\":"<<o.score<<",\"moves\":"<<o.moves<<",\"solution\":"<<jstr(o.solution)<<",\"k3\":"<<jstr(o.k3)<<",\"lowerMoves\":"<<o.lowerMoves<<",\"hasLowerScore\":"<<(o.hasLowerScore?"true":"false")<<",\"lowerScore\":"<<o.lowerScore<<",\"algorithm\":"<<jstr(o.algorithm)<<",\"states\":"<<o.states<<",\"transitions\":"<<o.transitions<<",\"memoryMB\":"<<o.memMB<<",\"elapsed\":"<<o.elapsed<<",\"error\":"<<jstr(o.error)<<"}";return j.str();}
+// Solves one board code. Writes progress lines to LOG; never throws (errors go to Outcome::error, exit 1).
+static Outcome solveBoard(const string&input,Limits lim,bool wantK3){
+ Outcome o;ostringstream os;
+ try{
+  o.exit=[&]()->int{
   if(lim.maxStates<2||lim.seconds<0||lim.maxChoices<0||lim.maxChoices>32)throw runtime_error("invalid resource limits");
-  Board b=parseCode(input);cerr<<"board "<<b.id<<" ("<<b.w<<"x"<<b.h<<") "<<b.n<<" balls, "<<b.hexes.size()<<" hexes, "<<b.switches.size()<<" switches\n";
+  Board b=parseCode(input);LOG<<"board "<<b.id<<" ("<<b.w<<"x"<<b.h<<") "<<b.n<<" balls, "<<b.hexes.size()<<" hexes, "<<b.switches.size()<<" switches\n";
   const int userDepth=lim.maxDepth;
   if(lim.scoreCap&&b.hexes.empty()&&lim.maxScore>=1){ // without hexes the score is the move count, so the score bound is a depth bound (also usable by the bidirectional search)
    lim.maxDepth=lim.maxDepth>0?(int)min<long long>(lim.maxDepth,lim.maxScore):(int)min<long long>(lim.maxScore,1000000);
@@ -828,14 +844,49 @@ int main(int argc,char**argv){
   else if(lim.algorithm=="beam")res=beamSearch(b,lim,timer,pk);
   else if(lim.algorithm=="auto"||lim.algorithm=="forward")res=forwardBFS(b,lim,timer,pk);
   else throw runtime_error("unknown algorithm");
-  cout<<"Algorithm: "<<res.algorithm<<"\n"<<(userDepth>0?"Depth limit: "+to_string(userDepth)+"\n":string())+(lim.scoreCap?"Score limit: "+to_string(lim.maxScore)+"\n":string())<<"States: "<<res.states<<"\nTransitions: "<<res.transitions<<"\nMemory: "<<(res.bytes>>20)<<" MB\nElapsed: "<<timer.elapsed()<<" s\n";
+  o.algorithm=res.algorithm;o.states=res.states;o.transitions=res.transitions;o.memMB=res.bytes>>20;o.elapsed=timer.elapsed();
+  os<<"Algorithm: "<<res.algorithm<<"\n"<<(userDepth>0?"Depth limit: "+to_string(userDepth)+"\n":string())+(lim.scoreCap?"Score limit: "+to_string(lim.maxScore)+"\n":string())<<"States: "<<res.states<<"\nTransitions: "<<res.transitions<<"\nMemory: "<<(res.bytes>>20)<<" MB\nElapsed: "<<timer.elapsed()<<" s\n";
   if(res.solved){int score;auto route=labelAndVerify(b,res.path,score);bool optimal=res.exhaustive;
-   cout<<(optimal?"OPTIMAL":"SOLUTION FOUND (optimality not certified)")<<"\nScore: "<<score<<"\nMoves: "<<route.size()<<"\nSolution: "<<formatMoves(b,route)<<"\n";if(wantK3&&!route.empty())cout<<"K3: "<<codeWithSolution(b,route)<<"\n";
-   if(!optimal&&res.provenMoves>0&&res.provenMoves<(int)route.size())cout<<"Lower bound: at least "<<res.provenMoves+1<<" moves\n";
-   if(!optimal)cerr<<"WARNING: search did not complete the layers needed to certify optimality\n";
+   o.status=optimal?"OPTIMAL":"SOLUTION FOUND (optimality not certified)";o.hasSolution=true;o.score=score;o.moves=(int)route.size();o.solution=formatMoves(b,route);if(wantK3&&!route.empty())o.k3=codeWithSolution(b,route);
+   os<<o.status<<"\nScore: "<<score<<"\nMoves: "<<o.moves<<"\nSolution: "<<o.solution<<"\n";if(!o.k3.empty())os<<"K3: "<<o.k3<<"\n";
+   if(!optimal&&res.provenMoves>0&&res.provenMoves<(int)route.size()){o.lowerMoves=res.provenMoves+1;os<<"Lower bound: at least "<<o.lowerMoves<<" moves\n";}
+   if(!optimal)LOG<<"WARNING: search did not complete the layers needed to certify optimality\n";
    return optimal?0:2;
   }
-  if(res.boundProved){if(lim.scoreCap){cout<<"NO SOLUTION WITH SCORE <= "<<lim.maxScore;if(userDepth>0)cout<<" WITHIN "<<userDepth<<" MOVES";cout<<"\n";if(userDepth==0)cout<<"Lower bound: score at least "<<lim.maxScore+1<<"\n";}else cout<<"NO SOLUTION WITHIN "<<lim.maxDepth<<" MOVES\nLower bound: at least "<<lim.maxDepth+1<<" moves\n";return 4;}
-  cout<<(res.exhaustive?"UNSOLVABLE":"INCONCLUSIVE")<<"\n";if(!res.exhaustive&&res.provenMoves>0)cout<<"Lower bound: at least "<<res.provenMoves+1<<" moves (no solution within "<<res.provenMoves<<" moves)\n";return res.exhaustive?3:2;
+  if(res.boundProved){
+   if(lim.scoreCap){o.status="NO SOLUTION WITH SCORE <= "+to_string(lim.maxScore)+(userDepth>0?" WITHIN "+to_string(userDepth)+" MOVES":string());os<<o.status<<"\n";if(userDepth==0){o.hasLowerScore=true;o.lowerScore=lim.maxScore+1;os<<"Lower bound: score at least "<<o.lowerScore<<"\n";}}
+   else{o.status="NO SOLUTION WITHIN "+to_string(lim.maxDepth)+" MOVES";o.lowerMoves=lim.maxDepth+1;os<<o.status<<"\nLower bound: at least "<<o.lowerMoves<<" moves\n";}
+   return 4;}
+  o.status=res.exhaustive?"UNSOLVABLE":"INCONCLUSIVE";os<<o.status<<"\n";if(!res.exhaustive&&res.provenMoves>0){o.lowerMoves=res.provenMoves+1;os<<"Lower bound: at least "<<o.lowerMoves<<" moves (no solution within "<<res.provenMoves<<" moves)\n";}return res.exhaustive?3:2;
+
+  }();
+ }catch(const bad_alloc&){o.error="out of memory";o.exit=1;LOG<<"Error: out of memory\n";}
+ catch(const exception&e){o.error=e.what();o.exit=1;LOG<<"Error: "<<e.what()<<"\n";}
+ o.text=os.str();return o;
+}
+int main(int argc,char**argv){
+ try{
+  Cli c=parseArgs(vector<string>(argv+1,argv+argc));
+  if(c.version){cout<<"kunsolve v"<<SOLVER_VERSION<<"\n";return 0;}
+  if(c.help){cout<<HELP_TEXT;return 0;}
+  string input=c.input;
+  if(input.empty()&&c.level.empty())throw runtime_error("missing board code/file or --level");
+  if(!c.level.empty())input=catalogCode(c.level,c.catalog);else if(input=="-"){input=string((istreambuf_iterator<char>(cin)),{});}else input=readInput(input);
+  Outcome o=solveBoard(input,c.lim,c.wantK3);
+  if(c.json)cout<<toJson(o)<<"\n";else cout<<o.text;
+  return o.exit;
  }catch(const exception&e){cerr<<"Error: "<<e.what()<<"\n";return 1;}
 }
+#ifdef __EMSCRIPTEN__
+// ---- WebAssembly export: kun_solve(boardCode, "--flag value ...") -> JSON (see toJson). Progress lines go to Module.onProgress(line). ----
+#include <emscripten.h>
+EM_JS(void,kun_progress,(const char*line),{if(Module.onProgress)Module.onProgress(UTF8ToString(line));});
+EM_JS_DEPS(kun_progress_deps,"$UTF8ToString");
+namespace{struct LineBuf:streambuf{string cur;int overflow(int ch)override{if(ch=='\n'){kun_progress(cur.c_str());cur.clear();}else if(ch!=EOF)cur+=(char)ch;return ch==EOF?0:ch;}};}
+extern "C" EMSCRIPTEN_KEEPALIVE const char* kun_solve(const char*code,const char*flags){
+ static string out;LineBuf lb;ostream ls(&lb);g_log=&ls;Outcome o;
+ try{vector<string> args;istringstream is(flags?flags:"");string w;while(is>>w)args.push_back(w);Cli c=parseArgs(args);o=solveBoard(code?code:"",c.lim,c.wantK3);}
+ catch(const exception&e){o.error=e.what();o.exit=1;}
+ g_log=&cerr;out=toJson(o);return out.c_str();
+}
+#endif
