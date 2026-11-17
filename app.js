@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.7.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.7.1'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -682,14 +682,14 @@ function renderLevelCards(chapter) {
   const barTop = $('chapter-bar').scrollTop, barLeft = $('chapter-bar').scrollLeft;
   $('chapter-bar').innerHTML = Array.from({length: 30}, (_, i) => {
     const a = i + 1, count = byChapter.get(a)?.length || 0;
-    return `<button type="button" class="chapter-button${a === chapter ? ' active' : ''}${count ? '' : ' empty'}" data-chapter="${a}" aria-pressed="${a === chapter}"><strong>${a}</strong><span>${count}/10</span></button>`;
+    return `<button type="button" class="chapter-button${a === chapter ? ' active' : ''}${count ? '' : ' empty'}" data-chapter="${a}" aria-pressed="${a === chapter}"><strong>${a}</strong></button>`;
   }).join('');
   $('chapter-bar').scrollTop = barTop; $('chapter-bar').scrollLeft = barLeft;
   const list = byChapter.get(chapter) || [];
   $('level-cards').scrollTop = 0;
   $('level-cards').innerHTML = list.length ? list.map(level => {
     const best = bestScores[level.id];
-    return `<button class="level-card${currentPresetId===level.id?' active':''}" data-level="${escape(level.id)}"><div class="level-preview" style="grid-row:auto">${renderSvg(level,createInitialState(level),{mini:true})}</div><div class="level-card-title" style="align-self:center"><strong>${escape(level.title)}</strong><span>${best?`${icon('check')} ${best.score}`:level.width+' × '+level.height}</span></div></button>`;
+    return `<button class="level-card${currentPresetId===level.id?' active':''}" data-level="${escape(level.id)}"><div class="level-preview" style="grid-row:auto">${renderSvg(level,createInitialState(level),{mini:true})}</div><div class="level-card-title" style="align-self:center"><strong>${escape(level.title)}</strong><span>${best?`${icon('check')} ${best.score}`:''}</span></div></button>`;
   }).join('') : `<p class="level-empty">No puzzles in chapter ${chapter} yet.</p>`;
 }
 // Export dialog: a full permalink and a K3 board code, both optionally carrying the current route.
@@ -805,7 +805,7 @@ $('chapter-bar').addEventListener('click',event=>{const b=event.target.closest('
 $('completion-inline').addEventListener('click',event=>{if(!event.target.closest('#next-puzzle')||busy||isPlaying)return;const next=nextLevel();if(next){adoptBoard(next);clearLocation();}});
 $('level-cards').addEventListener('click',event=>{const target=event.target.closest('[data-level]');if(!target)return;const next=LEVELS.find(level=>level.id===target.dataset.level);if(next){adoptBoard(next);clearLocation();$('levels-dialog').close();}});
 $('open-help').addEventListener('click',()=>openDialog('help-dialog'));
-$('open-share').addEventListener('click',()=>{renderShare();openDialog('share-dialog');});
+$('open-share').addEventListener('click',()=>{shareRoute=true;$('share-include-route').checked=true;renderShare();openDialog('share-dialog');});
 $('share-include-route').addEventListener('change',event=>{shareRoute=event.target.checked;renderShare();});
 $('copy-link').addEventListener('click',()=>copyText($('share-link').value,'Permalink copied.'));
 $('copy-code').addEventListener('click',()=>copyText($('share-code').value,'K3 code copied.'));
