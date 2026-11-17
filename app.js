@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.4.1'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.5.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -761,6 +761,34 @@ function editInvalid(draft,problems){
 }
 function clearLocation(){try{history.replaceState(null,'',location.pathname);}catch{}}
 
+// Screenshot import: parser/parser.js (port of parse.py) loads on first use, the recognised board opens
+// in the editor, and the review dialog shows the annotated screenshot plus every parser warning.
+let parserLoading=null;
+function loadParser(){
+  if(window.KunParser&&window.KunParserData)return Promise.resolve();
+  const load=src=>new Promise((ok,fail)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>fail(new Error('Could not load the screenshot parser.'));document.head.appendChild(s);});
+  return parserLoading||(parserLoading=Promise.all([load('./parser/parser_data.js'),load('./parser/parser.js')]).catch(error=>{parserLoading=null;throw error;}));
+}
+async function importScreenshot(file){
+  if(!file||!/^image\//.test(file.type||'')){toast('Choose an image file.',true);return;}
+  toast('Reading screenshot…');
+  try{
+    await loadParser();
+    const guess=KunParser.levelFromName(file.name);
+    const result=await KunParser.parseFile(file,{level:/^\d{1,2}\.\d{1,2}$/.test(guess)?guess:'imported'});
+    const problems=[];
+    const draft=decodeBoard(JSON.stringify(result.board),problems);
+    clearLocation();
+    if($('board-dialog').open)$('board-dialog').close();
+    window.KunEditor.openDraft(draft,problems);
+    KunParser.renderReview($('shot-review'),result.bitmap,result);
+    const b=result.board,n=result.warnings.length;
+    $('shot-summary').textContent=`${b.width}×${b.height} board, ${b.balls.length} balls, ${b.goals.length} goals, ${b.teleports.length} teleport pairs. ${n?`${n} warning${n>1?'s':''} to review:`:'No warnings, but check the overlay against your screenshot.'}`;
+    const list=$('shot-warnings');list.replaceChildren(...result.warnings.map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
+    openDialog('shot-dialog');
+  }catch(error){toast(`Screenshot import failed: ${error.message}`,true);}
+}
+
 // Controls use one delegated listener each so rendering snapshots cannot multiply handlers.
 document.querySelector('.skip-link').addEventListener('click',event=>{event.preventDefault();$('board-stage').focus();$('board-stage').scrollIntoView({block:'start'});});
 $('undo').addEventListener('click',deleteLastMove);
@@ -794,6 +822,10 @@ $('open-board-data').addEventListener('click',()=>{setDataTab('code');openDialog
 $('data-code-tab').addEventListener('click',()=>setDataTab('code'));
 $('data-json-tab').addEventListener('click',()=>setDataTab('json'));
 $('load-board').addEventListener('click',importBoard);
+$('import-shot').addEventListener('click',()=>$('shot-file').click());
+$('shot-file').addEventListener('change',event=>{const file=event.target.files[0];event.target.value='';importScreenshot(file);});
+window.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('Files'))event.preventDefault();});
+window.addEventListener('drop',event=>{const file=[...(event.dataTransfer?.files||[])].find(f=>/^image\//.test(f.type));if(!file)return;event.preventDefault();importScreenshot(file);});
 $('board-input').addEventListener('input',()=>showError('board-error'));
 document.querySelectorAll('[data-close]').forEach(button=>button.addEventListener('click',()=>closeDialog(button.closest('dialog'))));
 document.querySelectorAll('dialog').forEach(dialog=>{

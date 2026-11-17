@@ -1,6 +1,8 @@
 # Kunundrum Screenshot Parser v0.7
 
-Offline Python/OpenCV screenshot-to-K3 converter. **Node.js is not required.**
+Offline Python/OpenCV screenshot-to-K3 converter. **Node.js is not required for `parse.py`.**
+
+`parser.js` (with generated `parser_data.js`) is a dependency-free JavaScript port used by the web app (Board data → Import screenshot). `parse.py` remains the reference: `python3 test_primitives.py` checks the re-implemented OpenCV primitives, `python3 compare_js.py Screenshots/` diffs both parsers' labels, measurements, boards and warnings. Re-run `python3 build_data.py` after changing `arrow_shapes/` or `arrow_templates/`.
 
 ## Installation
 
