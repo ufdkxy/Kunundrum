@@ -880,7 +880,7 @@ int main(int argc,char**argv){
 #ifdef __EMSCRIPTEN__
 // ---- WebAssembly export: kun_solve(boardCode, "--flag value ...") -> JSON (see toJson). Progress lines go to Module.onProgress(line). ----
 #include <emscripten.h>
-EM_JS(void,kun_progress,(const char*line),{if(Module.onProgress)Module.onProgress(UTF8ToString(line));});
+EM_JS(void,kun_progress,(const char* line),{if(Module.onProgress)Module.onProgress(UTF8ToString(line));});
 EM_JS_DEPS(kun_progress_deps,"$UTF8ToString");
 namespace{struct LineBuf:streambuf{string cur;int overflow(int ch)override{if(ch=='\n'){kun_progress(cur.c_str());cur.clear();}else if(ch!=EOF)cur+=(char)ch;return ch==EOF?0:ch;}};}
 extern "C" EMSCRIPTEN_KEEPALIVE const char* kun_solve(const char*code,const char*flags){
