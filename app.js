@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.11.2'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.11.3'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -103,8 +103,8 @@ function renderHelpIcons() {
     version:1, id:'help-symbols', title:'Help symbols', width:6, height:2,
     balls:[{color:'B',x:1,y:1}], goals:[{color:'B',x:1,y:2}],
     arrows:[{x:2,y:1,direction:'r'}],
-    switches:[{id:'S',x:3,y:1,controls:['T1','T2']}],
-    teleports:[{id:'T1',color:'B',x:4,y:1,active:true},{id:'T2',color:'B',x:4,y:2,active:true}],
+    switches:[{id:'S',x:3,y:1,controls:['G1']}], gates:[{id:'G1',x:5,y:2,active:true}],
+    teleports:[{id:'T1',color:'Y',x:4,y:1,active:true},{id:'T2',color:'Y',x:4,y:2,active:true}],
     hexes:[{id:'minus',x:5,y:1,value:-5}],
   });
   const source = renderSvg(sample, createInitialState(sample), {mini:true});
@@ -130,7 +130,7 @@ function renderHelpIcons() {
     ['goal', / goal /],
     ['arrow', /^Fixed arrow /],
     ['switch', /^Off switch/],
-    ['teleport', /^Active Blue teleport\./],
+    ['teleport', /^Active Yellow teleport/],
     ['hex', /^One-use -5 score /],
   ].map(([name, label]) => frame(
     (defs + feature(label)).replaceAll('preview-help-symbols-', `help-rule-${name}-`),
