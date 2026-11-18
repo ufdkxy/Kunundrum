@@ -106,11 +106,13 @@ async function run(certifying) {
 
 $('open-solver').addEventListener('click', () => {
   if ($('open-solver').disabled || window.KunEditor?.active) return;
+  const previous = info;
   info = host().prepareSolver();
+  const sameBoard = previous && previous.code === info.code;
   $('solver-board').textContent = info.title + (info.saved ? ` · saved solution: ${info.saved.moves} moves, score ${info.saved.score}` : ' · no saved solution');
   $('solver-certify').title = info.saved ? 'Prove that no route scores below the saved solution' : 'This board has no saved solution';
-  $('solver-result').hidden = true;
-  $('solver-progress').hidden = true;
+  // Closing only hides the dialog: fields, progress and result stay, unless the board changed meanwhile.
+  if (!sameBoard) { $('solver-result').hidden = true; $('solver-progress').hidden = true; }
   setRunning(false);
   dialog.showModal();
 });
@@ -122,6 +124,10 @@ $('solver-algorithm').addEventListener('change', () => {
   const beam = $('solver-algorithm').value === 'beam', locked = $('solver-stop').hidden === false;
   $('solver-beam-width').disabled = locked || !beam; $('solver-beam-heuristic').disabled = locked || !beam;
 });
-// Closing the dialog (button, Escape) abandons any running search.
-dialog.addEventListener('close', () => { runToken++; if (job) { job.cancel(); job = null; } });
+// Closing the dialog (button, Escape) hides it and abandons any running search; nothing is cleared.
+dialog.addEventListener('close', () => {
+  if (!job) return;
+  runToken++; job.cancel(); job = null; setRunning(false);
+  $('solver-progress').hidden = false; $('solver-progress').textContent = 'Stopped.';
+});
 })();

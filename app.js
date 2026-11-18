@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.10.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.11.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -340,10 +340,10 @@ function renderSvg(b, s, options = {}) {
   }
   for (const teleport of b.teleports) {
     const p=xy(teleport), on=s.teleportActive[teleport.id], universal=teleport.color==='*';
-    const color=on?(universal?'#c6cdd3':PALETTE[teleport.color]):'#73808a';
+    const color=on?(universal?'#c6cdd3':PALETTE[teleport.color]):'#a3afb9';
     const name=universal?'universal':COLOR_NAMES[teleport.color];
     const arcs=[45,135,225,315].map(a=>{const pt=d=>{const r=(a+d)*Math.PI/180;return `${(23*Math.cos(r)).toFixed(2)} ${(23*Math.sin(r)).toFixed(2)}`;};return `M${pt(-17)}A23 23 0 0 1 ${pt(17)}`;}).join('');
-    svg += `<g role="img" aria-label="${on?'Active':'Inactive'} ${name} teleport ${pos(teleport)}" transform="translate(${p.x},${p.y})"><rect x="-25" y="-25" width="50" height="50" fill="${color}" fill-opacity="${on?'.14':'.05'}"/><g fill="none" stroke="${color}" stroke-opacity="${on?'.5':'.35'}" stroke-width="1"><circle r="19"/><circle r="13.5"/><circle r="8"/></g>${on?`<g filter="url(#${prefix}-glow)" opacity=".8"><path d="${arcs}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round"/><circle r="5" fill="${color}"/></g>`:''}<path d="${arcs}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-opacity="${on?'1':'.6'}"/><circle r="4.5" fill="${color}" fill-opacity="${on?'1':'.65'}"/><circle r="2.2" fill="#fff" fill-opacity="${on?'.85':'.4'}"/></g>`;
+    svg += `<g role="img" aria-label="${on?'Active':'Inactive'} ${name} teleport ${pos(teleport)}" transform="translate(${p.x},${p.y})">${on?`<rect x="-25" y="-25" width="50" height="50" fill="${color}" fill-opacity=".14"/>`:`<rect x="-25" y="-25" width="50" height="50" rx="1.5" fill="url(#${prefix}-gate-metal)" stroke="#77818c" style="stroke-width:1.1"/><rect x="-24" y="-24" width="48" height="48" rx="1" fill="url(#${prefix}-gate-texture)"/><path d="M0 -23V23M-23 0H23" fill="none" stroke="#242c34" stroke-width="2"/><path d="M2 -23V23M-23 2H23" fill="none" stroke="#89939d" stroke-opacity=".32" stroke-width=".8"/>`}<g fill="none" stroke="${color}" stroke-opacity="${on?'.5':'1'}" stroke-width="${on?1:1.4}"><circle r="19"/><circle r="13.5"/><circle r="8"/></g>${on?`<g filter="url(#${prefix}-glow)" opacity=".8"><path d="${arcs}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round"/><circle r="5" fill="${color}"/></g>`:''}<path d="${arcs}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-opacity="1"/><circle r="4.5" fill="${color}" fill-opacity="1"/><circle r="2.2" fill="#fff" fill-opacity=".85"/></g>`;
   }
   for (const sw of b.switches) {
     const p=xy(sw), label=labels.switches.get(sw.id), on=s.switchOn?.[sw.id]??sw.on??false;
