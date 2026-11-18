@@ -116,7 +116,7 @@ new sprites, and nonstandard scaling.
 - Red chevrons are detected as rotating arrows (direction not determined; blue fixed arrows as before).
 - Floor vs exterior now also uses outline topology (crossing a neon edge toggles inside/outside, enclosed holes stay outside), because dark themes have floors as black as the exterior.
 - A K3 code is always written (unless `--no-code`). Switches without an override get a mapping guessed by proximity: each switchable element goes to the nearest switch (Manhattan distance, ties to the first switch in lexicographic order), then empty switches take the nearest element from a switch holding several. The guess is reported as a warning; `--overrides` still wins.
-- Known gaps: a ball sitting on a goal of a similar hue (e.g. green ball on a cyan ring in 11.9) is misread; rotating-arrow direction; the white edge-exit markers in 12.6 are only treated as closed outline gaps; K3 of a board the engine rejects (e.g. missing goals) is written but will not open in the app.
+- Known gaps: a ball sitting on a goal of a similar hue (e.g. green ball on a cyan ring in 11.9) is misread; rotating-arrow direction; tunnel openings (white markers on an outline gap) are detected and paired by a guess, not yet tested on 12.6/21.1 screenshots; K3 of a board the engine rejects (e.g. missing goals) is written but will not open in the app.
 
 ## Changes in v0.6
 
@@ -174,7 +174,7 @@ object has been transcribed correctly; inspect the review PNGs before batch use.
 
 - The neon wall color (blue, red or green, uniform per board and purely cosmetic) is read from the hue of the saturated neon pixels on the edges that `insideCells` counts as walls, so goals, balls and the HUD cannot skew it. Result fields: `wallColor` and `wallVotes`; a non-blue color is written to `board.wallColor` (K3 flag bit 2). `overrides.wallColor` forces a value; too little or mixed evidence assumes blue and adds a warning.
 - Tile recognition itself needed no change on red (11.1) or green (21.1) screenshots. The Python `parse.py` is frozen and does not know about wall color.
-- Not handled: wraparound walls (21.1 has them), so the grid of such a screenshot must be supplied manually and the open edges will not become wraparounds.
+- Tunnels (21.1, 12.6): JS parser only. Marked outline gaps become openings; the pairing is a guess (see `guessTunnelPairs`) and must be checked in the editor. The Python parser does not handle them.
 
 ## Teleports (JS parser v0.12.0)
 

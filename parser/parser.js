@@ -580,6 +580,7 @@ function insideCells(img, geom, out) {
     const h = hsv[i * 3];
     return (h < 12 || h > 169) ? 'R' : (h >= 39 && h < 85) ? 'G' : (h >= 85 && h <= 135) ? 'B' : null;
   };
+  let gapMark = false; // set by wall(): white marker pixels on an edge without a neon outline = tunnel opening candidate
   const wall = (x0, y0, x1, y1, vertical) => {
     let best = 0, mark = 0;
     const local = { B: 0, R: 0, G: 0 };
@@ -597,19 +598,25 @@ function insideCells(img, geom, out) {
       if (n) { best = Math.max(best, hit / n); mark = Math.max(mark, wh / n); }
     }
     if (best > .6) for (const k in votes) votes[k] += local[k];
+    gapMark = best <= .6 && mark > .05;
     return best > .6 || mark > .05;
   };
+  const gaps = new Map();
   const edgeWall = ([ac, ar], [bc, br]) => {
     if (ac !== bc) {
       const e = Math.max(ac, bc), r = ar;
       if (!(r >= 0 && r < ch)) return false;
       const x = geom.left + e * c, y0 = geom.top + r * c + .25 * c, y1 = geom.top + r * c + .75 * c;
-      return wall(x, y0, x, y1, true);
+      const res = wall(x, y0, x, y1, true);
+      if (gapMark) gaps.set(`${ac},${ar}|${bc},${br}`, [[ac, ar], [bc, br]]);
+      return res;
     }
     const e = Math.max(ar, br), col = ac;
     if (!(col >= 0 && col < cw)) return false;
     const y = geom.top + e * c, x0 = geom.left + col * c + .25 * c, x1 = geom.left + col * c + .75 * c;
-    return wall(x0, y, x1, y, false);
+    const res = wall(x0, y, x1, y, false);
+    if (gapMark) gaps.set(`${ac},${ar}|${bc},${br}`, [[ac, ar], [bc, br]]);
+    return res;
   };
   const INF = 1e9, key = (a, b) => a + ',' + b, dist = new Map([[key(-1, -1), 0]]);
   const dq = [[-1, -1]]; // 0-1 BFS; push/unshift emulate appendleft/append
@@ -624,8 +631,42 @@ function insideCells(img, geom, out) {
   }
   const inside = new Set();
   for (let col = 0; col < cw; col++) for (let row = 0; row < ch; row++) if ((dist.has(key(col, row)) ? dist.get(key(col, row)) : INF) % 2 === 1) inside.add(key(col, row));
-  if (out) out.wallVotes = votes;
+  if (out) {
+    out.wallVotes = votes;
+    // Tunnel openings: marked gap between an inside cell and a non-inside one. Side = direction the ball travels to enter it.
+    const seen = new Set(), openings = [];
+    for (const [[ac, ar], [bc, br]] of gaps.values()) {
+      const aIn = inside.has(ac + ',' + ar), bIn = inside.has(bc + ',' + br);
+      if (aIn === bIn) continue;
+      const [ic, ir] = aIn ? [ac, ar] : [bc, br], [oc, or] = aIn ? [bc, br] : [ac, ar];
+      const side = oc !== ic ? (oc < ic ? 'l' : 'r') : (or < ir ? 'u' : 'd');
+      const o = { x: ic + 1, y: geom.height - ir, side }, k = `${o.x},${o.y},${o.side}`;
+      if (!seen.has(k)) { seen.add(k); openings.push(o); }
+    }
+    out.openings = openings.sort((p, q) => p.y - q.y || p.x - q.x || 'udlr'.indexOf(p.side) - 'udlr'.indexOf(q.side));
+  }
   return inside;
+}
+
+// Tunnel pairing cannot be read from a screenshot, so this is only a first guess (the editor changes it): openings on opposite
+// sides in the same row/column pair first (nearest first); anything left pairs in lexicographic order. An odd one out is returned in `left`.
+function guessTunnelPairs(openings) {
+  const free = openings.slice(), pairs = [], opp = { l: 'r', r: 'l', u: 'd', d: 'u' };
+  const line = o => (o.side === 'l' || o.side === 'r') ? o.y : o.x, along = o => (o.side === 'l' || o.side === 'r') ? o.x : o.y;
+  for (let i = 0; i < free.length; i++) {
+    const a = free[i];
+    if (!a) continue;
+    let bestJ = -1;
+    for (let j = i + 1; j < free.length; j++) {
+      const b = free[j];
+      if (!b || b.side !== opp[a.side] || line(b) !== line(a)) continue;
+      if (bestJ < 0 || Math.abs(along(b) - along(a)) < Math.abs(along(free[bestJ]) - along(a))) bestJ = j;
+    }
+    if (bestJ >= 0) { pairs.push({ a, b: free[bestJ] }); free[i] = free[bestJ] = null; }
+  }
+  const rest = free.filter(Boolean);
+  while (rest.length > 1) pairs.push({ a: rest.shift(), b: rest.shift() });
+  return { pairs, left: rest };
 }
 
 // Cosmetic wall color from the hue votes: 'B' (default), 'R' or 'G'; null when there is too little evidence to say.
@@ -822,6 +863,11 @@ function parseImage(img, options = {}) {
   let wallColor = overrides.wallColor !== undefined ? overrides.wallColor : wallColorFromVotes(wallVotes.wallVotes || { B: 0, R: 0, G: 0 });
   if (wallColor === null) { wallColor = 'B'; warnings.push('Wall color uncertain (too few or mixed outline pixels); assumed blue. Set it in the editor if the walls are red or green.'); }
   if (wallColor !== 'B') board.wallColor = wallColor;
+  if (wallVotes.openings?.length) {
+    const { pairs, left } = guessTunnelPairs(wallVotes.openings);
+    if (pairs.length) board.tunnels = pairs;
+    warnings.push(`Tunnel pairing is a guess (${wallVotes.openings.length} openings found); check and correct it in the editor.` + (left.length ? ` One opening (${left[0].x}, ${left[0].y}, ${left[0].side}) has no partner and was dropped.` : ''));
+  }
   const recognition = warnings.filter(w => w.startsWith('Cell (') || w.startsWith('Unrecognized object') || w.startsWith('No balls detected') || w.includes('balls but only'));
   return { board, warnings, recognitionWarnings: recognition, mechanicsPending: warnings.filter(w => !recognition.includes(w)), geometry, labels, confidence, stats, level, wallColor, wallVotes: wallVotes.wallVotes };
 }
@@ -870,6 +916,6 @@ async function parseFile(file, options = {}) {
 }
 
 const api = { PARSER_VERSION, parseImage, parseFile, fromRGBA, renderReview, levelFromName, parseLabel,
-  _internals: { pyRound, bgr2hsv, bgr2gray, shrink2, gaussianBlur, cropCell, robustGeometry, insideCells, classify, Patch, patchFeatures, assembleBoard } };
+  _internals: { guessTunnelPairs, pyRound, bgr2hsv, bgr2gray, shrink2, gaussianBlur, cropCell, robustGeometry, insideCells, classify, Patch, patchFeatures, assembleBoard } };
 if (typeof module === 'object' && module.exports) module.exports = api; else root.KunParser = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

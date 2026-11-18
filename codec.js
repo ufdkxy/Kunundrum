@@ -133,7 +133,7 @@ function expandSolution(board, bytes) {
  */
 const CODE_COLORS = 'RGBY*';
 const CODE_DIRECTIONS = 'udlr';
-const KNOWN_FLAGS = 7; // bit 0 description, bit 1 solution, bit 2 wall color (K3 only); bit 3 is reserved for wraparounds
+const KNOWN_FLAGS = 15; // bit 0 description, bit 1 solution, bit 2 wall color (K3 only), bit 3 tunnels (K3 only)
 function binaryBoard(board, k3 = true) {
   const bytes = [k3 ? 0xB3 : 0xB2, board.width, board.height];
   const strings = new Map();
@@ -151,7 +151,9 @@ function binaryBoard(board, k3 = true) {
   const list = (items, fn) => { uint(items.length); items.forEach(fn); };
   const color = value => uint(CODE_COLORS.indexOf(value));
   if (!k3 && board.wallColor !== undefined) throw new Error('K2 cannot store a wall color.');
-  uint((board.description !== undefined ? 1 : 0) | (board.solution !== undefined ? 2 : 0) | (board.wallColor !== undefined ? 4 : 0));
+  const tunnels = board.tunnels ?? [];
+  if (!k3 && tunnels.length) throw new Error('K2 cannot store tunnels.');
+  uint((board.description !== undefined ? 1 : 0) | (board.solution !== undefined ? 2 : 0) | (board.wallColor !== undefined ? 4 : 0) | (tunnels.length ? 8 : 0));
   str(board.id); str(board.title);
   if (board.description !== undefined) str(board.description);
   if (board.wallColor !== undefined) color(board.wallColor); // flag bit 4: cosmetic wall color index (RGBY); omitted for blue
@@ -170,6 +172,7 @@ function binaryBoard(board, k3 = true) {
   });
   list(board.teleports, p => { at(p); str(p.id); color(p.color); uint(p.active ? 1 : 0); });
   list(board.hexes, p => { at(p); str(p.id); uint(p.value < 0 ? -2 * p.value - 1 : 2 * p.value); });
+  if (tunnels.length) list(tunnels, t => { for (const e of [t.a, t.b]) { at(e); uint(CODE_DIRECTIONS.indexOf(e.side)); } }); // flag bit 3: one record per pair (two openings: cell, side)
   return new Uint8Array(bytes);
 }
 function unbinaryBoard(bytes, problems) {
@@ -207,7 +210,7 @@ function unbinaryBoard(bytes, problems) {
   };
   const magic=byte();if (magic!==0xB2 && magic!==0xB3) throw new Error('Invalid K2/K3 board header.');
   const width = byte(), height = byte(), flags = uint();
-  if (!(width >= 1 && width <= 32 && height >= 1 && height <= 32) || (flags & ~KNOWN_FLAGS) || (flags & 4 && magic === 0xB2)) throw new Error('Invalid K2 board dimensions or flags.');
+  if (!(width >= 1 && width <= 32 && height >= 1 && height <= 32) || (flags & ~KNOWN_FLAGS) || (flags & 12 && magic === 0xB2)) throw new Error('Invalid K2 board dimensions or flags.');
   const at = () => {
     const index = uint();
     if (index >= width * height) throw new Error('Invalid K2 board position.');
@@ -247,6 +250,10 @@ function unbinaryBoard(bytes, problems) {
   });
   raw.teleports = list(() => ({...at(),id:str(),color:color(true),active:bool()}));
   raw.hexes = list(() => { const p=at(),id=str(),value=uint();return {...p,id,value:value % 2 ? -(value+1)/2 : value/2}; });
+  if (flags & 8) {
+    const end = () => { const p = at(), s = uint(); if (s > 3) throw new Error('Invalid K3 tunnel side.'); return {...p, side:CODE_DIRECTIONS[s]}; };
+    raw.tunnels = list(() => ({a:end(), b:end()}));
+  }
   if (offset !== bytes.length) throw new Error('Unexpected data after K2/K3 board.');
   if(solutionBytes){
     const own=[];const checked=validateBoard(raw,own);

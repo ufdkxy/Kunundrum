@@ -60,3 +60,12 @@ fixture('beam basic',{version:1,width:4,height:1,id:'basic',title:'basic',balls:
 fixture('beam rotating',{version:1,width:4,height:3,id:'rotate',title:'rotate',balls:[{x:1,y:1,color:'R'}],goals:[{x:2,y:3,color:'R'}],arrows:[{x:2,y:1,direction:'u',rotating:true}],walls:[{x:4,y:1},{x:4,y:2},{x:4,y:3}]},'beam');
 fixture('beam switch',{version:1,width:5,height:2,id:'switch',title:'switch',balls:[{x:1,y:1,color:'R'}],goals:[{x:5,y:1,color:'R'}],gates:[{x:3,y:1,id:'G1',active:true}],switches:[{x:2,y:1,id:'S1',controls:['G1']}]},'beam');
 console.log('PASS beam search (replay-verified routes, no optimality claim)');
+// Tunnels (engine only; the solver does not support them yet): crossing, heading change, blocked exit, loop rejection, K3 round trip.
+{const tb=Core.validateBoard({version:1,id:'tun',title:'tun',width:5,height:2,balls:[{color:'R',x:3,y:1}],goals:[{color:'R',x:1,y:2}],tunnels:[{a:{x:5,y:2,side:'r'},b:{x:1,y:1,side:'l'}}]});
+ const m=Core.applyMove(Core.createInitialState(tb),tb,'R','l');assert.equal(m.kind,'ok');assert.deepEqual([m.state.balls[0].x,m.state.balls[0].y,m.state.balls[0].locked],[1,2,true]);assert(m.path.some(p=>p.tunnel&&p.x===5&&p.y===2&&p.via==='l'&&p.out==='r'));
+ assert.deepEqual(Codec.decodeBoard(Codec.encodeBoard(tb)).tunnels,tb.tunnels);
+ const bb=Core.validateBoard({...JSON.parse(JSON.stringify(tb)),balls:[{color:'R',x:3,y:1},{color:'G',x:5,y:2}],goals:[{color:'R',x:1,y:2},{color:'G',x:4,y:1}]});
+ assert.deepEqual(Core.applyMove(Core.createInitialState(bb),bb,'R','l').path.map(p=>p.x),[3,2,1]);
+ const lb=Core.validateBoard({version:1,id:'l',title:'l',width:3,height:1,balls:[{color:'R',x:2,y:1}],goals:[{color:'R',x:3,y:1}],tunnels:[{a:{x:1,y:1,side:'l'},b:{x:3,y:1,side:'r'}}]});
+ assert.equal(Core.applyMove(Core.createInitialState(lb),lb,'R','l').kind,'loop');
+ console.log('PASS tunnels (engine, K3)');}

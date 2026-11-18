@@ -10,6 +10,7 @@ const DIRECTION_NAMES                            = { u: "up", d: "down", l: "lef
 const DELTAS                         = {
   u: { x: 0, y: 1 }, d: { x: 0, y: -1 }, l: { x: -1, y: 0 }, r: { x: 1, y: 0 },
 };
+const OPPOSITE = { u: "d", d: "u", l: "r", r: "l" };
 const posKey = (p     )         => `${p.x},${p.y}`;
 const samePos = (a     , b     )          => a.x === b.x && a.y === b.y;
 const rowOrder = (a     , b     )         => a.y - b.y || a.x - b.x;
@@ -58,6 +59,7 @@ function uniqueIds                          (values     , label        , fail   
 }
 
 /** Validate imported data and return only the supported, normalized version-1 fields. */
+const tunnelEndOrder = (a     , b     )         => a.y - b.y || a.x - b.x || DIRECTIONS.indexOf(a.side) - DIRECTIONS.indexOf(b.side);
 function validateBoard(raw         , problems         , notes         )        {
   // With a `problems` array, semantic problems (as opposed to unreadable data) are
   // collected instead of thrown, so a damaged board can still be opened for repair.
@@ -130,6 +132,23 @@ function validateBoard(raw         , problems         , notes         )        {
     return { ...point(item, `Hexagon ${i + 1}`), id: identifier(item.id, `Hexagon ${i + 1} ID`, `hex${i + 1}`), value: valueNumber };
   }).sort(rowOrder);
 
+  // Tunnels: bidirectional pairs of openings in a cell side. `side` is the direction a ball must travel to enter the opening;
+  // it leaves the partner opening heading the other way (inward). Pairings are stored (they cannot be derived).
+  const tunnelEnd = (value         , label        ) => ({ ...point(value, label), side: direction(object(value, label).side, `${label} side`) });
+  const tunnels = entries(source, "tunnels").map((value, i) => {
+    const item = object(value, `Tunnel ${i + 1}`);
+    const ends = [tunnelEnd(item.a, `Tunnel ${i + 1} end A`), tunnelEnd(item.b, `Tunnel ${i + 1} end B`)];
+    ends.sort(tunnelEndOrder);
+    return { a: ends[0], b: ends[1] };
+  }).sort((p, q) => tunnelEndOrder(p.a, q.a));
+  const openings = new Set        ();
+  for (const t of tunnels) for (const e of [t.a, t.b]) {
+    const key = `${e.x},${e.y},${e.side}`;
+    if (openings.has(key)) fail(`Two tunnel openings share the ${DIRECTION_NAMES[e.side]} side of (${e.x},${e.y}).`);
+    openings.add(key);
+    if (walls.some(w => samePos(w, e))) fail(`A tunnel opening at (${e.x},${e.y}) lies in a fixed wall.`);
+  }
+  for (const t of tunnels) if (t.a.x === t.b.x && t.a.y === t.b.y && t.a.side === t.b.side) fail(`A tunnel connects the ${DIRECTION_NAMES[t.a.side]} side of (${t.a.x},${t.a.y}) to itself.`);
   uniqueIds(gates, "gate", fail); uniqueIds(switches, "switch", fail); uniqueIds(teleports, "teleport", fail); uniqueIds(hexes, "hexagon", fail);
   // Switches with the same non-empty list always toggle together and share one indicator (display only):
   // the set takes the value of its lowest-numbered switch.
@@ -180,6 +199,7 @@ function validateBoard(raw         , problems         , notes         )        {
     title: string(source.title, "Board title", 100, "Custom board"),
     width, height, walls, balls, goals, arrows, gates, switches, teleports, hexes,
   };
+  if (tunnels.length) board.tunnels = tunnels;
   if (source.description !== undefined) {
     if (typeof source.description !== "string" || source.description.length > 2000) throw new Error("Board description must be at most 2000 characters.");
     board.description = source.description;
@@ -254,6 +274,8 @@ function applyMove(state           , board       , ballId        , direction    
   const arrows = new Map(board.arrows.map(a => [posKey(a), a]));
   const hexes = new Map(board.hexes.map(h => [posKey(h), h]));
   const teleportCells = new Map(board.teleports.map(t => [posKey(t), t]));
+  const tunnelHops = new Map        ();
+  for (const t of board.tunnels ?? []) { tunnelHops.set(`${t.a.x},${t.a.y},${t.a.side}`, t.b); tunnelHops.set(`${t.b.x},${t.b.y},${t.b.side}`, t.a); }
   const consumed = new Set(state.consumedHexIds);
   const visited = new Set        ();
   const events           = [];
@@ -264,9 +286,13 @@ function applyMove(state           , board       , ballId        , direction    
     const signature = `${x},${y},${heading},${choicesUsed}`;
     if (visited.has(signature)) return fail("loop", "This move loops forever. Nothing was changed; choose another direction.", path);
     visited.add(signature);
-    const delta = DELTAS[heading], next = { x: x + delta.x, y: y + delta.y }, key = posKey(next);
-    if (next.x < 1 || next.x > board.width || next.y < 1 || next.y > board.height || fixed.has(key) || activeGates.has(key) || occupied.has(key)) break;
-    entered = true; x = next.x; y = next.y; path.push({ x, y });
+    // A tunnel opening on the side the ball is heading for takes precedence over whatever lies beyond that side (edge or wall).
+    const hop = tunnelHops.get(`${x},${y},${heading}`), delta = DELTAS[heading];
+    const next = hop ? { x: hop.x, y: hop.y } : { x: x + delta.x, y: y + delta.y }, key = posKey(next);
+    if (!hop && (next.x < 1 || next.x > board.width || next.y < 1 || next.y > board.height)) break;
+    if (fixed.has(key) || activeGates.has(key) || occupied.has(key)) { if (hop) events.push("The tunnel exit is blocked; stopped at its entrance."); break; }
+    entered = true; x = next.x; y = next.y; path.push(hop ? { x, y, tunnel: true, via: heading, out: hop.side } : { x, y }); // via = side entered, out = side left through
+    if (hop) { heading = OPPOSITE[hop.side]; events.push("Passed through a tunnel."); }
     const hex = hexes.get(key);
     if (hex && !consumed.has(hex.id)) {
       consumed.add(hex.id); scoreDelta += hex.value;

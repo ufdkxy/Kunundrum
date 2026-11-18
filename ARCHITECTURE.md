@@ -104,7 +104,8 @@ byte: magic             0xB2 (K2) or 0xB3 (K3)
 byte: width             1..32
 byte: height            1..32
 varuint: flags          bit 0 = description present, bit 1 = solution present,
-                        bit 2 = wall color present (K3 only; bit 3 is reserved for wraparounds)
+                        bit 2 = wall color present (K3 only),
+                        bit 3 = tunnels present (K3 only)
 string: id
 string: title
 [string: description]
@@ -118,6 +119,7 @@ list: gates              (position, id, activeBool)
 list: switches           (position, id, onBool, controls[])
 list: teleports          (position, id, color, activeBool)   one record per endpoint; partners are derived from colors (RULES.md)
 list: hexes              (position, id, zigzagSignedValue)
+[list: tunnels]          (only if flags bit 3; one record per pair: position, side index in `udlr`, position, side index)
 ```
 
 - **Wall color** is purely cosmetic (neon outline and floor-grid tint) and uniform per board: JSON `wallColor` is `R` or `G`, omitted for blue (an explicit `B` is accepted and normalized away, so blue boards keep their old codes byte for byte). It has no effect on the engine or the solver, which only carry it through. Readers reject unknown flag bits; K2 cannot hold it.

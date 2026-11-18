@@ -6,8 +6,12 @@ const keys = ['walls','balls','goals','arrows','gates','switches','teleports','h
 const clone = x => JSON.parse(JSON.stringify(x));
 const colorNames={R:'Red',G:'Green',B:'Blue',Y:'Yellow','*':'Universal'};
 const singular={walls:'Wall',balls:'Ball',goals:'Goal',arrows:'Arrow',gates:'Gate',switches:'Switch',teleports:'Teleport',hexes:'Hexagon'};
-const tools=['select','ball','goal','wall','gate','switch','arrow','teleport','hex','erase'];
-const mutable = {active:false,draft:null,grab:null,floatDrag:null,preferFloor:false,tool:'select',color:'G',direction:'r',rotating:false,activeTile:true,hexValue:-5,selected:null,history:[],future:[],dragging:false,dragChanged:false,dragBefore:null,lastCell:'',dirty:false};
+const tools=['select','ball','goal','wall','gate','switch','arrow','teleport','tunnel','hex','erase'];
+const sideNames={u:'top',d:'bottom',l:'left',r:'right'};
+// Nearest cell side to the pointer, from the cell's hit rectangle (used by the Tunnel tool).
+function sideOf(event){const el=event.target.closest?.('[data-edit-x]');if(!el)return null;const r=el.getBoundingClientRect(),fx=(event.clientX-r.left)/r.width,fy=(event.clientY-r.top)/r.height,d={l:fx,r:1-fx,u:fy,d:1-fy};return Object.keys(d).reduce((m,k)=>d[k]<d[m]?k:m,'l');}
+const openingAt=(t,x,y,side)=>[t.a,t.b].some(e=>e.x===x&&e.y===y&&(!side||e.side===side));
+const mutable = {active:false,draft:null,grab:null,floatDrag:null,preferFloor:false,pendingTunnel:null,clickSide:null,tool:'select',color:'G',direction:'r',rotating:false,activeTile:true,hexValue:-5,selected:null,history:[],future:[],dragging:false,dragChanged:false,dragBefore:null,lastCell:'',dirty:false};
 const E = mutable;
 const host = () => window.KunundrumHost;
 const same=(a,b)=>a&&b&&a.x===b.x&&a.y===b.y;
@@ -60,6 +64,7 @@ function setReview(source,show=true){
 }
 function refresh(){
  renderIcons();
+ if(E.tool!=='tunnel')E.pendingTunnel=null;
  if(E.active&&document.activeElement!==$('editor-title'))$('editor-title').value=E.draft.title;
  $('edit-mode-label').textContent=E.active?'Play':'Edit';
  $('edit-mode-icon-edit').hidden=E.active;
@@ -98,6 +103,11 @@ function overlay(){
   out+=`<rect data-edit-x="${x}" data-edit-y="${y}" x="${px}" y="${py}" width="${cell}" height="${cell}" fill="transparent" stroke="none"/>`;
  }
  out+='</g>';
+ if(E.pendingTunnel){
+  const e=E.pendingTunnel,px=pad+(e.x-1)*cell,py=pad+(b.height-e.y)*cell;
+  const [ex,ey]={u:[px+cell/2,py],d:[px+cell/2,py+cell],l:[px,py+cell/2],r:[px+cell,py+cell/2]}[e.side];
+  out+=`<g class="editor-drag-preview" pointer-events="none" transform="translate(${ex},${ey})"><circle r="13" fill="#43dcff" fill-opacity=".25" stroke="#90f2ff" stroke-width="3" stroke-dasharray="5 3"/></g>`;
+ }
  if(E.dragging&&E.grab?.selection&&E.grab.hover&&!same(E.grab.from,E.grab.hover)){
   const h=E.grab.hover, px=pad+(h.x-.5)*cell,py=pad+(b.height-h.y+.5)*cell;
   out+=`<g class="editor-drag-preview" pointer-events="none" transform="translate(${px},${py})"><rect x="-29" y="-29" width="58" height="58" rx="6" fill="#43dcff" fill-opacity=".14" stroke="#90f2ff" stroke-width="3" stroke-dasharray="7 4"/></g>`;
@@ -208,7 +218,8 @@ function find(x,y,underBall=false){
 function eraseAt(x,y,all=false){
  const b=E.draft;
  if(all){for(const name of keys)b[name]=b[name].filter(v=>!at(v,x,y));return;}
- const found=find(x,y);if(!found)return;
+ const found=find(x,y);
+ if(!found){if(b.tunnels){const side=E.clickSide,exact=side&&b.tunnels.some(t=>openingAt(t,x,y,side));b.tunnels=b.tunnels.filter(t=>!openingAt(t,x,y,exact?side:null));if(!b.tunnels.length)delete b.tunnels;}return;}
  b[found.type]=b[found.type].filter(p=>!(p.x===x&&p.y===y));
  E.selected=null;
 }
@@ -243,13 +254,21 @@ function editAt(x,y,eraser=false){
  if(t!=='select')delete b.solution;
  if(t==='erase') eraseAt(x,y);
  else if(t==='ball') {b.walls=b.walls.filter(p=>!at(p,x,y));b.gates=b.gates.filter(p=>!(p.active&&at(p,x,y)));b.balls=b.balls.filter(p=>!at(p,x,y));b.balls.push({color:E.color,x,y});}
- else if(t==='teleport'){
+ else if(t==='tunnel'){
+  const side=E.clickSide||'r',pend=E.pendingTunnel;
+  if(b.walls.some(p=>at(p,x,y))){setStatus('A tunnel opening cannot be in a fixed wall cell.',true);return false;}
+  const list=b.tunnels||(b.tunnels=[]),hit=list.findIndex(p=>openingAt(p,x,y,side));
+  if(hit>=0){list.splice(hit,1);E.pendingTunnel=null;}
+  else if(!pend||(pend.x===x&&pend.y===y&&pend.side===side)){E.pendingTunnel=pend?null:{x,y,side};renderDraft();setStatus(pend?'':`First opening: ${sideNames[side]} side of (${x}, ${y}). Click the partner opening.`);}
+  else{list.push({a:{...pend},b:{x,y,side}});E.pendingTunnel=null;}
+  if(!list.length)delete b.tunnels;
+ }else if(t==='teleport'){
   clearFloor(x,y);
   b.teleports.push({id:nextId(b.teleports,'T'),color:E.color,active:E.activeTile,x,y});
  }else{
   clearFloor(x,y);
   const point={x,y};
-  if(t==='wall')b.walls.push(point);
+  if(t==='wall'){b.walls.push(point);if(b.tunnels){b.tunnels=b.tunnels.filter(p=>!openingAt(p,x,y));if(!b.tunnels.length)delete b.tunnels;}}
   if(t==='goal')b.goals.push({...point,color:E.color});
   if(t==='gate')b.gates.push({...point,id:nextId(b.gates,'G'),active:E.activeTile});
   if(t==='switch')b.switches.push({...point,id:nextId(b.switches,'S'),controls:[],on:false});
@@ -287,6 +306,7 @@ function updateDimensions(){
  const prev=snapshot();E.draft.width=w;E.draft.height=h;
  const inside=p=>p.x<=w&&p.y<=h;
  for(const type of keys)E.draft[type]=E.draft[type].filter(inside);
+ if(E.draft.tunnels){E.draft.tunnels=E.draft.tunnels.filter(t=>inside(t.a)&&inside(t.b));if(!E.draft.tunnels.length)delete E.draft.tunnels;}
  prune(E.draft);remember(prev);refresh();renderDraft();setStatus('Grid resized. Out-of-bounds objects were removed.');
 }
 function newBoard(){setReview(null,false);E.draft=template();E.fromHost=false;E.history=[];E.future=[];E.selected=null;refresh();renderDraft();setStatus('New board.');}
@@ -316,11 +336,11 @@ $('editor-active').addEventListener('change',e=>E.activeTile=e.target.checked);
 function cellAt(event){const el=event.target.closest?.('[data-edit-x]');if(el)return [Number(el.dataset.editX),Number(el.dataset.editY)];const svg=$('board-stage').querySelector('svg');if(!svg)return null;const point=svg.createSVGPoint();point.x=event.clientX;point.y=event.clientY;const transform=svg.getScreenCTM();if(!transform)return null;const converted=point.matrixTransform(transform.inverse());const x=Math.floor((converted.x-18)/64)+1,y=E.draft.height-Math.floor((converted.y-18)/64);return [x,y];}
 const stage=$('board-stage');
 stage.addEventListener('dragover',event=>{if(!E.active)return;event.preventDefault();event.dataTransfer.dropEffect='copy';},true);
-stage.addEventListener('drop',event=>{if(!E.active)return;event.preventDefault();event.stopImmediatePropagation();const tool=event.dataTransfer.getData('text/plain');if(tools.includes(tool)){E.tool=tool;refresh();}const loc=cellAt(event);if(!loc)return;const prev=snapshot();editAt(loc[0],loc[1]);remember(prev);refresh();},true);
+stage.addEventListener('drop',event=>{if(!E.active)return;event.preventDefault();event.stopImmediatePropagation();const tool=event.dataTransfer.getData('text/plain');if(tools.includes(tool)){E.tool=tool;refresh();}const loc=cellAt(event);if(!loc)return;E.clickSide=sideOf(event);const prev=snapshot();editAt(loc[0],loc[1]);remember(prev);refresh();},true);
 stage.addEventListener('pointerdown',event=>{
  if(!E.active)return;event.stopImmediatePropagation();event.preventDefault();if(event.button!==0&&event.button!==2)return;
  const p=cellAt(event);if(!p)return;E.dragging=true;E.dragChanged=false;E.dragBefore=snapshot();E.lastCell='';stage.setPointerCapture(event.pointerId);
- E.lastCell=p.join(',');E.preferFloor=event.altKey;editAt(p[0],p[1],event.button===2);E.grab=E.tool==='select'&&event.button===0&&E.selected?{from:{x:p[0],y:p[1]},selection:E.selected,hover:{x:p[0],y:p[1]}}:null;stage.classList.toggle('editor-grabbing',!!E.grab);stage.classList.remove('editor-grabbable');if(E.grab)startFloatingDrag(event);
+ E.lastCell=p.join(',');E.preferFloor=event.altKey;E.clickSide=sideOf(event);editAt(p[0],p[1],event.button===2);E.grab=E.tool==='select'&&event.button===0&&E.selected?{from:{x:p[0],y:p[1]},selection:E.selected,hover:{x:p[0],y:p[1]}}:null;stage.classList.toggle('editor-grabbing',!!E.grab);stage.classList.remove('editor-grabbable');if(E.grab)startFloatingDrag(event);
 },true);
 stage.addEventListener('pointermove',event=>{
  if(!E.active||!E.dragging)return;event.stopImmediatePropagation();event.preventDefault();

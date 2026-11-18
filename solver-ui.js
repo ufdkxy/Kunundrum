@@ -79,6 +79,7 @@ function showResult(r, certifying) {
 
 async function run(certifying) {
   if (!info || (certifying && !info.saved)) return;
+  if (info.tunnels) { $('solver-result').hidden = true; $('solver-progress').hidden = false; $('solver-progress').textContent = 'The solver does not support tunnels yet.'; return; }
   const token = ++runToken;
   $('solver-result').hidden = true;
   $('solver-progress').hidden = false;

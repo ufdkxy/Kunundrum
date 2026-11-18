@@ -6,14 +6,14 @@
 
 - The board is a rectangular grid. Game coordinates are **1-based Cartesian** `(x, y)`: `(1, 1)` is bottom-left; `x` increases rightward and `y` increases upward. Screenshot row indices are top-down and are converted by `y = boardHeight - screenshotRow` for zero-based rows.
 - **Lexicographic order.** Cells are ordered `(1,1) < (2,1) < ... < (n,1) < (1,2) < ...`: left to right (`x` ascending), then bottom to top (`y` ascending). This is the one order used for every labelling and numbering in the project (auto-assigned ids, ternary arrow-type strings, tie-breaks, binary cell offsets); "reading order" (top to bottom) is not used.
-- Board JSON has `version: 1`, `id`, `title`, `width`, `height`, and optional `description`, `wallColor` (`R` or `G`; cosmetic, blue when omitted) and `solution`. Supported feature arrays are `walls`, `balls`, `goals`, `arrows`, `gates`, `switches`, `teleports`, and `hexes`; missing arrays default to empty.
+- Board JSON has `version: 1`, `id`, `title`, `width`, `height`, and optional `description`, `wallColor` (`R` or `G`; cosmetic, blue when omitted) and `solution`. Supported feature arrays are `walls`, `balls`, `goals`, `arrows`, `gates`, `switches`, `teleports`, `tunnels`, and `hexes`; missing arrays default to empty.
 - Ball/goal colors are `R` (red), `G` (green), `B` (blue), and `Y` (yellow). Each ball needs a goal of its own color; extra goals are allowed. A goal is not an obstacle and may be crossed by another ball; only the **stopping** cell can lock a ball.
 - A floor cell may carry **at most one** of: permanent wall, goal, arrow, gate, switch, teleport endpoint, or hexagon. A ball may coexist with a floor feature, subject to the initial-wall restrictions. Distinct balls cannot share a cell.
 - `walls` are permanently impassable. An **active** gate is impassable; an inactive gate is traversable floor. Cells outside the rectangle are impassable. Other balls, including locked balls, are obstacles.
 
 ## 2. One move
 
-A move selects one **unlocked** ball and one direction: `u`, `d`, `l`, or `r`. The ball advances one cell at a time, automatically continuing until the next step would leave the board, hit a permanent wall, hit an active gate, or hit any other ball.
+A move selects one **unlocked** ball and one direction: `u`, `d`, `l`, or `r`. The ball advances one cell at a time, automatically continuing until the next step would leave the board, hit a permanent wall, hit an active gate, or hit any other ball. A **tunnel opening** on the side being crossed replaces that step (see **Tunnels**).
 
 Rules are applied in this order on **each newly entered cell**:
 
@@ -23,6 +23,8 @@ Rules are applied in this order on **each newly entered cell**:
 4. If it contains a **currently active, compatible** teleport, attempt its instantaneous jump to the partner endpoint (see **Teleport pairing**). The teleport is compatible if its color matches the ball or is `*` (universal). If it has no partner for this ball, the partner is **switched off**, or the exit is occupied by another ball, the sliding ball **stops at the entrance**. Otherwise append the exit to the path and resume sliding from that exit in the current heading.
 
 **Teleport pairing.** `teleports` holds single endpoints, each with its own cell, color (`R`, `G`, `B`, `Y` or `*`) and on/off state; pairs are not stored. The partner is derived from the colors alone: same-color endpoints pair up; two universals pair only with each other (independent of the colored pairs); a lone universal is a **hub** paired with the single endpoint of every other color, and a ball entering the hub exits at the endpoint of its own color (a ball with no such endpoint stops on the hub). Valid boards have at most 2 endpoints per color and at most 2 universals, every single colored endpoint needs exactly one universal, and a lone universal needs at least one single. A switch controls endpoints individually (e.g. one half of a pair), so a pair can have one half on and one off: a matching ball entering the on half **stops there**, and the off half is ordinary floor. Pressing the switch turns the off half on.
+
+**Tunnels.** `tunnels` holds bidirectional, fixed pairs of **openings**. An opening is a cell plus a `side` (`u`, `d`, `l`, `r`): a gap in the outline on that side of the cell, either on the board edge or between a floor cell and a wall cell. `side` is the direction a ball must be heading to cross it. When the next step of a sliding ball would cross an opening, it does not hit the edge or wall: it enters the cell of the **partner** opening, and its heading becomes the opposite of the partner's `side` (it leaves inward, so the heading may change). The partner cell is an ordinary newly entered cell, so its hexagon, arrow and teleport are processed as usual (unlike a teleport exit). Passing through costs nothing beyond the move itself. If the partner cell holds another ball or an active gate, the ball **stops at the entrance** (a blocked first step is a no-op). Moving along a wall past an opening does nothing. Tunnels are never switchable. The pairing is stored, never derived (a screenshot does not show it; the parser only guesses, the editor corrects). Openings may not share a cell side, and an opening may not lie in a fixed wall cell. Tunnel loops are rejected by the existing loop rule. The path of a move records a tunnel step as a point with `tunnel: true`, `via` (side entered) and `out` (side left through).
 
 **Important:** A teleport exit does not immediately trigger that exit cell's other features: processing resumes with the next step. The heading chosen at an arrow is retained across a teleport. An inactive or color-incompatible teleport behaves like ordinary traversable floor.
 
@@ -92,9 +94,10 @@ Additional feature shapes:
 {"x": 2, "y": 1, "direction": "u", "rotating": true}
 {"id": "T1", "x": 1, "y": 2, "color": "*", "active": true}
 {"id": "H1", "x": 3, "y": 1, "value": -5}
+{"a": {"x": 1, "y": 3, "side": "l"}, "b": {"x": 8, "y": 3, "side": "r"}}
 ```
 
-The three snippets above illustrate arrow, teleport and hexagon entries respectively; insert them into the appropriate arrays, **not all on top of existing features**. Validation limits include 1–32 cells per dimension, 1–128 balls, up to 4,096 entries per feature array, and valid references from switches to gate and teleport IDs (a gate and a teleport may not share an ID). Duplicate feature IDs, overlapping floor features, insufficient goals by color, and initial balls inside fixed/active walls are rejected.
+The four snippets above illustrate arrow, teleport, hexagon and tunnel (pair of openings) entries respectively; insert them into the appropriate arrays, **not all on top of existing features**. Validation limits include 1–32 cells per dimension, 1–128 balls, up to 4,096 entries per feature array, and valid references from switches to gate and teleport IDs (a gate and a teleport may not share an ID). Duplicate feature IDs, overlapping floor features, insufficient goals by color, and initial balls inside fixed/active walls are rejected.
 
 ## 6a. How features look in the game (for screenshot parsing)
 
@@ -102,13 +105,13 @@ The three snippets above illustrate arrow, teleport and hexagon entries respecti
 - **Switchable elements** (gates and some teleports) are drawn on a metal tile split into quadrants by a dark central cross. A board with a single switch is unambiguous: it controls every switchable element.
 - **Gates:** plain grey metal = **inactive** (floor); metal with a yellow/brown striped border = **active** (acts as a wall).
 - **Teleports:** four coloured corner arcs, a bright centre dot and dim concentric circles. Drawn on bare floor = always on (not switchable); drawn over the metal cross tile = switchable. An **inactive** teleport loses its colour (grey concentric circles on the metal tile).
+- **Tunnels:** white triangles marking a gap in the neon outline (board edge or an outline segment); each triangle points out of the board through the gap. The pairing is not visible.
 - **Switches:** solid glossy disc; red = off, green with a depressed shadow = on (display state only, see 3).
 
 ## 6b. Observed mechanics not yet implemented in `engine.js`
 
-Recorded from game screenshots (e.g. level 12.6); the simulator above does **not** implement these yet.
+Recorded from game screenshots; the simulator above does **not** implement this yet. (Tunnels, formerly called wraparound walls, are implemented: see §2.)
 
-- **Wraparound walls.** White triangles marking a gap in the board outline (on an outer edge or an outline segment) are a wraparound. They behave essentially like universal teleporters: they come in **bidirectional fixed pairs**, and a ball entering one emerges from its partner. Unlike teleporters, the **heading can change**: e.g. a ball moving left into a wraparound may come out of the paired exit moving down (the exit's outward direction). Each marker's triangles indicate the side it opens on.
 - **Rotating arrows.** All red (rotating) arrows rotate **in sync** on one shared phase clock. Each rotating arrow has one of three types: **clockwise** (period 4), **counterclockwise** (period 4), or **flipping** between two opposite directions (period 2). A screenshot captures every arrow at one instant of the clock, so a board's rotating arrows are fully described by their displayed directions plus a ternary string giving each arrow's type (in lexicographic order). **Confirmed rule (2026-11-13):** orientations are frozen for the duration of one ball move. By waiting (letting the shared clock advance) before the move, the player can pick the orientation of the **first** rotating arrow the ball reaches; every later rotating arrow in the same move then shows whatever that same clock phase gives it and cannot be chosen independently. The current engine and solver differ: their "rotating" arrow lets the player pick an exit independently at **every** rotating arrow of a move (one `(->x)` per encounter). That is a looser model, so solutions and certified move counts for boards with rotating arrows describe the simplified model, not the game, until this is implemented.
   - *Still open:* whether waiting costs a move or score; whether the clock also advances after each move; which orientations the first arrow can show (a clockwise or counterclockwise arrow cycles through all four, a flipping arrow only its two opposite directions); and how the phase and arrow types are stored in boards, the solution notation and K3.
 

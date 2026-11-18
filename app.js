@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.11.5'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.12.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -309,6 +309,8 @@ function renderSvg(b, s, options = {}) {
   svg += `<pattern id="${prefix}-gate" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="10" height="10" fill="#ffe34d"/><rect width="4" height="10" fill="#4b4829"/></pattern></defs>`;
   svg += `<rect x="${pad}" y="${pad}" width="${b.width * cell}" height="${b.height * cell}" rx="5" fill="#02080c"/>`;
   let boundary = '';
+  const SIDE_OF = {'-1,0':'l','1,0':'r','0,1':'u','0,-1':'d'};
+  const openings = new Set((b.tunnels||[]).flatMap(t=>[t.a,t.b].map(e=>`${e.x},${e.y},${e.side}`)));
   for (let y = 1; y <= b.height; y++) for (let x = 1; x <= b.width; x++) {
     if (!floor(x, y)) continue;
     const px = pad + (x - 1) * cell, py = pad + (b.height - y) * cell;
@@ -316,10 +318,18 @@ function renderSvg(b, s, options = {}) {
     const dockedColor = dockedGoalColors.get(`${x},${y}`);
     if (dockedColor) svg += `<rect class="docked-goal-cell" x="${px}" y="${py}" width="${cell}" height="${cell}" fill="${dockedColor}" fill-opacity=".22" pointer-events="none"/>`;
     for (const [dx, dy, x1, y1, x2, y2] of [[-1,0,px,py,px,py+cell],[1,0,px+cell,py,px+cell,py+cell],[0,1,px,py,px+cell,py],[0,-1,px,py+cell,px+cell,py+cell]]) {
-      if (!floor(x+dx,y+dy)) boundary += `M${x1} ${y1}L${x2} ${y2}`;
+      if (!floor(x+dx,y+dy) && !openings.has(`${x},${y},${SIDE_OF[dx+','+dy]}`)) boundary += `M${x1} ${y1}L${x2} ${y2}`;
     }
   }
   svg += `<g fill="none" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"><path d="${boundary}" stroke="${theme.glow}" stroke-width="9" opacity=".65" filter="url(#${prefix}-glow)"/><path d="${boundary}" stroke="${theme.mid}" stroke-width="4.5"/><path d="${boundary}" stroke="${theme.core}" stroke-width="1.9"/></g>`;
+  (b.tunnels||[]).forEach((t,i)=>{
+    for (const e of [t.a,t.b]) {
+      const px=pad+(e.x-1)*cell, py=pad+(b.height-e.y)*cell;
+      const [ex,ey]={u:[px+cell/2,py],d:[px+cell/2,py+cell],l:[px,py+cell/2],r:[px+cell,py+cell/2]}[e.side];
+      const deg={r:0,d:90,l:180,u:270}[e.side];
+      svg += `<g class="tunnel-mark" role="img" aria-label="Tunnel ${i+1} opening ${DIRECTION_NAMES[e.side]} of ${pos(e)}" transform="translate(${ex},${ey}) rotate(${deg})" pointer-events="none"><polygon points="15,0 -3,-12 -3,12" fill="#fff" opacity=".35" filter="url(#${prefix}-glow)"/><polygon points="14,0 -2,-10 -2,10" fill="#fff"/></g>`;
+    }
+  });
   if (coordinates) {
     for (let x=1;x<=b.width;x++) svg += `<text class="coord-label" x="${xy({x,y:1}).x}" y="${height-10}" text-anchor="middle" fill="#8296a4" font-size="11">${x}</text>`;
     for (let y=1;y<=b.height;y++) svg += `<text class="coord-label" x="15" y="${xy({x:1,y}).y+4}" text-anchor="middle" fill="#8296a4" font-size="11">${y}</text>`;
@@ -361,6 +371,12 @@ function renderSvg(b, s, options = {}) {
     const color = PALETTE[trace.record?.ballId[0]] || '#b7efd8';
     for(let i=1;i<trace.path.length;i++) {
       const a=xy(trace.path[i-1]), z=xy(trace.path[i]);
+      const tun = trace.path[i].tunnel;
+      if (tun) {
+        const D={u:[0,-1],d:[0,1],l:[-1,0],r:[1,0]}, ov=D[trace.path[i].via], ou=D[trace.path[i].out];
+        const stub=(c,v)=>`<line x1="${c.x}" y1="${c.y}" x2="${c.x+v[0]*32}" y2="${c.y+v[1]*32}" stroke="${color}" stroke-width="3.8" stroke-linecap="round" stroke-dasharray="5 5" stroke-opacity=".8" pointer-events="none"/>`;
+        svg += stub(a,ov)+stub(z,ou); continue;
+      }
       const teleportStep = Boolean(trace.path[i].teleport);
       const trailClass = `trail-line${teleportStep?' teleport-step':''}`;
       const dash = teleportStep ? ' stroke-dasharray="5 5"' : '';
@@ -514,7 +530,7 @@ async function animatePath(id,path) {
   const xy=p=>({x:pad+(p.x-.5)*64,y:pad+(board.height-p.y+.5)*64});
   // Per-segment durations: moves are quick, a teleport is a ~1s fade-out / fade-in.
   const TELEPORT_MS=1000;
-  const segments=[];for(let i=1;i<path.length;i++)segments.push(path[i].teleport?TELEPORT_MS:54);
+  const segments=[];for(let i=1;i<path.length;i++)segments.push(path[i].teleport?TELEPORT_MS:path[i].tunnel?108:54);
   const moveTotal=segments.reduce((sum,ms,i)=>sum+(path[i+1].teleport?0:ms),0);
   const moveScale=moveTotal?Math.min(1400,Math.max(180,moveTotal))/moveTotal:1;
   const durations=segments.map((ms,i)=>(path[i+1].teleport?ms:ms*moveScale)/settings.speed);
@@ -563,6 +579,11 @@ async function animatePath(id,path) {
           // Expanding ring at the departure portal while fading out, and at the arrival portal while fading in.
           const pulse=(r,t)=>{if(!r)return;r.style.opacity=t>0&&t<1?String(.9*(1-t)):'0';r.setAttribute('r',String(20+26*t));};
           pulse(ra,Math.min(1,offset/.5));pulse(rz,Math.max(0,(offset-.5)/.5));
+        }else if(path[index+1].tunnel){
+          // Slide out through the entrance side, then in through the partner's side.
+          const D={u:[0,-1],d:[0,1],l:[-1,0],r:[1,0]},ov=D[path[index+1].via],ou=D[path[index+1].out];
+          if(offset<.5){const t=offset/.5;element.setAttribute('transform',`translate(${a.x+ov[0]*32*t},${a.y+ov[1]*32*t})`);element.style.opacity=String(1-t);}
+          else{const t=(offset-.5)/.5;element.setAttribute('transform',`translate(${z.x+ou[0]*32*(1-t)},${z.y+ou[1]*32*(1-t)})`);element.style.opacity=String(t);}
         }else{
           element.setAttribute('transform',`translate(${a.x+(z.x-a.x)*offset},${a.y+(z.y-a.y)*offset})`);element.style.opacity='1';
         }
@@ -940,7 +961,7 @@ window.KunundrumHost = {
   // Solver dialog (solver-ui.js): the current board as a K3 code without a route, plus the saved solution's score and moves when it replays to completion. Stops any playback.
   prepareSolver:()=>{
     stopPlayback();
-    const {solution,...bare}=board,info={code:encodeBoard(bare),title:board.title,id:currentPresetId,saved:null};
+    const {solution,...bare}=board,info={code:encodeBoard(bare),title:board.title,id:currentPresetId,saved:null,tunnels:(bare.tunnels||[]).length>0};
     if(solution){try{const f=buildReplay(board,solution),s=f[f.length-1].state;if(isComplete(s))info.saved={notation:solution,score:s.score,moves:s.moves};}catch{}}
     return info;
   },
@@ -958,6 +979,7 @@ window.KunundrumHost = {
     if(spec.type==='arrow')b.arrows.push({...at,direction:spec.direction||'r',...(spec.rotating?{rotating:true}:{})});
     if(spec.type==='teleport')b.teleports.push({...at,id:'T1',color:spec.color||'*',active:spec.active!==false});
     if(spec.type==='hex')b.hexes.push({...at,id:'hex1',value:spec.value||-5});
+    if(spec.type==='tunnel')b.tunnels=[{a:{...at,side:'l'},b:{...at,side:'r'}}];
     return renderSvg(b,createInitialState(b),{mini:true}).replace(/<text class="tile-label"[^>]*>[^<]*<\/text>/g,'').replace(/viewBox="[^"]*"/,'viewBox="74 74 64 64"').replace('<svg class="board-svg"','<svg class="tool-icon-svg"');
   },
 };
