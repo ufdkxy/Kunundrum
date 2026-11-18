@@ -27,6 +27,19 @@ console.log('PASS '+n+' end-to-end fixture(s)');
   const out=p.stdout.match(/^K3: (\S+)/m)[1];assert.equal(Codec.decodeBoard(out).wallColor,c,'solver must keep the wall color');solutionCheck(out,p.stdout.match(/^Solution: (\S+)/m)[1]);}
  const q=spawnSync(path.join(root,'kunsolve'),[blue,'--quiet','--seconds','4','--max-states','30000'],{encoding:'utf8',timeout:7000});assert.equal(Codec.decodeBoard(q.stdout.match(/^K3: (\S+)/m)[1]).wallColor,undefined);
  console.log('PASS wall color (K3 round trip, canonical blue, solver keeps R/G)');}
+// Teleports are single endpoints with derived partners: hub (lone universal + one endpoint per color), off exit stops the ball on the entrance.
+{const hub=(spokeOn)=>({version:1,width:5,height:3,id:'hub',title:'hub',balls:[{x:1,y:1,color:'B'}],goals:[{x:5,y:1,color:'B'}],
+  teleports:[{id:'T1',x:3,y:1,color:'*',active:true},{id:'T2',x:3,y:3,color:'B',active:spokeOn}],switches:[{x:1,y:3,id:'S1',controls:['T2']}]});
+ const first=(board,dir)=>{const st=Core.createInitialState(board);const m=Core.applyMove(st,board,Core.resolveBallId(st,'B'),dir,[]);assert.equal(m.kind,'ok',m.message);return m.state.balls[0];};
+ const on=Codec.decodeBoard(Codec.encodeBoard(hub(true))),off=Codec.decodeBoard(Codec.encodeBoard(hub(false)));
+ assert.deepEqual([first(on,'r').x,first(on,'r').y],[5,3],'ball entering the hub exits at the spoke of its color and continues');
+ assert.deepEqual([first(off,'r').x,first(off,'r').y],[3,1],'off exit: the ball stops on the universal entrance');
+ for(const bad of [{teleports:[{id:'T1',x:3,y:3,color:'B',active:true}]},{teleports:[{id:'T1',x:1,y:2,color:'B',active:true},{id:'T2',x:2,y:2,color:'B',active:true},{id:'T3',x:3,y:2,color:'B',active:true}]},
+   {teleports:[{id:'T1',x:1,y:2,color:'*',active:true},{id:'T2',x:2,y:2,color:'*',active:true},{id:'T3',x:3,y:2,color:'B',active:true}]}])
+  assert.throws(()=>Codec.encodeBoard({...hub(true),...bad,switches:[]}),/teleport/i,'invalid teleport pairing must be rejected');
+ const code=Codec.encodeBoard(hub(false));const p=spawnSync(path.join(root,'kunsolve'),[code,'--quiet','--seconds','4','--max-states','30000'],{encoding:'utf8',timeout:7000});assert.equal(p.status,0,p.stderr+p.stdout);
+ const r=solutionCheck(p.stdout.match(/^K3: (\S+)/m)[1],p.stdout.match(/^Solution: (\S+)/m)[1]);assert.equal(r.count,2,'switch on the spoke first, then through the hub');
+ console.log('PASS teleport endpoints (hub exit, off exit stops, pairing validation, solver route)');}
 // Balanced bidirectional search: certified optimum on a chapter-10 level, and the proven lower bound printed when the budget runs out.
 {const cat=path.join(repo,'levels.js'),run=(id,extra)=>spawnSync(path.join(root,'kunsolve'),['--level',id,'--catalog',cat,'--algorithm','balanced','--quiet','--no-code','--seconds','60',...extra],{cwd:root,encoding:'utf8',timeout:90000});
  const a=run('10.8',['--max-states','0']);assert.equal(a.status,0,a.stdout);assert(/^OPTIMAL/m.test(a.stdout)&&/^Moves: 28$/m.test(a.stdout),'balanced 10.8 must prove 28 moves optimal');

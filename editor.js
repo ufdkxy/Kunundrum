@@ -7,7 +7,7 @@ const clone = x => JSON.parse(JSON.stringify(x));
 const colorNames={R:'Red',G:'Green',B:'Blue',Y:'Yellow','*':'Universal'};
 const singular={walls:'Wall',balls:'Ball',goals:'Goal',arrows:'Arrow',gates:'Gate',switches:'Switch',teleports:'Teleport',hexes:'Hexagon'};
 const tools=['select','ball','goal','wall','gate','switch','arrow','teleport','hex','erase'];
-const mutable = {active:false,draft:null,grab:null,floatDrag:null,preferFloor:false,tool:'select',color:'G',direction:'r',rotating:false,activeTile:true,hexValue:-5,selected:null,pending:null,history:[],future:[],dragging:false,dragChanged:false,dragBefore:null,lastCell:'',dirty:false};
+const mutable = {active:false,draft:null,grab:null,floatDrag:null,preferFloor:false,tool:'select',color:'G',direction:'r',rotating:false,activeTile:true,hexValue:-5,selected:null,history:[],future:[],dragging:false,dragChanged:false,dragBefore:null,lastCell:'',dirty:false};
 const E = mutable;
 const host = () => window.KunundrumHost;
 const same=(a,b)=>a&&b&&a.x===b.x&&a.y===b.y;
@@ -26,8 +26,7 @@ function putProps(){
  if(!match){panel.replaceChildren();panel.hidden=true;return;}
  panel.hidden=false;
  let item=null;
- if(match.type==='teleports') item=E.draft.teleports.find(v=>v.id===match.id);
- else item=E.draft[match.type]?.find(v=>v._eid===match.id || (v.id && v.id===match.id) || (v.x===match.x&&v.y===match.y));
+ item=E.draft[match.type]?.find(v=>v._eid===match.id || (v.id && v.id===match.id) || (v.x===match.x&&v.y===match.y));
  if(!item){E.selected=null;putProps();return;}
  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const select=(name,options,value)=>`<label>${name}<select data-edit="${name}">${options.map(v=>`<option value="${esc(v[0])}" ${v[0]===value?'selected':''}>${esc(v[1])}</option>`).join('')}</select></label>`;
@@ -38,7 +37,7 @@ function putProps(){
  if(match.type==='arrows'){html+=select('Direction',[['u','Up'],['d','Down'],['l','Left'],['r','Right']],item.direction);html+=select('Rotating',[["false","No"],["true","Yes"]],String(!!item.rotating));}
  if(match.type==='gates'){html+=select('Active',[["true","On"],["false","Off"]],String(item.active));}
  if(match.type==='switches'){html+=input('Gate/Teleport IDs',item.controls.join(', '));html+=select('Active',[["true","On"],["false","Off"]],String(!!item.on));}
- if(match.type==='teleports'){html+=select('Active',[["true","On"],["false","Off"]],String(item.active));html+=`<p class="editor-coordinates">Endpoints: (${item.ends[0].x}, ${item.ends[0].y}) · (${item.ends[1].x}, ${item.ends[1].y})</p>`;}
+ if(match.type==='teleports'){html+=select('Active',[["true","On"],["false","Off"]],String(item.active));}
  if(match.type==='hexes')html+=input('Value',item.value,'number');
  html+='<button class="secondary-button editor-delete" id="editor-delete-object" type="button">Delete object</button>';
  panel.innerHTML=html;
@@ -79,9 +78,7 @@ function refresh(){
  for(const button of document.querySelectorAll('[data-editor-wall-color]')){button.classList.toggle('chosen',button.dataset.editorWallColor===wallColor);button.setAttribute('aria-pressed',String(button.dataset.editorWallColor===wallColor));}
  for(const button of document.querySelectorAll('[data-editor-direction]')){button.classList.toggle('chosen',button.dataset.editorDirection===E.direction);button.setAttribute('aria-pressed',String(button.dataset.editorDirection===E.direction));}
  $('editor-undo').disabled=!E.history.length;$('editor-redo').disabled=!E.future.length;
- $('editor-pair-note').textContent=E.pending?`Teleport: choose second endpoint (${E.pending.x}, ${E.pending.y} chosen)`:'Teleport: click two endpoints';
- $('editor-pair-note').hidden=E.tool!=='teleport';
- const t=E.tool;
+  const t=E.tool;
  $('editor-colors').hidden=!['ball','goal','teleport'].includes(t);
  $('editor-universal-color').hidden=t!=='teleport';
  $('editor-directions').hidden=t!=='arrow';
@@ -105,7 +102,6 @@ function overlay(){
   const h=E.grab.hover, px=pad+(h.x-.5)*cell,py=pad+(b.height-h.y+.5)*cell;
   out+=`<g class="editor-drag-preview" pointer-events="none" transform="translate(${px},${py})"><rect x="-29" y="-29" width="58" height="58" rx="6" fill="#43dcff" fill-opacity=".14" stroke="#90f2ff" stroke-width="3" stroke-dasharray="7 4"/></g>`;
  }
- if(E.pending){const px=pad+(E.pending.x-.5)*cell,py=pad+(b.height-E.pending.y+.5)*cell;out+=`<circle cx="${px}" cy="${py}" r="28" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="6 4" pointer-events="none"/>`;}
  return out;
 }
 // Move a clone of the genuine SVG tile artwork with the pointer. The draft data
@@ -125,15 +121,10 @@ function pickTileArtwork(grab){
   return [...svg.querySelectorAll('g[data-ball]')].find(g=>g.dataset.ball===member?.id)||
    [...svg.querySelectorAll('g[data-ball]')].find(g=>g.getAttribute('aria-label')?.includes(position))||null;
  }
- const match={goals:' goal ',gates:' wall',arrows:' arrow ',switches:' switch',hexes:' score at ',teleports:' teleport.'}[selection.type];
+ const match={goals:' goal ',gates:' wall',arrows:' arrow ',switches:' switch',hexes:' score at ',teleports:' teleport '}[selection.type];
  return [...svg.querySelectorAll('g[role="img"]')].find(g=>{
   const label=g.getAttribute('aria-label')||'';
   if(!match||!label.includes(match))return false;
-  if(selection.type==='teleports'){
-   const pair=E.draft.teleports.find(v=>v.id===selection.id);
-   return pair && label.includes(`Links (${pair.ends[0].x}, ${pair.ends[0].y}) and (${pair.ends[1].x}, ${pair.ends[1].y})`)
-       && g.getAttribute('transform')===`translate(${18+(from.x-.5)*64},${18+(E.draft.height-from.y+.5)*64})`;
-  }
   return label.endsWith(position);
  })||null;
 }
@@ -183,7 +174,7 @@ function setMode(active){
  if(active===E.active)return;
  if(active){
   host().stop();
-  E.draft=clone(host().getBoard());E.fromHost=true;E.history=[];E.future=[];E.pending=null;E.selected=null;E.tool='select';E.dirty=false;
+  E.draft=clone(host().getBoard());E.fromHost=true;E.history=[];E.future=[];E.selected=null;E.tool='select';E.dirty=false;
   setReview(null,false);
   E.active=true;$('editor-export-code').hidden=true;setStatus('');refresh();renderDraft();
  }else{
@@ -193,7 +184,7 @@ function setMode(active){
    const unchanged=E.fromHost&&!E.history.length;
    const notes=[];
    if(!unchanged)host().play(Core.validateBoard(E.draft,undefined,notes));
-   E.active=false;E.pending=null;E.selected=null;clearFloatingDrag();refresh();setStatus('');
+   E.active=false;E.selected=null;clearFloatingDrag();refresh();setStatus('');
    if(notes.length)host().toast(notes.join('; '));
    if(unchanged)host().resume();
   }catch(err){setStatus(`Cannot test yet: ${err.message}`,true);$('editor-status').scrollIntoView({block:'nearest'});}
@@ -202,53 +193,42 @@ function setMode(active){
 function openDraft(draft,problems=[],fromScreenshot=false){
  // Open a board that failed validation for repair; Play stays gated by validateBoard in setMode(false).
  host().stop();
- E.draft=clone(draft);E.fromHost=false;E.history=[];E.future=[];E.pending=null;E.selected=null;E.tool='select';E.dirty=true;
+ E.draft=clone(draft);E.fromHost=false;E.history=[];E.future=[];E.selected=null;E.tool='select';E.dirty=true;
  E.active=true;$('editor-export-code').hidden=true;if(!fromScreenshot)setReview(null,false);refresh();
  try{renderDraft();}catch(err){setStatus(`Opened for repair, but the board cannot be drawn: ${err.message}`,true);return;}
  setStatus(problems.length?`This board is not playable yet — fix it, then press Play. ${problems.join(' ')}`:'',problems.length>0);
 }
 function find(x,y,underBall=false){
  if(!E.draft)return null;
- for(const type of (underBall?['switches','gates','arrows','hexes','goals','walls']:['balls','switches','gates','arrows','hexes','goals','walls'])){
+ for(const type of (underBall?['switches','gates','arrows','hexes','goals','walls','teleports']:['balls','switches','gates','arrows','hexes','goals','walls','teleports'])){
   const p=E.draft[type].find(v=>at(v,x,y));if(p)return {type,id:p.id||p._eid||null,x,y};
  }
- const pair=E.draft.teleports.find(v=>v.ends.some(e=>at(e,x,y)));
- return pair?{type:'teleports',id:pair.id,x,y}:null;
+ return null;
 }
 function eraseAt(x,y,all=false){
  const b=E.draft;
- if(all){for(const name of keys){if(name==='teleports')b.teleports=b.teleports.filter(v=>!v.ends.some(p=>at(p,x,y)));else b[name]=b[name].filter(v=>!at(v,x,y));}return;}
+ if(all){for(const name of keys)b[name]=b[name].filter(v=>!at(v,x,y));return;}
  const found=find(x,y);if(!found)return;
- if(found.type==='teleports')b.teleports=b.teleports.filter(p=>p.id!==found.id);
- else b[found.type]=b[found.type].filter(p=>!(p.x===x&&p.y===y));
+ b[found.type]=b[found.type].filter(p=>!(p.x===x&&p.y===y));
  E.selected=null;
 }
 function clearFloor(x,y){
- for(const type of ['walls','goals','arrows','gates','switches','hexes'])E.draft[type]=E.draft[type].filter(v=>!at(v,x,y));
- E.draft.teleports=E.draft.teleports.filter(t=>!t.ends.some(v=>at(v,x,y)));
+ for(const type of ['walls','goals','arrows','gates','switches','teleports','hexes'])E.draft[type]=E.draft[type].filter(v=>!at(v,x,y));
 }
 function moveObject(start,end,selection){
  if(!selection||same(start,end)||end.x<1||end.y<1||end.x>E.draft.width||end.y>E.draft.height)return false;
  const original=snapshot();
  let item;
- if(selection.type==='teleports'){
-   item=E.draft.teleports.find(v=>v.id===selection.id);
-   if(!item)return false;
-   const endIndex=item.ends.findIndex(v=>same(v,start));
-   if(endIndex<0||item.ends.some((v,i)=>i!==endIndex&&same(v,end)))return false;
-   clearFloor(end.x,end.y);item.ends[endIndex]={...end};
- }else{
-   item=E.draft[selection.type].find(v=>same(v,start));
-   if(!item)return false;
-   if(selection.type==='balls'){
-     if(E.draft.balls.some(v=>same(v,end)))return false;
-     if(E.draft.walls.some(v=>same(v,end))||E.draft.gates.some(v=>same(v,end)&&v.active))return false;
-   }else{
-     if(selection.type==='walls'||selection.type==='gates'&&item.active){if(E.draft.balls.some(v=>same(v,end)))return false;}
-     clearFloor(end.x,end.y);
-   }
-   item.x=end.x;item.y=end.y;
- }
+  item=E.draft[selection.type].find(v=>same(v,start));
+  if(!item)return false;
+  if(selection.type==='balls'){
+    if(E.draft.balls.some(v=>same(v,end)))return false;
+    if(E.draft.walls.some(v=>same(v,end))||E.draft.gates.some(v=>same(v,end)&&v.active))return false;
+  }else{
+    if(selection.type==='walls'||selection.type==='gates'&&item.active){if(E.draft.balls.some(v=>same(v,end)))return false;}
+    clearFloor(end.x,end.y);
+  }
+  item.x=end.x;item.y=end.y;
  delete E.draft.solution;
  prune(E.draft);
  const changed=remember(original);
@@ -264,10 +244,8 @@ function editAt(x,y,eraser=false){
  if(t==='erase') eraseAt(x,y);
  else if(t==='ball') {b.walls=b.walls.filter(p=>!at(p,x,y));b.gates=b.gates.filter(p=>!(p.active&&at(p,x,y)));b.balls=b.balls.filter(p=>!at(p,x,y));b.balls.push({color:E.color,x,y});}
  else if(t==='teleport'){
-  if(!E.pending){E.pending={x,y};refresh();renderDraft();return false;}
-  if(at(E.pending,x,y)){E.pending=null;refresh();renderDraft();return false;}
-  clearFloor(E.pending.x,E.pending.y);clearFloor(x,y);
-  b.teleports.push({id:nextId(b.teleports,'T'),color:E.color,active:E.activeTile,ends:[E.pending,{x,y}]});E.pending=null;
+  clearFloor(x,y);
+  b.teleports.push({id:nextId(b.teleports,'T'),color:E.color,active:E.activeTile,x,y});
  }else{
   clearFloor(x,y);
   const point={x,y};
@@ -285,7 +263,7 @@ function editAt(x,y,eraser=false){
 }
 function applyProperty(key,value){
  const sel=E.selected;if(!sel)return;
- const data=sel.type==='teleports'?E.draft.teleports.find(v=>v.id===sel.id):E.draft[sel.type]?.find(v=>v.id&&v.id===sel.id||v.x===sel.x&&v.y===sel.y);
+ const data=E.draft[sel.type]?.find(v=>v.id&&v.id===sel.id||v.x===sel.x&&v.y===sel.y);
  if(!data)return;
  const prev=snapshot();
  delete E.draft.solution;
@@ -301,17 +279,17 @@ function applyProperty(key,value){
 function editorUndo(redo=false){
  const from=redo?E.future:E.history,to=redo?E.history:E.future;
  if(!from.length)return;
- to.push(snapshot());E.draft=JSON.parse(from.pop());E.pending=null;E.selected=null;refresh();renderDraft();setStatus('');
+ to.push(snapshot());E.draft=JSON.parse(from.pop());E.selected=null;refresh();renderDraft();setStatus('');
 }
 function updateDimensions(){
  const w=Number($('editor-width').value),h=Number($('editor-height').value);
  if(!Number.isInteger(w)||!Number.isInteger(h)||w<1||w>32||h<1||h>32){setStatus('Grid dimensions must be from 1 to 32.',true);return;}
  const prev=snapshot();E.draft.width=w;E.draft.height=h;
  const inside=p=>p.x<=w&&p.y<=h;
- for(const type of keys){if(type==='teleports')E.draft.teleports=E.draft.teleports.filter(p=>p.ends.every(inside));else E.draft[type]=E.draft[type].filter(inside);}
+ for(const type of keys)E.draft[type]=E.draft[type].filter(inside);
  prune(E.draft);remember(prev);refresh();renderDraft();setStatus('Grid resized. Out-of-bounds objects were removed.');
 }
-function newBoard(){setReview(null,false);E.draft=template();E.fromHost=false;E.history=[];E.future=[];E.pending=null;E.selected=null;refresh();renderDraft();setStatus('New board.');}
+function newBoard(){setReview(null,false);E.draft=template();E.fromHost=false;E.history=[];E.future=[];E.selected=null;refresh();renderDraft();setStatus('New board.');}
 function ensureEditing(){if(!E.active)setMode(true);}
 const panel=document.getElementById('editor-panel');
 $('edit-mode-button').addEventListener('click',()=>setMode(!E.active));
@@ -321,13 +299,13 @@ $('editor-undo').addEventListener('click',()=>editorUndo());$('editor-redo').add
 $('editor-resize').addEventListener('click',updateDimensions);
 $('editor-title').addEventListener('change',event=>{const prev=snapshot();E.draft.title=clean(event.target.value)||'Custom board';E.draft.id=E.draft.title.toLowerCase().replace(/[^a-z0-9_.-]/g,'-').replace(/^-+/,'').slice(0,80)||'custom';remember(prev);renderDraft();refresh();});
 $('editor-properties').addEventListener('change',event=>{const key=event.target.dataset.edit;if(key)applyProperty(key,event.target.value);});
-$('editor-properties').addEventListener('click',event=>{if(event.target.id==='editor-delete-object'&&E.selected){const prev=snapshot();const s=E.selected;if(s.type==='teleports')E.draft.teleports=E.draft.teleports.filter(p=>p.id!==s.id);else E.draft[s.type]=E.draft[s.type].filter(p=>!at(p,s.x,s.y));prune(E.draft);E.selected=null;remember(prev);refresh();renderDraft();}});
+$('editor-properties').addEventListener('click',event=>{if(event.target.id==='editor-delete-object'&&E.selected){const prev=snapshot();const s=E.selected;E.draft[s.type]=E.draft[s.type].filter(p=>!at(p,s.x,s.y));prune(E.draft);E.selected=null;remember(prev);refresh();renderDraft();}});
 for(const button of panel.querySelectorAll('[data-editor-tool]')) {
  button.draggable=true;
- button.addEventListener('dragstart',event=>{E.tool=button.dataset.editorTool;E.pending=null;event.dataTransfer.setData('text/plain',E.tool);event.dataTransfer.effectAllowed='copy';refresh();});
+ button.addEventListener('dragstart',event=>{E.tool=button.dataset.editorTool;event.dataTransfer.setData('text/plain',E.tool);event.dataTransfer.effectAllowed='copy';refresh();});
 }
 panel.addEventListener('click',event=>{
- const t=event.target.closest('[data-editor-tool]');if(t){E.tool=t.dataset.editorTool;E.pending=null;refresh();renderDraft();return;}
+ const t=event.target.closest('[data-editor-tool]');if(t){E.tool=t.dataset.editorTool;refresh();renderDraft();return;}
  const c=event.target.closest('[data-editor-color]');if(c){E.color=c.dataset.editorColor;refresh();return;}
  const w=event.target.closest('[data-editor-wall-color]');if(w&&E.draft){const prev=snapshot();if(w.dataset.editorWallColor==='B')delete E.draft.wallColor;else E.draft.wallColor=w.dataset.editorWallColor;remember(prev);refresh();renderDraft();return;}
  const d=event.target.closest('[data-editor-direction]');if(d){E.direction=d.dataset.editorDirection;refresh();return;}
@@ -385,14 +363,13 @@ document.addEventListener('keydown',event=>{
  if(!E.active||document.querySelector('dialog[open]'))return;
  const input=event.target.closest('input,textarea,select');if(input)return;
  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){event.preventDefault();event.stopImmediatePropagation();editorUndo(event.shiftKey);return;}
- if(event.key==='Escape'&&E.pending){E.pending=null;refresh();renderDraft();event.preventDefault();}
 },true);
 $('editor-review-thumb').addEventListener('click',()=>host().showReview());
 $('editor-json-toggle').addEventListener('click',()=>{const box=$('editor-json-box'),open=box.hidden;box.hidden=!open;$('editor-json-toggle').setAttribute('aria-expanded',String(open));$('editor-json-toggle').textContent=open?'Hide JSON':'Edit JSON';if(open&&E.draft)$('editor-json').value=JSON.stringify(E.draft,null,2);});
 $('editor-json-apply').addEventListener('click',()=>{
  try{
   const notes=[],valid=Core.validateBoard(JSON.parse($('editor-json').value),undefined,notes);
-  const prev=snapshot();E.draft=clone(valid);delete E.draft.solution;E.pending=null;E.selected=null;remember(prev);
+  const prev=snapshot();E.draft=clone(valid);delete E.draft.solution;E.selected=null;remember(prev);
   refresh();renderDraft();setStatus(notes.length?`JSON applied. ${notes.join('; ')}`:'JSON applied.');
  }catch(err){setStatus(`Invalid JSON board: ${err.message}`,true);}
 });

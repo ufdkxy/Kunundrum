@@ -14,7 +14,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.11.0-js.1';
+const PARSER_VERSION = '0.12.0-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -656,7 +656,7 @@ function guessSwitchMapping(switches, gates, teleports, switchInfo, unresolved) 
   const claimed = new Set();
   for (const sw of switches) if (sw.id in switchInfo) for (const i of sw.controls) claimed.add(i);
   const elements = gates.filter(g => !claimed.has(g.id)).map(g => [g.id, [[g.x, g.y]]]);
-  for (const t of teleports) if (t.switchable && !claimed.has(t.id)) elements.push([t.id, t.ends.map(e => [e.x, e.y])]);
+  for (const t of teleports) if (t.switchable && !claimed.has(t.id)) elements.push([t.id, [[t.x, t.y]]]);
   let free = switches.filter(sw => !(sw.id in switchInfo));
   if (!free.length && elements.length) free = [...switches];
   if (!free.length) return '';
@@ -690,8 +690,7 @@ function guessSwitchMapping(switches, gates, teleports, switchInfo, unresolved) 
 
 function assembleBoard(labels, geom, level, overrides) {
   const walls = [], balls = [], goals = [], arrows = [], gates = [], switches = [], hexes = [];
-  const telecells = new Map(), teleswitchable = new Map(), teleinactive = new Map();
-  const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
+  const telecells = [];
   let unresolved = [];
   for (let row = geom.height - 1; row >= 0; row--) for (let col = 0; col < geom.width; col++) {
     const kind = labels[row][col], x = col + 1, y = geom.height - row, pos = () => ({ x, y });
@@ -707,7 +706,7 @@ function assembleBoard(labels, geom, level, overrides) {
     else if (kind.startsWith('teleport_')) {
       const rest = kind.slice(9), i = rest.indexOf('_');
       const color = i < 0 ? rest : rest.slice(0, i), flag = i < 0 ? '' : rest.slice(i + 1);
-      push(telecells, color, pos()); push(teleswitchable, color, ['switchable', 'inactive'].includes(flag)); push(teleinactive, color, flag === 'inactive');
+      telecells.push({ ...pos(), color, switchable: ['switchable', 'inactive'].includes(flag), inactive: flag === 'inactive' });
     } else if (kind.startsWith('arrow_')) {
       const d = kind.slice(6);
       arrows.push({ ...pos(), direction: d === 'rotating' ? 'u' : d, ...(d === 'rotating' ? { rotating: true } : {}) });
@@ -728,17 +727,31 @@ function assembleBoard(labels, geom, level, overrides) {
       unresolved.push(`Switch at (${x},${y}) has unknown mapping`);
     } else unresolved.push(`Unrecognized object at (${x},${y})`);
   }
+  // Teleports are single endpoints; partners follow from the colors (same-color endpoints pair up, two universals pair with each other,
+  // a lone universal pairs with the single endpoint of every other color). An inactive endpoint is drawn gray and has lost its color,
+  // so it is given the color of a lone colored endpoint that needs a partner (nearest first), or becomes a universal.
   const teleports = [], pairConfig = overrides.teleports || [];
   if (pairConfig.length) {
-    pairConfig.forEach((item, i) => teleports.push({ id: item.id || `T${i + 1}`, color: item.color, ends: item.ends, active: item.active === undefined ? true : item.active, ...(item.switchable ? { switchable: true } : {}) }));
-  } else {
-    for (const [color, ends] of telecells) {
-      if (ends.length === 2) {
-        const flags = teleswitchable.get(color);
-        if (flags[0] !== flags[1]) unresolved.push(`${color} teleport pair: only one end is metal-textured (switchable); check both ends`);
-        teleports.push({ id: `T${teleports.length + 1}`, color, ends, active: !teleinactive.get(color).every(Boolean), ...(flags.every(Boolean) ? { switchable: true } : {}) });
-      } else if (ends.length) unresolved.push(`${ends.length} ${color} teleport endpoints: explicit pairing required`);
+    pairConfig.forEach((item, i) => teleports.push({ id: item.id || `T${i + 1}`, x: item.x, y: item.y, color: item.color, active: item.active === undefined ? true : item.active, ...(item.switchable ? { switchable: true } : {}) }));
+  } else if (telecells.length) {
+    const known = telecells.filter(t => !t.inactive), gray = telecells.filter(t => t.inactive);
+    const count = c => known.filter(t => t.color === c).length;
+    const needy = COLORS.filter(c => count(c) === 1 && count('*') !== 1);
+    const dist = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+    const assigned = new Map(), pool = [...gray], notes = [];
+    while (needy.length && pool.length) {
+      let best = null;
+      for (const c of needy) { const mate = known.find(t => t.color === c); for (const g of pool) { const d = dist(mate, g); if (!best || d < best.d) best = { c, g, d }; } }
+      assigned.set(best.g, best.c); needy.splice(needy.indexOf(best.c), 1); pool.splice(pool.indexOf(best.g), 1);
+      notes.push(`(${best.g.x},${best.g.y}) ${best.c}`);
     }
+    if (pool.length === 2 || (pool.length === 1 && count('*') === 1)) { for (const g of pool) { assigned.set(g, '*'); notes.push(`(${g.x},${g.y}) universal`); } pool.length = 0; }
+    if (notes.length) unresolved.push(`Inactive (gray) teleports lost their color; assigned by proximity: ${notes.join(', ')}. Check the pairing`);
+    if (pool.length) unresolved.push(`${pool.length} inactive teleport(s) at ${pool.map(g => `(${g.x},${g.y})`).join(', ')}: color unknown, set it in the editor`);
+    for (const g of pool) assigned.set(g, '*');
+    for (const c of needy) unresolved.push(`${c} teleport has no partner`);
+    for (const t of telecells.sort((a, b) => a.y - b.y || a.x - b.x))
+      teleports.push({ id: `T${teleports.length + 1}`, x: t.x, y: t.y, color: t.inactive ? assigned.get(t) : t.color, active: !t.inactive, ...(t.switchable ? { switchable: true } : {}) });
   }
   const switchInfo = overrides.switches || {};
   for (const s of switches) if (s.id in switchInfo) {

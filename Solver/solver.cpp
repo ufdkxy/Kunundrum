@@ -38,12 +38,13 @@ struct Reader{const vector<Byte>& b;size_t i=0;vector<string> dictionary; Reader
 struct Ball{int p,color,ordinal;string name;};
 struct Gate{int p;string id;bool active;};
 struct Switch{int p;string id;bool on;vector<string> controls;};
-struct Teleport{int a,b,color;string id;bool active;};
+struct Teleport{int p,color;string id;bool active;}; // one endpoint; partners are derived from colors (see teleExit)
 struct Hex{int p,value;string id;};
 struct Arrow{int p,dir;bool rotating;};
 struct Board{
  int w=0,h=0;string id,title,description; bool hasDescription=false;int wallColor=-1;vector<Ball> balls;vector<int> wall,goals;vector<Gate> gates;vector<Switch> switches;vector<Teleport> teleports;vector<Hex> hexes;vector<Arrow> arrows;vector<Byte> prefix,tail;string storedSolution;
- array<int,MAX_CELLS> fixed,arrowAt,gateAt,switchAt,teleAt,hexAt,goalColor;vector<vector<int>> groupGates,switchGroups,switchTele; // groupGates: gates controlled by exactly the same switches (they always toggle together)
+ array<int,MAX_CELLS> fixed,arrowAt,gateAt,switchAt,teleAt,hexAt,goalColor;vector<vector<int>> groupGates,switchGroups,switchTele;vector<array<int,4>> teleExit; // teleExit[endpoint][ball color]: endpoint index the ball is sent to, -1 = none (the ball stops on the entrance)
+  // groupGates: gates controlled by exactly the same switches (they always toggle together)
  template<class S> void fireSwitch(int sw,S&s)const{ // all-or-nothing: one blocked closing gate freezes the whole switch
   for(int g:switchGroups[sw])for(int j:groupGates[g])if(!s.gate[j])for(auto ball:s.p)if(ball==gates[j].p)return;
   s.sw[sw]^=1;for(int g:switchGroups[sw])for(int j:groupGates[g])s.gate[j]^=1;for(int t:switchTele[sw])s.tele[t]^=1;}
@@ -61,7 +62,22 @@ struct Board{
   for(int i=0;i<(int)gates.size();i++)gateAt[gates[i].p]=i;
   for(int i=0;i<(int)switches.size();i++)switchAt[switches[i].p]=i;
   for(int i=0;i<(int)hexes.size();i++)hexAt[hexes[i].p]=i;
-  for(int i=0;i<(int)teleports.size();i++){teleAt[teleports[i].a]=i;teleAt[teleports[i].b]=i;}
+  for(int i=0;i<(int)teleports.size();i++)teleAt[teleports[i].p]=i;
+  { // Teleport pairing from colors alone: same-color endpoints pair up, two universals (4) pair with each other, a lone universal is a hub paired with the single endpoint of each other color.
+   int cnt[5]={0,0,0,0,0};for(auto&t:teleports)cnt[t.color]++;
+   for(int c=0;c<4;c++)if(cnt[c]>2||(cnt[c]==1&&cnt[4]!=1))throw runtime_error("invalid teleport pairing");
+   if(cnt[4]>2)throw runtime_error("invalid teleport pairing");
+   int T=teleports.size();teleExit.assign(T,array<int,4>{-1,-1,-1,-1});
+   for(int i=0;i<T;i++)for(int bc=0;bc<4;bc++){
+    int mate=-1,mc=0,uni=-1,uc=0,spoke=-1,sc=0;
+    for(int j=0;j<T;j++){if(j==i)continue;if(teleports[j].color==teleports[i].color&&teleports[i].color!=4){mate=j;mc++;}if(teleports[j].color==4){uni=j;uc++;}}
+    for(int j=0;j<T;j++)if(teleports[j].color==bc){spoke=j;sc++;}
+    int ex=-1;
+    if(teleports[i].color!=4)ex=mc==1?mate:(uc==1?uni:-1);
+    else ex=uc==1?uni:(sc==1?spoke:-1);
+    teleExit[i][bc]=ex;
+   }
+  }
   unordered_map<string,int> gateIdx,teleids;for(int i=0;i<(int)gates.size();i++)gateIdx[gates[i].id]=i;
   for(int i=0;i<(int)teleports.size();i++)teleids[teleports[i].id]=i;
   // Gates controlled by exactly the same set of switches always toggle together (a blocked switch freezes its whole list), so each such set is one "group".
@@ -88,7 +104,7 @@ Board parseCode(string code){code=trim(code);if(code.rfind("K3.",0)!=0&&code.rfi
  for(int i=r.count();i>0;i--){int p=at(),v=r.u();if(v>7)throw runtime_error("invalid arrow");b.arrows.push_back({p,(int)v/2,(bool)(v%2)});}
  for(int i=r.count();i>0;i--){int p=at();string id=r.str();bool act=r.u();b.gates.push_back({p,id,act});}
  for(int i=r.count();i>0;i--){int p=at();string id=r.str();bool on=r.u();vector<string> cs;for(int k=r.count();k>0;k--)cs.push_back(r.str());b.switches.push_back({p,id,on,cs});}
- for(int i=r.count();i>0;i--){string id=r.str();int c=r.u(),act=r.u(),p=at(),q=at();if(c>=5)throw runtime_error("invalid teleport color");b.teleports.push_back({p,q,c,id,(bool)act});}
+ for(int i=r.count();i>0;i--){int p=at();string id=r.str();int c=r.u(),act=r.u();if(c>=5)throw runtime_error("invalid teleport color");b.teleports.push_back({p,c,id,(bool)act});}
  for(int i=r.count();i>0;i--){int p=at();string id=r.str();uint64_t value=r.u();int signedValue=value&1?-(int)((value+1)/2):(int)(value/2);b.hexes.push_back({p,signedValue,id});}
  if(r.i!=raw.size())throw runtime_error("trailing board data");
  b.tail.assign(raw.begin()+bodyStart,raw.end());
@@ -179,7 +195,8 @@ int simulate(const Board&b,const State&s,int bi,int direction,const string& choi
   int hi=b.hexAt[p];if(hi>=0&&!consumed[hi]){consumed[hi]=1;delta+=b.hexes[hi].value;}
   int ai=b.arrowAt[p];if(ai>=0){auto a=b.arrows[ai];if(a.rotating){if(choicesUsed==(int)choices.size())return 2;int q=DIR.find(choices[choicesUsed++]);if(q<0||q>=4)return 0;h=q;}else h=a.dir;}
   int ti=b.teleAt[p];if(ti>=0&&s.tele[ti]&&(b.teleports[ti].color==4||b.teleports[ti].color==b.balls[bi].color)){
-   auto t=b.teleports[ti];int exit=(t.a==p?t.b:t.a);if(occ[exit]){stopped=true;break;}p=exit;
+   int ex=b.teleExit[ti][b.balls[bi].color];if(ex<0||!s.tele[ex]){stopped=true;break;}
+   int exit=b.teleports[ex].p;if(occ[exit]){stopped=true;break;}p=exit;
   }
  }
  if(!stopped||!entered||choicesUsed!=(int)choices.size())return 0;
@@ -271,7 +288,8 @@ int fastEnd(const Board&b,const State&s,int i,int d){
   entered=true;p=np;
   int ai=b.arrowAt[p];if(ai>=0)h=b.arrows[ai].dir;
   int ti=b.teleAt[p];if(ti>=0&&s.tele[ti]&&(b.teleports[ti].color==4||b.teleports[ti].color==b.balls[i].color)){
-   auto t=b.teleports[ti];int exit=t.a==p?t.b:t.a;
+   int ex=b.teleExit[ti][b.balls[i].color];if(ex<0||!s.tele[ex]){stopped=true;break;}
+   int exit=b.teleports[ex].p;
    bool occ=false;for(int j=0;j<b.n;j++)if(j!=i&&s.p[j]==exit){occ=true;break;}
    if(occ){stopped=true;break;}p=exit;
   }
@@ -301,20 +319,24 @@ void backReach(const Board&b,const State&s,int i,int dest,vector<int>&out){
  }
  // (2) The ball enters a teleport cell (dest) whose exit is occupied and stops on it.
  if(trigger(dest)&&enterable(dest)){
-  const Teleport&t=b.teleports[b.teleAt[dest]];int exit=t.a==dest?t.b:t.a;
-  if(occupied(exit))for(int h=0;h<4;h++)push(dest,h);
+  const int ti=b.teleAt[dest],ex=b.teleExit[ti][color];
+  if(ex<0||!s.tele[ex]||occupied(b.teleports[ex].p))for(int h=0;h<4;h++)push(dest,h);
  }
  // Preimages of the pre-step state (c,h): one entry into a cell (plus arrow and teleport effects) that leaves the ball there.
  for(size_t qi=0;qi<queue.size();qi++){
   const int c=queue[qi]>>2,h=queue[qi]&3;
   if(trigger(c)){
-   // c is the exit of a teleport the ball entered at the other end (exit must be free; the entry cell needs only to be enterable).
+   // c is the exit of a teleport the ball entered at another endpoint (exit must be free; the entry cell needs only to be enterable).
    if(occupied(c))continue;
-   const Teleport&t=b.teleports[b.teleAt[c]];int entry=t.a==c?t.b:t.a;
-   if(!enterable(entry))continue;
-   int ai=b.arrowAt[entry];
-   if(ai>=0){if(b.arrows[ai].dir==h)for(int hh=0;hh<4;hh++)push(entry,hh);}
-   else push(entry,h);
+   const int ci=b.teleAt[c];
+   for(int e=0;e<(int)b.teleports.size();e++){
+    if(e==ci||!s.tele[e]||!(b.teleports[e].color==4||b.teleports[e].color==color)||b.teleExit[e][color]!=ci)continue;
+    const int entry=b.teleports[e].p;
+    if(!enterable(entry))continue;
+    int ai=b.arrowAt[entry];
+    if(ai>=0){if(b.arrows[ai].dir==h)for(int hh=0;hh<4;hh++)push(entry,hh);}
+    else push(entry,h);
+   }
   }else{
    if(!enterable(c))continue;
    int ai=b.arrowAt[c];
@@ -620,7 +642,7 @@ struct BeamHeuristic{
     int gi=b.gateAt[np];if(gi>=0&&b.gateInit[gi]){stopped=true;break;}
     entered=true;p=np;
     int ai=b.arrowAt[p];if(ai>=0){auto a=b.arrows[ai];if(a.rotating){for(int q=1;q<4;q++)st.push_back({p,q,steps+1,true});h=0;}else h=a.dir;}
-    int ti=b.teleAt[p];if(ti>=0&&b.teleInit[ti]&&(b.teleports[ti].color==4||b.teleports[ti].color==color)){auto t=b.teleports[ti];p=(t.a==p?t.b:t.a);}
+    int ti=b.teleAt[p];if(ti>=0&&b.teleInit[ti]&&(b.teleports[ti].color==4||b.teleports[ti].color==color)){int ex=b.teleExit[ti][color];if(ex<0||!b.teleInit[ex]){stopped=true;break;}p=b.teleports[ex].p;}
    }
    if(stopped&&entered)out.push_back(p);
   }
@@ -643,7 +665,7 @@ struct BeamHeuristic{
    int gi=b.gateAt[np];if(gi>=0&&s.gate[gi])return entered?p:-1;
    entered=true;p=np;
    int ai=b.arrowAt[p];if(ai>=0)h=b.arrows[ai].dir;
-   int ti=b.teleAt[p];if(ti>=0&&s.tele[ti]&&(b.teleports[ti].color==4||b.teleports[ti].color==color)){auto t=b.teleports[ti];int ex=(t.a==p?t.b:t.a);if(occ[ex])return p;p=ex;}
+   int ti=b.teleAt[p];if(ti>=0&&s.tele[ti]&&(b.teleports[ti].color==4||b.teleports[ti].color==color)){int ei=b.teleExit[ti][color];if(ei<0||!s.tele[ei])return p;int ex=b.teleports[ei].p;if(occ[ex])return p;p=ex;}
   }
   return -1;
  }
@@ -731,7 +753,7 @@ SearchResult beamSearch(const Board&b,const Limits&lim,ClockLimit&timer,const Pa
       entered=true;p=np;
       int hi=b.hexAt[p];if(hi>=0&&!scratch.hex[hi]){scratch.hex[hi]=1;touched.push_back(hi);}
       int ai=b.arrowAt[p];if(ai>=0)h=b.arrows[ai].dir;
-      int ti=b.teleAt[p];if(ti>=0&&ps.tele[ti]&&(b.teleports[ti].color==4||b.teleports[ti].color==b.balls[i].color)){auto t=b.teleports[ti];int ex=(t.a==p?t.b:t.a);if(occ[ex]){stopped=true;break;}p=ex;}
+      int ti=b.teleAt[p];if(ti>=0&&ps.tele[ti]&&(b.teleports[ti].color==4||b.teleports[ti].color==b.balls[i].color)){int ei=b.teleExit[ti][b.balls[i].color];if(ei<0||!ps.tele[ei]){stopped=true;break;}int ex=b.teleports[ei].p;if(occ[ex]){stopped=true;break;}p=ex;}
      }
      if(stopped&&entered){scratch.p[i]=p;consider(scratch,(uint32_t)ni,ps.p[i],b.balls[i].color,d,string());scratch.p[i]=ps.p[i];}
      for(int hi:touched)scratch.hex[hi]=0;
@@ -797,13 +819,13 @@ string codeWithSolution(const Board&b,const vector<LabeledMove>& path){
  putuint(raw,b.arrows.size());for(auto a:b.arrows){pos(a.p);putuint(raw,2*a.dir+(a.rotating?1:0));}
  putuint(raw,b.gates.size());for(auto g:b.gates){pos(g.p);str(g.id);putuint(raw,g.active);}
  putuint(raw,b.switches.size());for(auto t:b.switches){pos(t.p);str(t.id);putuint(raw,t.on);putuint(raw,t.controls.size());for(auto&id:t.controls)str(id);}
- putuint(raw,b.teleports.size());for(auto t:b.teleports){str(t.id);putuint(raw,t.color);putuint(raw,t.active);pos(t.a);pos(t.b);}
+ putuint(raw,b.teleports.size());for(auto t:b.teleports){pos(t.p);str(t.id);putuint(raw,t.color);putuint(raw,t.active);}
  putuint(raw,b.hexes.size());for(auto h:b.hexes){pos(h.p);str(h.id);putuint(raw,h.value<0?(uint64_t)(-2LL*h.value-1):(uint64_t)(2LL*h.value));}
  return "K3."+b64encode(raw);
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open levels.js: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0)return trim(line.substr(prefix.size()));}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.15"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.16"; // Solver's own version, independent of the web app's APP_VERSION.
 // ---- Core entry point (shared by the CLI and the WebAssembly build) ----
 struct Cli{Limits lim;string input,level,catalog="levels.js";bool wantK3=true,version=false,help=false,json=false;};
 static const char* HELP_TEXT="Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|balanced|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--max-states N] [--seconds N] [--max-memory MB] [--max-choices N] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nauto = balanced bidirectional search when applicable (no hexes/rotating arrows, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic upper bound (never certifies optimality; exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";

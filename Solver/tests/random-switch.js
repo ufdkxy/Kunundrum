@@ -17,7 +17,7 @@ let checked=0, skipped=0, depthSkipped=0;for(let k=0;k<100;k++){
  const walls=Array.from({length:rand(2)},draw);
  const nG=1+rand(3);let gates=[];for(let i=0;i<nG;i++)gates.push({...draw(),id:'G'+i,active:!!rand(2)});
  const nS=1+rand(2),switches=[];for(let i=0;i<nS;i++){const sw={...draw(),id:'S'+i,controls:gates.filter(()=>rand(2)).map(g=>g.id)};if(!sw.controls.length)sw.controls.push(gates[rand(nG)].id);switches.push(sw);}
- let teleports=[];if(k%5==0&&positions.length>=2){teleports=[{id:'T1',color:'*',active:true,ends:[draw(),draw()]}];switches[0].controls.push('T1');}
+ let teleports=[];if(k%5==0&&positions.length>=2){teleports=[{id:'T1',color:'*',active:true,...draw()},{id:'T2',color:'*',active:true,...draw()}];switches[0].controls.push('T1');}
  const board={version:1,width:w,height:h,id:'rnd'+k,title:'random',walls,balls,goals,gates,switches,teleports};
  const code=codec.encodeBoard(board);const f=execute(code,'forward'),r=execute(code,'bidirectional'),bb=execute(code,'balanced');
  if(f.status==='INCONCLUSIVE'||r.status==='INCONCLUSIVE'||bb.status==='INCONCLUSIVE'){skipped++;continue;}

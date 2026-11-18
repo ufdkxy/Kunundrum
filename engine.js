@@ -119,12 +119,9 @@ function validateBoard(raw         , problems         , notes         )        {
     return { ...point(item, `Switch ${i + 1}`), id: identifier(item.id, `Switch ${i + 1} ID`, `switch${i + 1}`), controls: ids(item.controls, `Switch ${i + 1} controls`), ...(on ? { on: true } : {}) };
   }).sort(rowOrder);
   const teleports = entries(source, "teleports").map((value, i)           => {
+    // One entry per endpoint: its own cell, color (R, G, B, Y or * = universal) and on/off state. Partners are derived (see teleportExit).
     const item = object(value, `Teleport ${i + 1}`);
-    if (!Array.isArray(item.ends) || item.ends.length !== 2) throw new Error(`Teleport ${i + 1} needs exactly two endpoints.`);
-    const ends             = [point(item.ends[0], `Teleport ${i + 1} endpoint 1`), point(item.ends[1], `Teleport ${i + 1} endpoint 2`)];
-    if (samePos(...ends)) throw new Error(`Teleport ${i + 1} endpoints must be different cells.`);
-    ends.sort(rowOrder);
-    return { id: identifier(item.id, `Teleport ${i + 1} ID`, `teleport${i + 1}`), color: teleportColor(item.color, `Teleport ${i + 1} color`), ends, active: boolean(item.active, `Teleport ${i + 1} active`, true) };
+    return { id: identifier(item.id, `Teleport ${i + 1} ID`, `teleport${i + 1}`), color: teleportColor(item.color, `Teleport ${i + 1} color`), ...point(item, `Teleport ${i + 1}`), active: boolean(item.active, `Teleport ${i + 1} active`, true) };
   }).sort((a, b) => a.id.localeCompare(b.id, "en", { numeric: true }));
   const hexes = entries(source, "hexes").map((value, i) => {
     const item = object(value, `Hexagon ${i + 1}`);
@@ -145,6 +142,7 @@ function validateBoard(raw         , problems         , notes         )        {
       if (notes) notes.push(`${sw.id} indicator set to match ${first.id}`);
     }
   }
+  checkTeleports(teleports, fail);
   const switchable = new Set(gates.map(g => g.id));
   for (const t of teleports) { if (switchable.has(t.id)) fail(`Gate and teleport share the ID ${t.id}; a switch could not tell them apart.`); switchable.add(t.id); }
   for (const sw of switches) {
@@ -162,7 +160,7 @@ function validateBoard(raw         , problems         , notes         )        {
   for (const p of gates) occupy(p, "a switchable wall");
   for (const p of switches) occupy(p, "a switch");
   for (const p of hexes) occupy(p, "a hexagon");
-  for (const teleport of teleports) for (const p of teleport.ends) occupy(p, "a teleport");
+  for (const teleport of teleports) occupy(teleport, "a teleport");
   const occupiedBalls = new Set        ();
   for (const b of balls) {
     const key = posKey(b);
@@ -199,6 +197,36 @@ function validateBoard(raw         , problems         , notes         )        {
   return board;
 }
 
+/** Teleport pairing is derived from colors alone (no stored pairs): same-color endpoints pair up, two universals (*) pair with
+ * each other, and a lone universal is a hub paired with the single endpoint of every other color. */
+function teleportCounts(teleports) {
+  const n = { R: 0, G: 0, B: 0, Y: 0, "*": 0 };
+  for (const t of teleports) n[t.color]++;
+  return n;
+}
+function checkTeleports(teleports, fail) {
+  const n = teleportCounts(teleports);
+  for (const c of COLORS) if (n[c] > 2) fail(`There are ${n[c]} ${COLOR_NAMES[c].toLowerCase()} teleports; at most 2 of a color are allowed.`);
+  if (n["*"] > 2) fail(`There are ${n["*"]} universal teleports; at most 2 are allowed.`);
+  for (const c of COLORS) if (n[c] === 1 && n["*"] !== 1) fail(`The ${COLOR_NAMES[c].toLowerCase()} teleport has no partner (a single teleport needs exactly one universal teleport).`);
+  if (n["*"] === 1 && !COLORS.some(c => n[c] === 1)) fail("The universal teleport has no partner.");
+}
+/** The endpoint a ball of this color is sent to when it enters `entrance`, or null when there is none (the ball then stops on
+ * the entrance). Callers check beforehand that the entrance is on and accepts the ball's color. */
+function teleportExit(teleports, entrance, ballColor) {
+  const others = teleports.filter(t => t !== entrance && t.id !== entrance.id);
+  if (entrance.color !== "*") {
+    const mate = others.filter(t => t.color === entrance.color);
+    if (mate.length === 1) return mate[0];
+    const universal = others.filter(t => t.color === "*");
+    return universal.length === 1 ? universal[0] : null;
+  }
+  const universal = others.filter(t => t.color === "*");
+  if (universal.length === 1) return universal[0];
+  const spokes = teleports.filter(t => t.color === ballColor);
+  return spokes.length === 1 ? spokes[0] : null;
+}
+
 function createInitialState(board       )            {
   return {
     balls: board.balls.map(b => ({ ...b, locked: board.goals.some(g => g.color === b.color && samePos(g, b)) })),
@@ -225,11 +253,7 @@ function applyMove(state           , board       , ballId        , direction    
   const activeGates = new Set(board.gates.filter(g => state.gateActive[g.id]).map(posKey));
   const arrows = new Map(board.arrows.map(a => [posKey(a), a]));
   const hexes = new Map(board.hexes.map(h => [posKey(h), h]));
-  const teleportCells = new Map                                           ();
-  for (const teleport of board.teleports) {
-    teleportCells.set(posKey(teleport.ends[0]), { teleport, exit: teleport.ends[1] });
-    teleportCells.set(posKey(teleport.ends[1]), { teleport, exit: teleport.ends[0] });
-  }
+  const teleportCells = new Map(board.teleports.map(t => [posKey(t), t]));
   const consumed = new Set(state.consumedHexIds);
   const visited = new Set        ();
   const events           = [];
@@ -256,9 +280,11 @@ function applyMove(state           , board       , ballId        , direction    
       } else heading = arrow.direction;
     }
     const endpoint = teleportCells.get(key);
-    if (endpoint && state.teleportActive[endpoint.teleport.id] && (endpoint.teleport.color === "*" || endpoint.teleport.color === ball.color)) {
-      if (occupied.has(posKey(endpoint.exit))) { events.push("The teleport exit is occupied; stopped at its entrance."); break; }
-      x = endpoint.exit.x; y = endpoint.exit.y;
+    if (endpoint && state.teleportActive[endpoint.id] && (endpoint.color === "*" || endpoint.color === ball.color)) {
+      const exit = teleportExit(board.teleports, endpoint, ball.color);
+      if (!exit || !state.teleportActive[exit.id]) { events.push("The teleport has no active exit; stopped at its entrance."); break; }
+      if (occupied.has(posKey(exit))) { events.push("The teleport exit is occupied; stopped at its entrance."); break; }
+      x = exit.x; y = exit.y;
       path.push({ x, y, teleport: true });
       events.push(`${COLOR_NAMES[ball.color]} teleported.`);
     }
@@ -378,5 +404,5 @@ function formatSolution(records                                                 
   return groups.join(",");
 }
 
-return {validateBoard,createInitialState,applyMove,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES};
+return {validateBoard,teleportExit,createInitialState,applyMove,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES};
 })();

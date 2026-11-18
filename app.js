@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.9.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.10.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -103,8 +103,8 @@ function renderHelpIcons() {
     version:1, id:'help-symbols', title:'Help symbols', width:6, height:2,
     balls:[{color:'B',x:1,y:1}], goals:[{color:'B',x:1,y:2}],
     arrows:[{x:2,y:1,direction:'r'}],
-    switches:[{id:'S',x:3,y:1,controls:['T']}],
-    teleports:[{id:'T',color:'B',ends:[{x:4,y:1},{x:4,y:2}],active:true}],
+    switches:[{id:'S',x:3,y:1,controls:['T1','T2']}],
+    teleports:[{id:'T1',color:'B',x:4,y:1,active:true},{id:'T2',color:'B',x:4,y:2,active:true}],
     hexes:[{id:'minus',x:5,y:1,value:-5}],
   });
   const source = renderSvg(sample, createInitialState(sample), {mini:true});
@@ -338,12 +338,12 @@ function renderSvg(b, s, options = {}) {
     const chev=[-21,-10,1].map((a,i)=>`<polygon points="${a},-14 ${a+6},-14 ${a+16},0 ${a+6},14 ${a},14 ${a+10},0" opacity="${[.62,1,.45][i]}"/>`).join('');
     svg += `<g role="img" aria-label="${arrow.rotating?'Rotating':'Fixed'} arrow ${DIRECTION_NAMES[arrow.direction]} ${pos(arrow)}" transform="translate(${p.x},${p.y})">${arrow.rotating?`<circle r="23" fill="none" stroke="${color}" stroke-opacity=".3" stroke-dasharray="3 5"/>`:''}<g transform="rotate(${degrees})"><g class="${arrow.rotating?'rotating-arrow':''}"><g fill="${glow}" filter="url(#${prefix}-glow)" opacity=".9">${chev}</g><g fill="${color}" stroke="${color}" stroke-width=".8" stroke-linejoin="round">${chev}</g></g></g></g>`;
   }
-  for (const teleport of b.teleports) for (const end of teleport.ends) {
-    const p=xy(end), on=s.teleportActive[teleport.id], universal=teleport.color==='*';
+  for (const teleport of b.teleports) {
+    const p=xy(teleport), on=s.teleportActive[teleport.id], universal=teleport.color==='*';
     const color=on?(universal?'#c6cdd3':PALETTE[teleport.color]):'#73808a';
     const name=universal?'universal':COLOR_NAMES[teleport.color];
     const arcs=[45,135,225,315].map(a=>{const pt=d=>{const r=(a+d)*Math.PI/180;return `${(23*Math.cos(r)).toFixed(2)} ${(23*Math.sin(r)).toFixed(2)}`;};return `M${pt(-17)}A23 23 0 0 1 ${pt(17)}`;}).join('');
-    svg += `<g role="img" aria-label="${on?'Active':'Inactive'} ${name} teleport. Links ${pos(teleport.ends[0])} and ${pos(teleport.ends[1])}." transform="translate(${p.x},${p.y})"><rect x="-25" y="-25" width="50" height="50" fill="${color}" fill-opacity="${on?'.14':'.05'}"/><g fill="none" stroke="${color}" stroke-opacity="${on?'.5':'.35'}" stroke-width="1"><circle r="19"/><circle r="13.5"/><circle r="8"/></g>${on?`<g filter="url(#${prefix}-glow)" opacity=".8"><path d="${arcs}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round"/><circle r="5" fill="${color}"/></g>`:''}<path d="${arcs}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-opacity="${on?'1':'.6'}"/><circle r="4.5" fill="${color}" fill-opacity="${on?'1':'.65'}"/><circle r="2.2" fill="#fff" fill-opacity="${on?'.85':'.4'}"/></g>`;
+    svg += `<g role="img" aria-label="${on?'Active':'Inactive'} ${name} teleport ${pos(teleport)}" transform="translate(${p.x},${p.y})"><rect x="-25" y="-25" width="50" height="50" fill="${color}" fill-opacity="${on?'.14':'.05'}"/><g fill="none" stroke="${color}" stroke-opacity="${on?'.5':'.35'}" stroke-width="1"><circle r="19"/><circle r="13.5"/><circle r="8"/></g>${on?`<g filter="url(#${prefix}-glow)" opacity=".8"><path d="${arcs}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round"/><circle r="5" fill="${color}"/></g>`:''}<path d="${arcs}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-opacity="${on?'1':'.6'}"/><circle r="4.5" fill="${color}" fill-opacity="${on?'1':'.65'}"/><circle r="2.2" fill="#fff" fill-opacity="${on?'.85':'.4'}"/></g>`;
   }
   for (const sw of b.switches) {
     const p=xy(sw), label=labels.switches.get(sw.id), on=s.switchOn?.[sw.id]??sw.on??false;
@@ -791,7 +791,7 @@ async function importScreenshot(file){
     window.KunEditor.openDraft(draft,problems,true);
     KunParser.renderReview($('shot-review'),result.bitmap,result);
     const b=result.board,n=result.warnings.length;
-    $('shot-summary').textContent=`${b.width}×${b.height} board, ${b.balls.length} balls, ${b.goals.length} goals, ${b.teleports.length} teleport pairs.${b.wallColor?` ${{R:'Red',G:'Green'}[b.wallColor]} walls.`:''} ${n?`${n} warning${n>1?'s':''} to review:`:''}`;
+    $('shot-summary').textContent=`${b.width}×${b.height} board, ${b.balls.length} balls, ${b.goals.length} goals, ${b.teleports.length} teleports.${b.wallColor?` ${{R:'Red',G:'Green'}[b.wallColor]} walls.`:''} ${n?`${n} warning${n>1?'s':''} to review:`:''}`;
     const list=$('shot-warnings');list.replaceChildren(...result.warnings.map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
     window.KunEditor.setReview($('shot-review'));
     openDialog('shot-dialog');
@@ -955,7 +955,7 @@ window.KunundrumHost = {
     if(spec.type==='gate')b.gates.push({...at,id:'G1',active:spec.active!==false});
     if(spec.type==='switch')b.switches.push({...at,id:'S',controls:[],on:false});
     if(spec.type==='arrow')b.arrows.push({...at,direction:spec.direction||'r',...(spec.rotating?{rotating:true}:{})});
-    if(spec.type==='teleport')b.teleports.push({id:'T1',color:spec.color||'*',active:spec.active!==false,ends:[at,{x:1,y:1}]});
+    if(spec.type==='teleport')b.teleports.push({...at,id:'T1',color:spec.color||'*',active:spec.active!==false});
     if(spec.type==='hex')b.hexes.push({...at,id:'hex1',value:spec.value||-5});
     return renderSvg(b,createInitialState(b),{mini:true}).replace(/<text class="tile-label"[^>]*>[^<]*<\/text>/g,'').replace(/viewBox="[^"]*"/,'viewBox="74 74 64 64"').replace('<svg class="board-svg"','<svg class="tool-icon-svg"');
   },

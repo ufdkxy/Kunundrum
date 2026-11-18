@@ -16,7 +16,7 @@ let checked=0,depthSkipped=0;for(let k=0;k<50;k++){
  const balls=ballColors.map(color=>({...draw(),color})),goals=ballColors.map(color=>({...draw(),color}));
  const walls=Array.from({length:rand(3)},draw);let arrows=[],teleports=[];
  if(k%3==1&&positions.length)arrows=[{...draw(),direction:'udlr'[rand(4)]}];
- if(k%7==0&&positions.length>=2)teleports=[{id:'T',color:'*',active:true,ends:[draw(),draw()]}];
+ if(k%7==0&&positions.length>=2)teleports=[{id:'T1',color:'*',active:true,...draw()},{id:'T2',color:'*',active:true,...draw()}];
  const board={version:1,width:w,height:h,id:'rnd'+k,title:'random',walls,balls,goals,arrows,teleports};
  const code=codec.encodeBoard(board);const f=execute(code,'forward'),r=execute(code,'bidirectional'),bb=execute(code,'balanced');
  if(f.status==='INCONCLUSIVE'||r.status==='INCONCLUSIVE')continue;

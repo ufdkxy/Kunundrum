@@ -168,7 +168,7 @@ function binaryBoard(board, k3 = true) {
     at(p); str(p.id); uint(p.on ? 1 : 0);
     list(p.controls, str);
   });
-  list(board.teleports, p => { str(p.id); color(p.color); uint(p.active ? 1 : 0); at(p.ends[0]); at(p.ends[1]); });
+  list(board.teleports, p => { at(p); str(p.id); color(p.color); uint(p.active ? 1 : 0); });
   list(board.hexes, p => { at(p); str(p.id); uint(p.value < 0 ? -2 * p.value - 1 : 2 * p.value); });
   return new Uint8Array(bytes);
 }
@@ -245,7 +245,7 @@ function unbinaryBoard(bytes, problems) {
     const p = at(), id = str(), on = bool(), controls = list(str);
     return {...p,id,controls,...(on ? {on:true} : {})};
   });
-  raw.teleports = list(() => ({id:str(),color:color(true),active:bool(),ends:[at(),at()]}));
+  raw.teleports = list(() => ({...at(),id:str(),color:color(true),active:bool()}));
   raw.hexes = list(() => { const p=at(),id=str(),value=uint();return {...p,id,value:value % 2 ? -(value+1)/2 : value/2}; });
   if (offset !== bytes.length) throw new Error('Unexpected data after K2/K3 board.');
   if(solutionBytes){

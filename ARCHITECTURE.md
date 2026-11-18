@@ -78,7 +78,7 @@ Core.formatSolution(records) -> string
 
 `app.js` holds replay **frames** (`{state,path,record,events}`) and a `cursor`; replay loading re-simulates the route from the initial state. Manual play, SVG animation, keyboard and pointer gestures (view toggles: C coordinates, O outline, T trail; M music in `music.js`), replay navigation, view settings, sharing and best-run recording live in the controller. Persistence uses localStorage keys `kunundrum.replay.v1` and `kunundrum.best.v1` when available. `window.KunundrumHost` exposes `getBoard()`, `svg(draft)`, `stop()`, and `play(draft)` for `editor.js`. `window.KunEditor` exposes `active`, `render`, and `open()`.
 
-The editor works on an independent draft and validates it before switching back to Play or saving a code. Drawing, teleport-endpoint pairing, object properties, grid resizing, moving objects, and undo/redo are implemented. Editing a board feature clears the draft's saved solution.
+The editor works on an independent draft and validates it before switching back to Play or saving a code. Drawing (teleports are placed one endpoint at a time), object properties, grid resizing, moving objects, and undo/redo are implemented. Editing a board feature clears the draft's saved solution.
 
 ## 3. Canonical board JSON and validation
 
@@ -116,7 +116,7 @@ list: goals              (position, color)
 list: arrows             (position, directionIndex*2 + rotatingBit)
 list: gates              (position, id, activeBool)
 list: switches           (position, id, onBool, controls[])
-list: teleports          (id, color, activeBool, endpointA, endpointB)
+list: teleports          (position, id, color, activeBool)   one record per endpoint; partners are derived from colors (RULES.md)
 list: hexes              (position, id, zigzagSignedValue)
 ```
 
@@ -158,7 +158,7 @@ Browser size limits: board code at most 32,768 characters, full URL at most 131,
 
 1. Locates the cyan board outline and infers grid origin, cell size, width and height; `--grid LEFT,TOP,CELL,COLS,ROWS` overrides inference.
 2. Crops normalized cells, measures brightness/color/symmetry and compares arrow shapes against **bundled `arrow_shapes/`** to handle dim phases of animated chevrons; optional image templates can refine other objects.
-3. Maps screen rows to game coordinates; assembles board arrays, pairing same-color teleport ends only when there are exactly two.
+3. Maps screen rows to game coordinates; assembles board arrays; teleports are single endpoints, and a gray inactive endpoint (which has lost its color) is given the color of a lone colored endpoint by proximity, or becomes a universal.
 4. Applies override labels and mechanical mappings; flags ambiguous recognition, unsigned/unknown hex values, incomplete teleport pairing, unknown switch mappings and ball/goal count mismatches.
 5. Writes `NAME.json`, `NAME_review.png`, `NAME_diagnostics.json`, and **only if no warnings** `NAME.k3.txt` through `encode_k3.py`.
 

@@ -175,3 +175,7 @@ object has been transcribed correctly; inspect the review PNGs before batch use.
 - The neon wall color (blue, red or green, uniform per board and purely cosmetic) is read from the hue of the saturated neon pixels on the edges that `insideCells` counts as walls, so goals, balls and the HUD cannot skew it. Result fields: `wallColor` and `wallVotes`; a non-blue color is written to `board.wallColor` (K3 flag bit 2). `overrides.wallColor` forces a value; too little or mixed evidence assumes blue and adds a warning.
 - Tile recognition itself needed no change on red (11.1) or green (21.1) screenshots. The Python `parse.py` is frozen and does not know about wall color.
 - Not handled: wraparound walls (21.1 has them), so the grid of such a screenshot must be supplied manually and the open edges will not become wraparounds.
+
+## Teleports (JS parser v0.12.0)
+
+- Each teleport cell is its own endpoint. Gray (inactive) endpoints have lost their color: they receive the color of a lone colored endpoint that needs a partner (nearest first), else become universals, always with a warning. The pairing itself is derived from colors by the engine, so nothing is paired in the parser. `overrides.teleports` is now a list of endpoints `{id, x, y, color, active, switchable?}`.

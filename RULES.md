@@ -20,7 +20,9 @@ Rules are applied in this order on **each newly entered cell**:
 1. Mark the cell as entered, and add it to the move path.
 2. If it contains an unconsumed score hexagon, collect its signed value once for the entire run.
 3. If it contains a fixed arrow, change the move heading to the arrow direction. If it contains a rotating arrow, use the next explicit player-selected heading.
-4. If it contains a **currently active, compatible** teleport, attempt its instantaneous jump to the paired endpoint. The teleport is compatible if its color matches the ball or is `*` (universal). If its exit is occupied by another ball, the sliding ball **stops at the entrance**. Otherwise append the exit to the path and resume sliding from that exit in the current heading.
+4. If it contains a **currently active, compatible** teleport, attempt its instantaneous jump to the partner endpoint (see **Teleport pairing**). The teleport is compatible if its color matches the ball or is `*` (universal). If it has no partner for this ball, the partner is **switched off**, or the exit is occupied by another ball, the sliding ball **stops at the entrance**. Otherwise append the exit to the path and resume sliding from that exit in the current heading.
+
+**Teleport pairing.** `teleports` holds single endpoints, each with its own cell, color (`R`, `G`, `B`, `Y` or `*`) and on/off state; pairs are not stored. The partner is derived from the colors alone: same-color endpoints pair up; two universals pair only with each other (independent of the colored pairs); a lone universal is a **hub** paired with the single endpoint of every other color, and a ball entering the hub exits at the endpoint of its own color (a ball with no such endpoint stops on the hub). Valid boards have at most 2 endpoints per color and at most 2 universals, every single colored endpoint needs exactly one universal, and a lone universal needs at least one single. A switch controls endpoints individually (e.g. one half of a pair), so a pair can have one half on and one off: a matching ball entering the on half **stops there**, and the off half is ordinary floor. Pressing the switch turns the off half on.
 
 **Important:** A teleport exit does not immediately trigger that exit cell's other features: processing resumes with the next step. The heading chosen at an arrow is retained across a teleport. An inactive or color-incompatible teleport behaves like ordinary traversable floor.
 
@@ -88,7 +90,7 @@ Additional feature shapes:
 
 ```json
 {"x": 2, "y": 1, "direction": "u", "rotating": true}
-{"id": "T1", "color": "*", "active": true, "ends": [{"x": 1, "y": 2}, {"x": 4, "y": 2}]}
+{"id": "T1", "x": 1, "y": 2, "color": "*", "active": true}
 {"id": "H1", "x": 3, "y": 1, "value": -5}
 ```
 
