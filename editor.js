@@ -45,7 +45,7 @@ function putProps(){
 }
 const iconCache={};
 function renderIcons(){
- const color=E.color,spec={ball:{color},goal:{color},wall:{},gate:{active:E.activeTile},switch:{},arrow:{direction:E.direction,rotating:E.rotating},teleport:{color,active:E.activeTile},hex:{value:E.hexValue||-5}};
+ const color=E.color,spec={ball:{color},goal:{color},wall:{wallColor:E.draft?.wallColor},gate:{active:E.activeTile},switch:{},arrow:{direction:E.direction,rotating:E.rotating},teleport:{color,active:E.activeTile},hex:{value:E.hexValue||-5}};
  for(const el of document.querySelectorAll('[data-tool-icon]')){
   const type=el.dataset.toolIcon,args={type,...spec[type]},key=JSON.stringify(args);
   if(el.dataset.iconKey===key)continue;
@@ -74,6 +74,9 @@ function refresh(){
  $('editor-active').checked=E.activeTile;
  for(const button of document.querySelectorAll('[data-editor-tool]')){button.classList.toggle('chosen',button.dataset.editorTool===E.tool);button.setAttribute('aria-pressed',String(button.dataset.editorTool===E.tool));}
  for(const button of document.querySelectorAll('[data-editor-color]')){button.classList.toggle('chosen',button.dataset.editorColor===E.color);button.setAttribute('aria-pressed',String(button.dataset.editorColor===E.color));}
+ $('editor-wall-colors').hidden=E.tool!=='wall';
+ const wallColor=E.draft?.wallColor||'B';
+ for(const button of document.querySelectorAll('[data-editor-wall-color]')){button.classList.toggle('chosen',button.dataset.editorWallColor===wallColor);button.setAttribute('aria-pressed',String(button.dataset.editorWallColor===wallColor));}
  for(const button of document.querySelectorAll('[data-editor-direction]')){button.classList.toggle('chosen',button.dataset.editorDirection===E.direction);button.setAttribute('aria-pressed',String(button.dataset.editorDirection===E.direction));}
  $('editor-undo').disabled=!E.history.length;$('editor-redo').disabled=!E.future.length;
  $('editor-pair-note').textContent=E.pending?`Teleport: choose second endpoint (${E.pending.x}, ${E.pending.y} chosen)`:'Teleport: click two endpoints';
@@ -326,6 +329,7 @@ for(const button of panel.querySelectorAll('[data-editor-tool]')) {
 panel.addEventListener('click',event=>{
  const t=event.target.closest('[data-editor-tool]');if(t){E.tool=t.dataset.editorTool;E.pending=null;refresh();renderDraft();return;}
  const c=event.target.closest('[data-editor-color]');if(c){E.color=c.dataset.editorColor;refresh();return;}
+ const w=event.target.closest('[data-editor-wall-color]');if(w&&E.draft){const prev=snapshot();if(w.dataset.editorWallColor==='B')delete E.draft.wallColor;else E.draft.wallColor=w.dataset.editorWallColor;remember(prev);refresh();renderDraft();return;}
  const d=event.target.closest('[data-editor-direction]');if(d){E.direction=d.dataset.editorDirection;refresh();return;}
 });
 $('editor-hex').addEventListener('change',e=>E.hexValue=Number(e.target.value)||-5);

@@ -186,6 +186,11 @@ function validateBoard(raw         , problems         , notes         )        {
     if (typeof source.description !== "string" || source.description.length > 2000) throw new Error("Board description must be at most 2000 characters.");
     board.description = source.description;
   }
+  if (source.wallColor !== undefined) {
+    // Cosmetic only: the neon wall (and floor grid) color. Blue is the default and is left out.
+    const wallColor = color(source.wallColor, "Wall color");
+    if (wallColor !== "B") board.wallColor = wallColor;
+  }
   if (source.solution !== undefined) {
     if (typeof source.solution !== "string" || source.solution.length > 10000) throw new Error("Solution must be a string of at most 10000 characters.");
     parseSolution(source.solution);

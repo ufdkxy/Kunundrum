@@ -133,6 +133,7 @@ function expandSolution(board, bytes) {
  */
 const CODE_COLORS = 'RGBY*';
 const CODE_DIRECTIONS = 'udlr';
+const KNOWN_FLAGS = 7; // bit 0 description, bit 1 solution, bit 2 wall color (K3 only); bit 3 is reserved for wraparounds
 function binaryBoard(board, k3 = true) {
   const bytes = [k3 ? 0xB3 : 0xB2, board.width, board.height];
   const strings = new Map();
@@ -149,9 +150,11 @@ function binaryBoard(board, k3 = true) {
   const at = point => uint((point.y - 1) * board.width + point.x - 1);
   const list = (items, fn) => { uint(items.length); items.forEach(fn); };
   const color = value => uint(CODE_COLORS.indexOf(value));
-  uint((board.description !== undefined ? 1 : 0) | (board.solution !== undefined ? 2 : 0));
+  if (!k3 && board.wallColor !== undefined) throw new Error('K2 cannot store a wall color.');
+  uint((board.description !== undefined ? 1 : 0) | (board.solution !== undefined ? 2 : 0) | (board.wallColor !== undefined ? 4 : 0));
   str(board.id); str(board.title);
   if (board.description !== undefined) str(board.description);
+  if (board.wallColor !== undefined) color(board.wallColor); // flag bit 4: cosmetic wall color index (RGBY); omitted for blue
   if (board.solution !== undefined) {
     if (k3) {const packed=compactSolution(board,board.solution);uint(packed.length);bytes.push(...packed);}
     else str(board.solution);
@@ -204,7 +207,7 @@ function unbinaryBoard(bytes, problems) {
   };
   const magic=byte();if (magic!==0xB2 && magic!==0xB3) throw new Error('Invalid K2/K3 board header.');
   const width = byte(), height = byte(), flags = uint();
-  if (!(width >= 1 && width <= 32 && height >= 1 && height <= 32) || flags > 3) throw new Error('Invalid K2 board dimensions or flags.');
+  if (!(width >= 1 && width <= 32 && height >= 1 && height <= 32) || (flags & ~KNOWN_FLAGS) || (flags & 4 && magic === 0xB2)) throw new Error('Invalid K2 board dimensions or flags.');
   const at = () => {
     const index = uint();
     if (index >= width * height) throw new Error('Invalid K2 board position.');
@@ -222,6 +225,7 @@ function unbinaryBoard(bytes, problems) {
   };
   const raw = {version:1, width, height, id:str(), title:str()};
   if (flags & 1) raw.description = str();
+  if (flags & 4) { const c = uint(); if (c > 3) throw new Error('Invalid K3 wall color.'); raw.wallColor = CODE_COLORS[c]; }
   let solutionBytes;
   if (flags & 2) {
     if (magic===0xB2) raw.solution=str();

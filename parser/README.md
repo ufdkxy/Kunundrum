@@ -169,3 +169,9 @@ object has been transcribed correctly; inspect the review PNGs before batch use.
 - **Goals** are also recognized by shape: two bright concentric rings (outer ~r33 of a 96 px cell, small inner ring) with a dark gap, continuous around the circle (`concentric_goal`).
 - **Switches** accept dimmer saturated discs (the depressed, shadowed active switch).
 - Regression check: `4-9.jpg` and `11-9.jpg` (real screenshots) parse identically to v0.9.
+
+## Wall color (JS parser v0.11.0, `parser.js` only)
+
+- The neon wall color (blue, red or green, uniform per board and purely cosmetic) is read from the hue of the saturated neon pixels on the edges that `insideCells` counts as walls, so goals, balls and the HUD cannot skew it. Result fields: `wallColor` and `wallVotes`; a non-blue color is written to `board.wallColor` (K3 flag bit 2). `overrides.wallColor` forces a value; too little or mixed evidence assumes blue and adds a warning.
+- Tile recognition itself needed no change on red (11.1) or green (21.1) screenshots. The Python `parse.py` is frozen and does not know about wall color.
+- Not handled: wraparound walls (21.1 has them), so the grid of such a screenshot must be supplied manually and the open edges will not become wraparounds.

@@ -19,6 +19,14 @@ fixture('switch',{version:1,width:5,height:2,id:'switch',title:'switch',balls:[{
 for(const [cap,status] of [[4,4],[5,0]]){const q=spawnSync(path.join(root,'kunsolve'),['--level','1.8','--catalog',path.join(repo,'levels.js'),'--max-score',String(cap),'--quiet','--no-code'],{cwd:root,encoding:'utf8',timeout:35000});assert.equal(q.status,status,'1.8 --max-score '+cap);if(status===0)assert(/Score: 5\b/.test(q.stdout));}
 console.log('PASS --max-score bound on 1.8 (4 -> proved none, 5 -> optimal)');
 console.log('PASS '+n+' end-to-end fixture(s)');
+// Cosmetic wall color (K3 flag bit 4): round trip, blue is canonical (omitted), solver keeps it in its output code.
+{const base={version:1,width:5,height:2,id:'wc',title:'wc',balls:[{x:1,y:1,color:'R'}],goals:[{x:5,y:1,color:'R'}],gates:[{x:3,y:1,id:'G1',active:true}],switches:[{x:2,y:1,id:'S1',controls:['G1']}]};
+ const blue=Codec.encodeBoard(base);assert.equal(Codec.encodeBoard({...base,wallColor:'B'}),blue,'explicit blue must encode like no color');assert.equal(Codec.decodeBoard(blue).wallColor,undefined);
+ for(const c of ['R','G']){const code=Codec.encodeBoard({...base,wallColor:c});assert.notEqual(code,blue);assert.equal(Codec.decodeBoard(code).wallColor,c);
+  const p=spawnSync(path.join(root,'kunsolve'),[code,'--quiet','--seconds','4','--max-states','30000'],{encoding:'utf8',timeout:7000});assert.equal(p.status,0,p.stderr+p.stdout);
+  const out=p.stdout.match(/^K3: (\S+)/m)[1];assert.equal(Codec.decodeBoard(out).wallColor,c,'solver must keep the wall color');solutionCheck(out,p.stdout.match(/^Solution: (\S+)/m)[1]);}
+ const q=spawnSync(path.join(root,'kunsolve'),[blue,'--quiet','--seconds','4','--max-states','30000'],{encoding:'utf8',timeout:7000});assert.equal(Codec.decodeBoard(q.stdout.match(/^K3: (\S+)/m)[1]).wallColor,undefined);
+ console.log('PASS wall color (K3 round trip, canonical blue, solver keeps R/G)');}
 // Balanced bidirectional search: certified optimum on a chapter-10 level, and the proven lower bound printed when the budget runs out.
 {const cat=path.join(repo,'levels.js'),run=(id,extra)=>spawnSync(path.join(root,'kunsolve'),['--level',id,'--catalog',cat,'--algorithm','balanced','--quiet','--no-code','--seconds','60',...extra],{cwd:root,encoding:'utf8',timeout:90000});
  const a=run('10.8',['--max-states','0']);assert.equal(a.status,0,a.stdout);assert(/^OPTIMAL/m.test(a.stdout)&&/^Moves: 28$/m.test(a.stdout),'balanced 10.8 must prove 28 moves optimal');

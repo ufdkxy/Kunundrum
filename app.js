@@ -8,12 +8,18 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.8.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.9.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
 if (brandLink) brandLink.title = 'Kunundrum v' + APP_VERSION;
 const PALETTE = { R: '#df3047', G: '#39ff24', B: '#6fe8ff', Y: '#fff15c' };
+// Cosmetic wall themes (board.wallColor; blue when absent): neon outline layers plus the floor-grid tint.
+const WALL_THEMES = {
+  B: { glow: '#00d5ed', mid: '#29d9f2', core: '#d0fbff', floor: '#040e15', grid: '#0d2c3c', cell: '#16465b' },
+  R: { glow: '#ff1f2e', mid: '#ff3a46', core: '#ffd9db', floor: '#0e0407', grid: '#3c0f15', cell: '#5a1219' },
+  G: { glow: '#27ff1c', mid: '#4dff3a', core: '#e2ffdb', floor: '#030f05', grid: '#0d3a14', cell: '#16591f' },
+};
 const GLYPHS = { u: '↑', d: '↓', l: '←', r: '→' };
 const ICON_PATHS = {
   'arrow-up': '<path d="M12 19V5m-6 6 6-6 6 6"/>',
@@ -276,6 +282,7 @@ function mappingLabels(b) {
 
 function renderSvg(b, s, options = {}) {
   const mini = !!options.mini;
+  const theme = WALL_THEMES[b.wallColor] || WALL_THEMES.B;
   const coordinates = !mini && settings.coordinates;
   const cell = 64;
   const pad = coordinates ? 35 : mini ? 10 : 18;
@@ -295,7 +302,7 @@ function renderSvg(b, s, options = {}) {
   }
   svg += `<filter id="${prefix}-glow" x="-35%" y="-35%" width="170%" height="170%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="3"/></filter>`;
   svg += `<filter id="${prefix}-orb-aura" x="-100%" y="-100%" width="300%" height="300%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="8"/></filter>`;
-  svg += `<pattern id="${prefix}-floor" x="${pad}" y="${pad}" width="${cell}" height="${cell}" patternUnits="userSpaceOnUse"><rect width="64" height="64" fill="#040e15"/><path d="M16 0V64M32 0V64M48 0V64M0 16H64M0 32H64M0 48H64" fill="none" stroke="#0d2c3c" stroke-width=".8"/></pattern>`;
+  svg += `<pattern id="${prefix}-floor" x="${pad}" y="${pad}" width="${cell}" height="${cell}" patternUnits="userSpaceOnUse"><rect width="64" height="64" fill="${theme.floor}"/><path d="M16 0V64M32 0V64M48 0V64M0 16H64M0 32H64M0 48H64" fill="none" stroke="${theme.grid}" stroke-width=".8"/></pattern>`;
   svg += `<radialGradient id="${prefix}-switch-rim" cx="38%" cy="25%" r="78%"><stop offset="0" stop-color="#527d91"/><stop offset=".5" stop-color="#1b3e50"/><stop offset="1" stop-color="#030b11"/></radialGradient><linearGradient id="${prefix}-switch-red" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8b91"/><stop offset=".42" stop-color="#f92430"/><stop offset=".55" stop-color="#eb000e"/><stop offset="1" stop-color="#99000a"/></linearGradient><linearGradient id="${prefix}-switch-shine" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".5"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>`;
   svg += `<radialGradient id="${prefix}-switch-dent" cx="50%" cy="50%" r="50%"><stop offset=".45" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".6"/></radialGradient><radialGradient id="${prefix}-switch-green" cx="50%" cy="50%" r="60%"><stop offset="0" stop-color="#c2ff25"/><stop offset=".43" stop-color="#8be500"/><stop offset=".76" stop-color="#4c8e09"/><stop offset="1" stop-color="#1c3e09"/></radialGradient>`;
   svg += `<linearGradient id="${prefix}-gate-metal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5f666f"/><stop offset=".48" stop-color="#4b525b"/><stop offset="1" stop-color="#373e46"/></linearGradient><pattern id="${prefix}-gate-texture" width="4" height="4" patternUnits="userSpaceOnUse"><path d="M-1 1L1-1M0 4L4 0M3 5L5 3" stroke="#121a23" stroke-opacity=".28" stroke-width=".7"/></pattern>`;
@@ -305,14 +312,14 @@ function renderSvg(b, s, options = {}) {
   for (let y = 1; y <= b.height; y++) for (let x = 1; x <= b.width; x++) {
     if (!floor(x, y)) continue;
     const px = pad + (x - 1) * cell, py = pad + (b.height - y) * cell;
-    svg += `<rect class="grid-cell" x="${px}" y="${py}" width="${cell}" height="${cell}" style="fill:url(#${prefix}-floor);stroke:#16465b;stroke-width:.8"/>`;
+    svg += `<rect class="grid-cell" x="${px}" y="${py}" width="${cell}" height="${cell}" style="fill:url(#${prefix}-floor);stroke:${theme.cell};stroke-width:.8"/>`;
     const dockedColor = dockedGoalColors.get(`${x},${y}`);
     if (dockedColor) svg += `<rect class="docked-goal-cell" x="${px}" y="${py}" width="${cell}" height="${cell}" fill="${dockedColor}" fill-opacity=".22" pointer-events="none"/>`;
     for (const [dx, dy, x1, y1, x2, y2] of [[-1,0,px,py,px,py+cell],[1,0,px+cell,py,px+cell,py+cell],[0,1,px,py,px+cell,py],[0,-1,px,py+cell,px+cell,py+cell]]) {
       if (!floor(x+dx,y+dy)) boundary += `M${x1} ${y1}L${x2} ${y2}`;
     }
   }
-  svg += `<g fill="none" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"><path d="${boundary}" stroke="#00d5ed" stroke-width="9" opacity=".65" filter="url(#${prefix}-glow)"/><path d="${boundary}" stroke="#29d9f2" stroke-width="4.5"/><path d="${boundary}" stroke="#d0fbff" stroke-width="1.9"/></g>`;
+  svg += `<g fill="none" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"><path d="${boundary}" stroke="${theme.glow}" stroke-width="9" opacity=".65" filter="url(#${prefix}-glow)"/><path d="${boundary}" stroke="${theme.mid}" stroke-width="4.5"/><path d="${boundary}" stroke="${theme.core}" stroke-width="1.9"/></g>`;
   if (coordinates) {
     for (let x=1;x<=b.width;x++) svg += `<text class="coord-label" x="${xy({x,y:1}).x}" y="${height-10}" text-anchor="middle" fill="#8296a4" font-size="11">${x}</text>`;
     for (let y=1;y<=b.height;y++) svg += `<text class="coord-label" x="15" y="${xy({x:1,y}).y+4}" text-anchor="middle" fill="#8296a4" font-size="11">${y}</text>`;
@@ -784,7 +791,7 @@ async function importScreenshot(file){
     window.KunEditor.openDraft(draft,problems,true);
     KunParser.renderReview($('shot-review'),result.bitmap,result);
     const b=result.board,n=result.warnings.length;
-    $('shot-summary').textContent=`${b.width}×${b.height} board, ${b.balls.length} balls, ${b.goals.length} goals, ${b.teleports.length} teleport pairs. ${n?`${n} warning${n>1?'s':''} to review:`:''}`;
+    $('shot-summary').textContent=`${b.width}×${b.height} board, ${b.balls.length} balls, ${b.goals.length} goals, ${b.teleports.length} teleport pairs.${b.wallColor?` ${{R:'Red',G:'Green'}[b.wallColor]} walls.`:''} ${n?`${n} warning${n>1?'s':''} to review:`:''}`;
     const list=$('shot-warnings');list.replaceChildren(...result.warnings.map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
     window.KunEditor.setReview($('shot-review'));
     openDialog('shot-dialog');
@@ -944,7 +951,7 @@ window.KunundrumHost = {
     const b={id:'icon-'+spec.type,title:'',width:3,height:3,walls:[],balls:[],goals:[],arrows:[],gates:[],switches:[],teleports:[],hexes:[]};
     if(spec.type==='ball')b.balls.push({...at,color:c,id:c});
     if(spec.type==='goal')b.goals.push({...at,color:c});
-    if(spec.type==='wall')b.walls.push(at);
+    if(spec.type==='wall'){b.walls.push(at);if(spec.wallColor)b.wallColor=spec.wallColor;}
     if(spec.type==='gate')b.gates.push({...at,id:'G1',active:spec.active!==false});
     if(spec.type==='switch')b.switches.push({...at,id:'S',controls:[],on:false});
     if(spec.type==='arrow')b.arrows.push({...at,direction:spec.direction||'r',...(spec.rotating?{rotating:true}:{})});

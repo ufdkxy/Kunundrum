@@ -42,7 +42,7 @@ struct Teleport{int a,b,color;string id;bool active;};
 struct Hex{int p,value;string id;};
 struct Arrow{int p,dir;bool rotating;};
 struct Board{
- int w=0,h=0;string id,title,description; bool hasDescription=false;vector<Ball> balls;vector<int> wall,goals;vector<Gate> gates;vector<Switch> switches;vector<Teleport> teleports;vector<Hex> hexes;vector<Arrow> arrows;vector<Byte> prefix,tail;string storedSolution;
+ int w=0,h=0;string id,title,description; bool hasDescription=false;int wallColor=-1;vector<Ball> balls;vector<int> wall,goals;vector<Gate> gates;vector<Switch> switches;vector<Teleport> teleports;vector<Hex> hexes;vector<Arrow> arrows;vector<Byte> prefix,tail;string storedSolution;
  array<int,MAX_CELLS> fixed,arrowAt,gateAt,switchAt,teleAt,hexAt,goalColor;vector<vector<int>> groupGates,switchGroups,switchTele; // groupGates: gates controlled by exactly the same switches (they always toggle together)
  template<class S> void fireSwitch(int sw,S&s)const{ // all-or-nothing: one blocked closing gate freezes the whole switch
   for(int g:switchGroups[sw])for(int j:groupGates[g])if(!s.gate[j])for(auto ball:s.p)if(ball==gates[j].p)return;
@@ -78,7 +78,7 @@ struct Board{
   staticReverse=hexes.empty()&&none_of(arrows.begin(),arrows.end(),[](auto a){return a.rotating;});
  }
 };
-Board parseCode(string code){code=trim(code);if(code.rfind("K3.",0)!=0&&code.rfind("K2.",0)!=0)throw runtime_error("expected K2. or K3. board code");auto raw=b64decode(code.substr(3));Reader r(raw);int magic=r.byte();if(magic!=0xB2&&magic!=0xB3)throw runtime_error("invalid board magic");Board b;b.w=r.byte();b.h=r.byte();int flags=r.u();if(flags>3||b.w<1||b.h<1||b.w>32||b.h>32)throw runtime_error("invalid board header");b.id=r.str();b.title=r.str();if(flags&1){b.hasDescription=true;b.description=r.str();}
+Board parseCode(string code){code=trim(code);if(code.rfind("K3.",0)!=0&&code.rfind("K2.",0)!=0)throw runtime_error("expected K2. or K3. board code");auto raw=b64decode(code.substr(3));Reader r(raw);int magic=r.byte();if(magic!=0xB2&&magic!=0xB3)throw runtime_error("invalid board magic");Board b;b.w=r.byte();b.h=r.byte();int flags=r.u();if((flags&~7)||(magic==0xB2&&(flags&4))||b.w<1||b.h<1||b.w>32||b.h>32)throw runtime_error("invalid board header");b.id=r.str();b.title=r.str();if(flags&1){b.hasDescription=true;b.description=r.str();}if(flags&4){int c=r.u();if(c>3)throw runtime_error("invalid wall color");if(c!=2)b.wallColor=c;}
  size_t solutionStart=r.i;if(flags&2){if(magic==0xB2)b.storedSolution=r.str();else{size_t len=r.u();if(r.i+len>raw.size())throw runtime_error("truncated solution");r.i+=len;}}size_t bodyStart=r.i;
  b.prefix.assign(raw.begin()+4,raw.begin()+solutionStart);
  auto at=[&](){int p=r.u();if(p>=b.w*b.h)throw runtime_error("position out of bounds");return p;};
@@ -785,11 +785,11 @@ vector<Byte> packedSolution(const Board&b,const vector<LabeledMove>& path){
  return bytes;
 }
 string codeWithSolution(const Board&b,const vector<LabeledMove>& path){
- vector<Byte> raw={0xB3,(Byte)b.w,(Byte)b.h,(Byte)((b.hasDescription?1:0)|2)};
+ vector<Byte> raw={0xB3,(Byte)b.w,(Byte)b.h,(Byte)((b.hasDescription?1:0)|2|(b.wallColor>=0?4:0))};
  unordered_map<string,int> dict;
  auto str=[&](const string& s){auto it=dict.find(s);if(it!=dict.end()){putuint(raw,it->second*2+1);return;}putuint(raw,s.size()*2);raw.insert(raw.end(),s.begin(),s.end());int index=dict.size();dict.emplace(s,index);};
  auto pos=[&](int p){putuint(raw,p);};
- str(b.id);str(b.title);if(b.hasDescription)str(b.description);
+ str(b.id);str(b.title);if(b.hasDescription)str(b.description);if(b.wallColor>=0)putuint(raw,b.wallColor);
  vector<Byte> sol=packedSolution(b,path);putuint(raw,sol.size());raw.insert(raw.end(),sol.begin(),sol.end());
  putuint(raw,b.wall.size());for(int p:b.wall)pos(p);
  putuint(raw,b.balls.size());for(auto ball:b.balls){pos(ball.p);putuint(raw,ball.color);}
@@ -803,7 +803,7 @@ string codeWithSolution(const Board&b,const vector<LabeledMove>& path){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open levels.js: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0)return trim(line.substr(prefix.size()));}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.14"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.15"; // Solver's own version, independent of the web app's APP_VERSION.
 // ---- Core entry point (shared by the CLI and the WebAssembly build) ----
 struct Cli{Limits lim;string input,level,catalog="levels.js";bool wantK3=true,version=false,help=false,json=false;};
 static const char* HELP_TEXT="Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|balanced|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--max-states N] [--seconds N] [--max-memory MB] [--max-choices N] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nauto = balanced bidirectional search when applicable (no hexes/rotating arrows, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic upper bound (never certifies optimality; exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";

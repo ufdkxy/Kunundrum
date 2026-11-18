@@ -14,7 +14,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.10.0-js.1';
+const PARSER_VERSION = '0.11.0-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -568,26 +568,35 @@ function robustGeometry(img, grid) {
 }
 
 // Cells inside the neon outline, from outline topology (see parse.py inside_cells).
-function insideCells(img, geom) {
+function insideCells(img, geom, out) {
   const { width: W, height: H, bgr } = img;
   const hsv = img.hsv || (img.hsv = bgr2hsv(bgr));
   const neon = i => hsv[i * 3 + 2] > 150, white = i => hsv[i * 3 + 2] > 200 && hsv[i * 3 + 1] < 50;
   const cw = geom.width, ch = geom.height, c = geom.cell;
+  // Wall color votes (hue of saturated neon pixels on edges that count as walls): B cyan/blue, R red, G green.
+  const votes = { B: 0, R: 0, G: 0 };
+  const hueClass = i => {
+    if (hsv[i * 3 + 1] < 90 || hsv[i * 3 + 2] < 150) return null;
+    const h = hsv[i * 3];
+    return (h < 12 || h > 169) ? 'R' : (h >= 39 && h < 85) ? 'G' : (h >= 85 && h <= 135) ? 'B' : null;
+  };
   const wall = (x0, y0, x1, y1, vertical) => {
     let best = 0, mark = 0;
+    const local = { B: 0, R: 0, G: 0 };
     for (let off = -8; off <= 8; off++) {
       let n = 0, hit = 0, wh = 0;
       if (vertical) {
         const xs = pyRound(x0 + off);
         if (xs < 0 || xs >= W) continue;
-        for (let y = Math.max(0, Math.trunc(y0)); y < Math.min(H, Math.trunc(y1)); y++) { n++; const i = y * W + xs; if (neon(i)) hit++; if (white(i)) wh++; }
+        for (let y = Math.max(0, Math.trunc(y0)); y < Math.min(H, Math.trunc(y1)); y++) { n++; const i = y * W + xs; if (neon(i)) { hit++; const k = hueClass(i); if (k) local[k]++; } if (white(i)) wh++; }
       } else {
         const ys = pyRound(y0 + off);
         if (ys < 0 || ys >= H) continue;
-        for (let x = Math.max(0, Math.trunc(x0)); x < Math.min(W, Math.trunc(x1)); x++) { n++; const i = ys * W + x; if (neon(i)) hit++; if (white(i)) wh++; }
+        for (let x = Math.max(0, Math.trunc(x0)); x < Math.min(W, Math.trunc(x1)); x++) { n++; const i = ys * W + x; if (neon(i)) { hit++; const k = hueClass(i); if (k) local[k]++; } if (white(i)) wh++; }
       }
       if (n) { best = Math.max(best, hit / n); mark = Math.max(mark, wh / n); }
     }
+    if (best > .6) for (const k in votes) votes[k] += local[k];
     return best > .6 || mark > .05;
   };
   const edgeWall = ([ac, ar], [bc, br]) => {
@@ -615,7 +624,16 @@ function insideCells(img, geom) {
   }
   const inside = new Set();
   for (let col = 0; col < cw; col++) for (let row = 0; row < ch; row++) if ((dist.has(key(col, row)) ? dist.get(key(col, row)) : INF) % 2 === 1) inside.add(key(col, row));
+  if (out) out.wallVotes = votes;
   return inside;
+}
+
+// Cosmetic wall color from the hue votes: 'B' (default), 'R' or 'G'; null when there is too little evidence to say.
+function wallColorFromVotes(votes) {
+  const total = votes.B + votes.R + votes.G;
+  if (total < 40) return null;
+  const [color, n] = Object.entries(votes).sort((a, b) => b[1] - a[1])[0];
+  return n / total >= .8 ? color : null;
 }
 
 /* ---------------------------------------------------------------- board assembly */
@@ -776,8 +794,9 @@ function parseImage(img, options = {}) {
     for (const [k, v] of Object.entries(features)) measurements[k] = typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 1000) / 1000 : v;
     stats.push({ x: col + 1, y: geometry.height - row, kind, confidence: Math.round(conf * 1000) / 1000, measurements });
   }
+  const wallVotes = {};
   try {
-    const inside = insideCells(img, geometry);
+    const inside = insideCells(img, geometry, wallVotes);
     if (inside.size) for (let r = 0; r < geometry.height; r++) for (let c = 0; c < geometry.width; c++) {
       if (labels[r][c] === 'outside' && inside.has(c + ',' + r) && !((`${c + 1},${geometry.height - r}`) in cellOverrides)) {
         labels[r][c] = 'floor'; confidence[r][c] = .8;
@@ -787,8 +806,11 @@ function parseImage(img, options = {}) {
   } catch (exc) { warnings.push('Outline topology check failed: ' + exc.message); }
   const [board, issues] = assembleBoard(labels, geometry, level, overrides);
   warnings.push(...issues);
+  let wallColor = overrides.wallColor !== undefined ? overrides.wallColor : wallColorFromVotes(wallVotes.wallVotes || { B: 0, R: 0, G: 0 });
+  if (wallColor === null) { wallColor = 'B'; warnings.push('Wall color uncertain (too few or mixed outline pixels); assumed blue. Set it in the editor if the walls are red or green.'); }
+  if (wallColor !== 'B') board.wallColor = wallColor;
   const recognition = warnings.filter(w => w.startsWith('Cell (') || w.startsWith('Unrecognized object') || w.startsWith('No balls detected') || w.includes('balls but only'));
-  return { board, warnings, recognitionWarnings: recognition, mechanicsPending: warnings.filter(w => !recognition.includes(w)), geometry, labels, confidence, stats, level };
+  return { board, warnings, recognitionWarnings: recognition, mechanicsPending: warnings.filter(w => !recognition.includes(w)), geometry, labels, confidence, stats, level, wallColor, wallVotes: wallVotes.wallVotes };
 }
 
 // RGBA (canvas ImageData layout) -> the BGR image parseImage expects.

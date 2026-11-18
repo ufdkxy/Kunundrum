@@ -4,7 +4,7 @@
 
 | Location | Component | Entry points |
 | --- | --- | --- |
-| repo root | Browser Replay Lab, editor, catalog, K3 codec | `index.html`, `app.js`, `editor.js`, `engine.js`, `codec.js`, `catalog.js`, `levels.js`, `convert-levels.html` |
+| repo root | Browser Replay Lab, editor, catalog, K3 codec | `index.html`, `app.js`, `editor.js`, `engine.js`, `codec.js`, `catalog.js`, `levels.js` |
 | `parser/` | Screenshot recognition (Python reference + JS port used by the web app) and K3 writers | `parse.py`, `encode_k3.py`, `parser.js`, `parser_data.js` |
 | `Solver/` | Native exact optimal solver | `solver.cpp`, `Makefile`, `tests/*.js` |
 
@@ -43,7 +43,6 @@ No server or framework is required by the JavaScript sources. The native solver 
 | `editor.js` | In-place board editing, object properties, drag/drop, undo/redo, validation, K3 export | `window.KunEditor` |
 | `styles.css` | Browser presentation, responsive layout | CSS |
 | `music.js` | Five-track music playlist; autoplays on load, or on the first user gesture if the browser blocks it; a manual pause is not stored | DOM audio controls and `Music/*.mp3` |
-| `convert-levels.html` | Standalone local K2/K3 catalog-to-K3 converter | file input + browser-generated `levels.js` download |
 | `favicon.svg` | Icon | static asset |
 
 Logical script dependencies: `engine.js` precedes `codec.js`; `levels.js` precedes `catalog.js`; `engine.js`/`codec.js`/`catalog.js` precede `app.js`; `app.js` creates `KunundrumHost` used by the editor. `music.js` is independent of the game mechanics. `index.html` loads, in order: `levels.js`, `engine.js`, `catalog.js`, `codec.js`, `app.js`, `editor.js`, `music.js` (all `defer`).
@@ -104,10 +103,12 @@ At the stream level:
 byte: magic             0xB2 (K2) or 0xB3 (K3)
 byte: width             1..32
 byte: height            1..32
-varuint: flags          bit 0 = description present, bit 1 = solution present
+varuint: flags          bit 0 = description present, bit 1 = solution present,
+                        bit 2 = wall color present (K3 only; bit 3 is reserved for wraparounds)
 string: id
 string: title
 [string: description]
+[varuint: wall color index into RGBY (cosmetic; only if flags bit 2; blue is never stored)]
 [solution: K2 string; K3 varuint byteLength + binary solution bytes]
 list: walls              (position)
 list: balls              (position, color)
@@ -119,6 +120,7 @@ list: teleports          (id, color, activeBool, endpointA, endpointB)
 list: hexes              (position, id, zigzagSignedValue)
 ```
 
+- **Wall color** is purely cosmetic (neon outline and floor-grid tint) and uniform per board: JSON `wallColor` is `R` or `G`, omitted for blue (an explicit `B` is accepted and normalized away, so blue boards keep their old codes byte for byte). It has no effect on the engine or the solver, which only carry it through. Readers reject unknown flag bits; K2 cannot hold it.
 - `varuint` is unsigned **LEB128** (7 data bits per byte, continuation bit high).
 - `list` is varuint count then its elements.
 - `position` is the zero-based lexicographic offset above (`x` fastest, then `y` upward from the bottom row), stored as varuint.

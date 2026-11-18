@@ -538,6 +538,7 @@ body.edit-mode .board-bottom .view-options,body.edit-mode #board-hint{display:no
 .editor-colors{display:flex;gap:8px;justify-content:center}
 .editor-colors button{width:30px;height:30px;flex-shrink:0;border-radius:50%;background:var(--tool-color);border:3px solid #15252d;color:#20252a;cursor:pointer;box-shadow:0 0 5px var(--tool-color)}
 .editor-colors button.chosen{outline:2px solid white;outline-offset:2px}
+.editor-wall-colors{display:flex;align-items:center;justify-content:center;gap:12px;font-size:11px;color:#a3b9c6}
 .editor-directions{display:flex;gap:5px;justify-content:center}
 .editor-directions button{flex:1;border:1px solid #354b58;border-radius:5px;background:#0e212b;color:#d2f3ff;cursor:pointer;font-size:21px;padding:3px}
 .editor-param-row{display:flex;gap:12px;align-items:center}
