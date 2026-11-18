@@ -512,6 +512,31 @@ function classify(patch, templates, data) {
 
 /* ---------------------------------------------------------------- geometry */
 
+// Tunnel arms (21.1): one-cell stubs whose open end is clipped by the game's drawing area and marked with white triangles. Their strokes
+// can be too pale for the outline measurement, so the grid comes out short. A marker pair about one cell beyond a grid edge means that
+// the grid continues there (checked up to two cells out, on all four sides). Ordinary tunnel markers sit right at the outline instead.
+function extendForTunnelArms(img, g) {
+  const { width: W, height: H } = img, hsv = img.hsv || (img.hsv = bgr2hsv(img.bgr));
+  const yLo = Math.trunc(H * .125), yHi = Math.trunc(H * .94);
+  const whites = (xa, xb, ya, yb) => {
+    let n = 0;
+    for (let y = Math.max(yLo, Math.trunc(ya)); y < Math.min(yHi, Math.trunc(yb)); y++) for (let x = Math.max(0, Math.trunc(xa)); x < Math.min(W, Math.trunc(xb)); x++) {
+      const i = y * W + x; if (hsv[i * 3 + 2] > 200 && hsv[i * 3 + 1] < 50) n++;
+    }
+    return n;
+  };
+  const c = g.cell, out = { ...g };
+  const probe = (edge, lo, hi, vertical) => { // marker pixels in a band around `edge`, across [lo, hi)
+    return vertical ? whites(lo, hi, edge - 14, edge + 16) : whites(edge - 14, edge + 16, lo, hi);
+  };
+  const right = g.left + g.width * c, bottom = g.top + g.height * c;
+  for (let d = 1; d <= 2; d++) if (probe(g.left - d * c, g.top, bottom, false) >= 25) { out.left = g.left - d * c; out.width += d; break; }
+  for (let d = 1; d <= 2; d++) if (probe(right + d * c, g.top, bottom, false) >= 25) { out.width += d; break; }
+  for (let d = 1; d <= 2; d++) if (probe(g.top - d * c, g.left, right, true) >= 25) { out.top = g.top - d * c; out.height += d; break; }
+  for (let d = 1; d <= 2; d++) if (probe(bottom + d * c, g.left, right, true) >= 25) { out.height += d; break; }
+  return out;
+}
+
 function robustGeometry(img, grid) {
   if (grid) {
     const v = (typeof grid === 'string' ? grid.split(',') : grid).map(Number);
@@ -564,7 +589,7 @@ function robustGeometry(img, grid) {
     if (!best || score > best.score) best = { left, top, cell, width: cols, height: rows, score };
   }
   if (!best) throw new Error('Could not establish a grid from the full cyan outline; supply the grid geometry manually');
-  return best;
+  return extendForTunnelArms(img, best);
 }
 
 // Cells inside the neon outline, from outline topology (see parse.py inside_cells).
@@ -648,21 +673,25 @@ function insideCells(img, geom, out) {
   return inside;
 }
 
-// Tunnel pairing cannot be read from a screenshot, so this is only a first guess (the editor changes it): openings on opposite
-// sides in the same row/column pair first (nearest first); anything left pairs in lexicographic order. An odd one out is returned in `left`.
+// Tunnel pairing cannot be read from a screenshot, so this is only a first guess (the editor changes it). Openings on opposite sides
+// pair first (top-bottom, left-right): the same row/column before any, then the nearest line; this is the pairing the saved solution of
+// 21.1 needs (its openings are offset). Anything left pairs in lexicographic order; an odd one out is returned in `left`.
 function guessTunnelPairs(openings) {
   const free = openings.slice(), pairs = [], opp = { l: 'r', r: 'l', u: 'd', d: 'u' };
   const line = o => (o.side === 'l' || o.side === 'r') ? o.y : o.x, along = o => (o.side === 'l' || o.side === 'r') ? o.x : o.y;
-  for (let i = 0; i < free.length; i++) {
-    const a = free[i];
-    if (!a) continue;
-    let bestJ = -1;
-    for (let j = i + 1; j < free.length; j++) {
-      const b = free[j];
-      if (!b || b.side !== opp[a.side] || line(b) !== line(a)) continue;
-      if (bestJ < 0 || Math.abs(along(b) - along(a)) < Math.abs(along(free[bestJ]) - along(a))) bestJ = j;
+  for (const sameLineOnly of [true, false]) {
+    for (let i = 0; i < free.length; i++) {
+      const a = free[i];
+      if (!a) continue;
+      let bestJ = -1, bestD = null;
+      for (let j = i + 1; j < free.length; j++) {
+        const b = free[j];
+        if (!b || b.side !== opp[a.side] || (sameLineOnly && line(b) !== line(a))) continue;
+        const d = [Math.abs(line(b) - line(a)), Math.abs(along(b) - along(a))];
+        if (bestJ < 0 || d[0] < bestD[0] || (d[0] === bestD[0] && d[1] < bestD[1])) { bestJ = j; bestD = d; }
+      }
+      if (bestJ >= 0) { pairs.push({ a, b: free[bestJ] }); free[i] = free[bestJ] = null; }
     }
-    if (bestJ >= 0) { pairs.push({ a, b: free[bestJ] }); free[i] = free[bestJ] = null; }
   }
   const rest = free.filter(Boolean);
   while (rest.length > 1) pairs.push({ a: rest.shift(), b: rest.shift() });

@@ -69,3 +69,6 @@ console.log('PASS beam search (replay-verified routes, no optimality claim)');
  const lb=Core.validateBoard({version:1,id:'l',title:'l',width:3,height:1,balls:[{color:'R',x:2,y:1}],goals:[{color:'R',x:3,y:1}],tunnels:[{a:{x:1,y:1,side:'l'},b:{x:3,y:1,side:'r'}}]});
  assert.equal(Core.applyMove(Core.createInitialState(lb),lb,'R','l').kind,'loop');
  console.log('PASS tunnels (engine, K3)');}
+// Level 21.1 (real level: 4 tunnel arms): parsed from the screenshot, saved route replays to a win in 12 moves; pairing guess top-bottom, left-right.
+{const b=Codec.decodeBoard('K3.swcHDggyMS4xFExldmVsIDIxLjEBCAwAIT7Ci5YTFwABAwQFBgcNDhEVGBsfIiMpKissLS8wBCYAKAEWAhoDBAwAFwMZAiQBAAAAAAACAgEuABQDHAI');assert.deepEqual(b.tunnels.map(t=>[t.a,t.b].map(e=>e.side).sort().join('')),['du','lr']);assert.equal(solutionCheck('K3.swcHDggyMS4xFExldmVsIDIxLjEBCAwAIT7Ci5YTFwABAwQFBgcNDhEVGBsfIiMpKissLS8wBCYAKAEWAhoDBAwAFwMZAiQBAAAAAAACAgEuABQDHAI',b.solution).count,12);
+ console.log('PASS level 21.1 (tunnels, parser output)');}

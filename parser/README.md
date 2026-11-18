@@ -174,7 +174,7 @@ object has been transcribed correctly; inspect the review PNGs before batch use.
 
 - The neon wall color (blue, red or green, uniform per board and purely cosmetic) is read from the hue of the saturated neon pixels on the edges that `insideCells` counts as walls, so goals, balls and the HUD cannot skew it. Result fields: `wallColor` and `wallVotes`; a non-blue color is written to `board.wallColor` (K3 flag bit 2). `overrides.wallColor` forces a value; too little or mixed evidence assumes blue and adds a warning.
 - Tile recognition itself needed no change on red (11.1) or green (21.1) screenshots. The Python `parse.py` is frozen and does not know about wall color.
-- Tunnels (21.1, 12.6): JS parser only. Marked outline gaps become openings; the pairing is a guess (see `guessTunnelPairs`) and must be checked in the editor. The Python parser does not handle them.
+- Tunnels (21.1, 12.6): JS parser only. Marked outline gaps become openings (arms clipped by the drawing area, as in 21.1, extend the grid via `extendForTunnelArms`); the pairing is a guess (see `guessTunnelPairs`: opposite sides first) and must be checked in the editor. 21.1 verified; 12.6 not yet seen. The Python parser does not handle them.
 
 ## Teleports (JS parser v0.12.0)
 
