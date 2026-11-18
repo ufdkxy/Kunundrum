@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.11.3'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.11.4'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -136,7 +136,7 @@ function renderHelpIcons() {
     (defs + feature(label)).replaceAll('preview-help-symbols-', `help-rule-${name}-`),
     name === 'arrow' ? '-24 -24 48 48' : undefined,
   ));
-  icons.push(frame(`<g fill="none" stroke="${PALETTE.Y}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS.undo}</g>`, '-2 -2 28 28'));
+  icons.push(frame(`<g fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS.undo}</g>`, '-2 -2 28 28'));
   return icons;
 }
 
