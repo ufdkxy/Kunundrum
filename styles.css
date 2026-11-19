@@ -124,12 +124,8 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .trail-line { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 3 7; opacity: .65; pointer-events: none; }
 .gate-on { stroke-width: 1.5; }
 .gate-off { opacity: .42; stroke-dasharray: 4 4; }
-.rotating-arrow { transform-box: fill-box; transform-origin: center; animation: turn-arrow 4s steps(4, end) infinite; }
-@keyframes turn-arrow { to { transform: rotate(360deg); } }
-/* One shared 1 s tick: clockwise and counterclockwise arrows turn a quarter per tick (period 4); flip arrows reverse every tick (period 2). */
-.rotating-arrow.rotating-ccw { animation-name: turn-arrow-ccw; }
-@keyframes turn-arrow-ccw { to { transform: rotate(-360deg); } }
-.rotating-arrow.rotating-flip { animation-duration: 2s; animation-timing-function: steps(2, end); }
+/* Rotating arrows are turned by the shared clock in app.js (inline transform), not by a CSS animation. */
+.rotating-arrow { transform-box: fill-box; transform-origin: center; }
 .board-bottom { min-height: 39px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 18px; border-top: 1px solid #23343f; font-size: 10px; color: #8da1ae; background: #111d27; }
 #board-hint { display: inline-flex; align-items: center; gap: 8px; }
 .mouse-mini { display: inline-block; width: 9px; height: 12px; border: 1px solid #6b8392; border-radius: 4px; position: relative; }
@@ -287,11 +283,6 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .schema-help summary { cursor: pointer; color: #a3bec7; font-size: 11px; border-radius: 2px; }
 .schema-help p { margin-top: 13px; color: #7b99aa; font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
 .schema-help pre { margin: 14px 0; padding: 14px; border: 1px solid #293e4b; border-radius: 5px; background: #09161f; color: #a2c3ba; font-size: 10px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
-.rotate-modal { max-width: 500px; }
-.rotation-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 18px 0 23px; }
-.rotation-options button { display: flex; flex-direction: column; align-items: center; gap: 10px; min-height: 85px; padding: 15px 10px; border: 1px solid #55404a; border-radius: 7px; background: #29252d; color: #e5a3b0; font-size: 12px; }
-.rotation-options button [data-icon] svg { width: 25px; height: 25px; }
-.rotation-options button:hover { background: #42303a; border-color: var(--red); color: #ffd6dd; }
 .inline-error { margin-top: 9px; padding: 10px 12px; border: 1px solid #6c3d4c; border-radius: 5px; background: #321f2a; color: #f0a1b1; font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
 .toast { position: fixed; z-index: 1000; left: 50%; bottom: 25px; max-width: min(600px, calc(100vw - 32px)); padding: 12px 20px; border: 1px solid #477463; border-radius: 8px; background: #1d362f; color: #c5ecdc; box-shadow: 0 8px 40px #0007; font-size: 12px; text-align: center; opacity: 0; transform: translate(-50%, 15px); pointer-events: none; transition: opacity .2s, transform .2s; }
 .toast.visible { opacity: 1; transform: translate(-50%, 0); }
@@ -417,8 +408,6 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
   .modal-bottom { gap: 12px; margin-top: 20px; font-size: 10px; }
   .modal-bottom .primary-button { padding: 10px 13px; font-size: 12px; }
   .segmented button { font-size: 11px; }
-  .rotation-options { gap: 7px; }
-  .rotation-options button { padding: 14px 6px; min-height: 79px; }
   .toast { bottom: 16px; font-size: 11px; padding: 11px 15px; }
 }
 

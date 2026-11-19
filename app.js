@@ -1,14 +1,14 @@
 /* Kunundrum interface/controller. Engine, codec and catalog load separately. */
 'use strict';
 (() => {
-const {validateBoard,createInitialState,applyMove,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES}=Core;
+const {validateBoard,createInitialState,applyMove,applyMoveAtPhase,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES}=Core;
 const {entries:CATALOG_ENTRIES}=Collection;
 const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.14.1'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.15.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -170,7 +170,18 @@ let selected = 'R';
 let busy = false;
 let isPlaying = false;
 let mode = 'manual';
-let pendingMove = null;
+// Shared arrow clock: rotating arrows advance one tick a second while no ball is moving (waiting is free; the clock is frozen during a
+// move and resumes afterwards). A move uses the orientations shown at the moment it starts.
+const clock = { ticks: 0 };
+const arrowAngle = (type, ticks) => type === 'flip' ? 180 * (ticks % 2) : (type === 'ccw' ? -90 : 90) * (ticks % 4);
+function updateArrows() { document.querySelectorAll('.rotating-arrow').forEach(el => { el.style.transform = `rotate(${arrowAngle(el.dataset.type, clock.ticks)}deg)`; }); }
+// Replay and jumps: wait (advance the clock) to the first phase from now on that fits the move's orientations.
+function syncClock(phases) {
+  if (!phases || phases.includes(clock.ticks % 4)) return;
+  for (let d = 1; d < 4; d++) if (phases.includes((clock.ticks + d) % 4)) { clock.ticks += d; break; }
+  updateArrows();
+}
+setInterval(() => { if (busy || document.hidden) return; clock.ticks++; updateArrows(); }, 1000);
 let animationEpoch = 0;
 let playEpoch = 0;
 let toastTimer;
@@ -195,7 +206,7 @@ function showError(id, message = '') {
   $(id).hidden = !message;
 }
 function stopPlayback() { isPlaying = false; playEpoch++; renderControls(); }
-function cancelMotion() { animationEpoch++; busy = false; pendingMove = null; stopPlayback(); }
+function cancelMotion() { animationEpoch++; busy = false; stopPlayback(); }
 function getNotation(end = frames.length - 1) { return formatSolution(frames.slice(1, end + 1).map(frame => frame.record)); }
 function initialFrame(nextBoard) { return { state: createInitialState(nextBoard), path: [], record: null, events: [] }; }
 
@@ -229,6 +240,7 @@ function adoptBoard(nextBoard, replayFrames, at = 0, resetInput = true) {
   board = normalized;
   frames = nextFrames;
   cursor = Math.min(Math.max(0, at), frames.length - 1);
+  if (cursor > 0) syncClock(frames[cursor].phases);
   selected = (cursor > 0 ? frames[cursor].record?.ballId : null) || state().balls.find(ball => !ball.locked)?.id || state().balls[0].id;
   mode = replayFrames ? 'replay' : 'manual';
   currentPresetId = preset;
@@ -363,7 +375,7 @@ function renderSvg(b, s, options = {}) {
   for (const arrow of b.arrows) {
     const p=xy(arrow), degrees={r:0,d:90,l:180,u:270}[arrow.direction], color=arrow.rotating?'#ff8a9b':'#b9d8ff', glow=arrow.rotating?'#ff2a45':'#2f7dff';
     const chev=[-21,-10,1].map((a,i)=>`<polygon points="${a},-14 ${a+6},-14 ${a+16},0 ${a+6},14 ${a},14 ${a+10},0" opacity="${[.62,1,.45][i]}"/>`).join('');
-    svg += `<g role="img" aria-label="${arrow.rotating?({ccw:'Counterclockwise rotating',flip:'Flipping'}[arrow.type]||'Clockwise rotating'):'Fixed'} arrow ${DIRECTION_NAMES[arrow.direction]} ${pos(arrow)}" transform="translate(${p.x},${p.y})"><g transform="rotate(${degrees})"><g class="${arrow.rotating?'rotating-arrow'+(arrow.type?' rotating-'+arrow.type:''):''}"><g fill="${glow}" filter="url(#${prefix}-glow)" opacity=".9">${chev}</g><g fill="${color}" stroke="${color}" stroke-width=".8" stroke-linejoin="round">${chev}</g></g></g></g>`;
+    svg += `<g role="img" aria-label="${arrow.rotating?({ccw:'Counterclockwise rotating',flip:'Flipping'}[arrow.type]||'Clockwise rotating'):'Fixed'} arrow ${DIRECTION_NAMES[arrow.direction]} ${pos(arrow)}" transform="translate(${p.x},${p.y})"><g transform="rotate(${degrees})"><g${arrow.rotating?` class="rotating-arrow" data-type="${arrow.type||'cw'}" style="transform:rotate(${arrowAngle(arrow.type,clock.ticks)}deg)"`:''}><g fill="${glow}" filter="url(#${prefix}-glow)" opacity=".9">${chev}</g><g fill="${color}" stroke="${color}" stroke-width=".8" stroke-linejoin="round">${chev}</g></g></g></g>`;
   }
   for (const teleport of b.teleports) {
     const p=xy(teleport), on=s.teleportActive[teleport.id], universal=teleport.color==='*';
@@ -443,7 +455,7 @@ function renderHint() {
   $('board-hint').innerHTML=isComplete(s)?'':(isPlaying?'Moving...':`<span class="mouse-mini" aria-hidden="true"></span><span aria-hidden="true">/</span>Arrow keys: move`);
 }
 function updateResetControl() {
-  $('reset').disabled=isPlaying||(!busy&&!pendingMove&&frames.length===1&&cursor===0&&!$('solution-input').value);
+  $('reset').disabled=isPlaying||(!busy&&frames.length===1&&cursor===0&&!$('solution-input').value);
 }
 function renderControls() {
   const current=state();
@@ -613,22 +625,12 @@ async function animatePath(id,path) {
   });
 }
 
-async function makeMove(id,direction,choices=[]) {
+async function makeMove(id,direction) {
   if(busy||isPlaying)return;
   if(cursor >= MAX_REPLAY_MOVES){toast('This route has reached the 2,000-move limit. Go back to an earlier move to start a new branch.',true);return;}
   showError('replay-error');
   let result;
-  try {result=applyMove(state(),board,id,direction,choices);}catch(error){toast(error.message,true);return;}
-  if(result.kind==='choose-direction') {
-    pendingMove={id,direction,choices};
-    renderBoard({path:result.path,record:{ballId:id}});
-    $('rotate-caption').textContent=result.choicesUsed
-      ?`The first arrow fixed only half of the clock. Choose which way the arrow at ${pos(result.position)} points to settle the rest.`
-      :`Choose which way the arrow at ${pos(result.position)} points when the ball reaches it.`;
-    document.querySelectorAll('[data-rotation]').forEach(button=>{button.hidden=!result.options.includes(button.dataset.rotation);});
-    openDialog('rotate-dialog');
-    return;
-  }
+  try {result=applyMoveAtPhase(state(),board,id,direction,clock.ticks%4);}catch(error){toast(error.message,true);return;}
   if(result.kind!=='ok'){renderBoard();toast(result.message,true);return;}
   const nextRecords = [...frames.slice(1,cursor+1).map(frame=>frame.record),result.record];
   if(formatSolution(nextRecords).length > MAX_ROUTE_CHARACTERS){renderBoard();toast('This route has reached the 10,000-character limit. Go back to an earlier move to start a new branch.',true);return;}
@@ -649,7 +651,8 @@ function selectionAfterMove(movedId) {
 }
 function goTo(index) {
   if(busy||isPlaying)return;
-  stopPlayback();cursor=Math.max(0,Math.min(frames.length-1,index));pendingMove=null;
+  stopPlayback();cursor=Math.max(0,Math.min(frames.length-1,index));
+  if(cursor>0)syncClock(frames[cursor].phases);
   // Prefer the last moved ball, or the next playable one when it docked.
   if(cursor > 0)selected=selectionAfterMove(frames[cursor].record.ballId);
   else if(state().balls.find(ball=>ball.id===selected)?.locked)selected=state().balls.find(ball=>!ball.locked)?.id||selected;
@@ -684,12 +687,12 @@ function resetRun() {
   frames=[initialFrame(board)];cursor=0;mode='manual';
   selected=state().balls.find(ball=>!ball.locked)?.id||state().balls[0].id;
   $('solution-input').value='';showError('replay-error');
-  const rotation=$('rotate-dialog');if(rotation.open)rotation.close();
   clearReplayLocation();render();persist();
 }
 async function nextStep() {
   if(busy||cursor>=frames.length-1)return false;
   const next=frames[cursor+1];
+  syncClock(next.phases);
   busy=true;selected=next.record.ballId;renderBoard(next);renderControls();renderMeta();
   if(!await animatePath(next.record.ballId,next.path))return false;
   cursor++;busy=false;
@@ -719,7 +722,7 @@ function loadSolution(text) {
 }
 
 function openDialog(id) {stopPlayback();if(!$(id).open)$(id).showModal();}
-function closeDialog(dialog) {dialog.close();if(dialog.id==='rotate-dialog'){pendingMove=null;renderBoard();}}
+function closeDialog(dialog) {dialog.close();}
 const levelParts = id => id.split('.').map(Number);
 let levelsChapter = null;
 function revealChapter() {
@@ -879,12 +882,7 @@ $('board-input').addEventListener('input',()=>showError('board-error'));
 document.querySelectorAll('[data-close]').forEach(button=>button.addEventListener('click',()=>closeDialog(button.closest('dialog'))));
 document.querySelectorAll('dialog').forEach(dialog=>{
   dialog.addEventListener('click',event=>{if(event.target!==dialog)return;const rect=dialog.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)closeDialog(dialog);});
-  dialog.addEventListener('cancel',()=>{if(dialog.id==='rotate-dialog'){pendingMove=null;renderBoard();}});
 });
-document.querySelectorAll('[data-rotation]').forEach(button=>button.addEventListener('click',()=>{
-  const move=pendingMove;if(!move)return;
-  pendingMove=null;$('rotate-dialog').close();makeMove(move.id,move.direction,[...move.choices,button.dataset.rotation]);
-}));
 
 let gesture=null;
 $('board-stage').addEventListener('pointerdown',event=>{

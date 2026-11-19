@@ -52,7 +52,8 @@ Logical script dependencies: `engine.js` precedes `codec.js`; `levels.js` preced
 ```text
 Core.validateBoard(raw) -> normalizedBoard
 Core.createInitialState(board) -> State
-Core.applyMove(state, board, ballId, direction, choices=[]) -> MoveResult
+Core.applyMove(state, board, ballId, direction, choices=[]) -> MoveResult   // choices: 0-2 orientation letters (replay / notation)
+Core.applyMoveAtPhase(state, board, ballId, direction, phase) -> MoveResult // live play: derives the letters from the shared arrow clock phase (0-3)
 Core.isComplete(state) -> boolean
 Core.parseSolution(text) -> tokens
 Core.resolveBallId(state, identifier) -> stableBallId
@@ -60,7 +61,7 @@ Core.formatMove(record) -> string
 Core.formatSolution(records) -> string
 ```
 
-`applyMove` returns `{kind:'ok', state, path, record, events}` on success; `{kind:'choose-direction',position,choicesUsed,options,path,message}` for a missing rotating-arrow orientation (`options` = the valid letters); or `{kind:'blocked'|'loop'|'error',message,path?}` for failure. The input board/state are not mutated. See [RULES.md](RULES.md) for transition details.
+`applyMove` returns `{kind:'ok', state, path, record, events, phases}` on success (`phases` = the clock phases 0-3 consistent with the orientations used; all four if no rotating arrow was met); `{kind:'choose-direction',position,choicesUsed,options,path,message}` for a missing rotating-arrow orientation (`options` = the valid letters); or `{kind:'blocked'|'loop'|'error',message,path?}` for failure. The input board/state are not mutated. See [RULES.md](RULES.md) for transition details.
 
 ### State and replay model
 

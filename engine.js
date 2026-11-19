@@ -295,7 +295,7 @@ function applyMove(state           , board       , ballId        , direction    
   // `parity` (phase mod 2) are what the supplied orientations have fixed so far: the first rotating arrow's orientation is chosen
   // (a flip arrow fixes only the parity), then the first period-4 arrow met after a flip arrow fixes the rest.
   let x = ball.x, y = ball.y, heading = direction, choicesUsed = 0, scoreDelta = 1;
-  let phase = null, parity = null;
+  let phase = null, parity = null, phases = [0, 1, 2, 3]; // `phases`: clock phases still consistent with the supplied orientations
   let entered = false, steps = 0;
   while (true) {
     if (++steps > 65536) return fail("loop", "This move is too long to resolve safely. Nothing was changed.", path);
@@ -327,6 +327,7 @@ function applyMove(state           , board       , ballId        , direction    
           if (!options.includes(chosen)) return fail("error", `The rotating arrow at (${x},${y}) cannot show ${DIRECTION_NAMES[chosen]} in this move; use ${options.map(o => DIRECTION_NAMES[o]).join(" or ")}.`, path);
           const matching = candidates.filter(p => arrowOrientation(arrow, p) === chosen);
           if (flip) parity = matching[0] % 2; else phase = matching[0];
+          phases = phases.filter(p => arrowOrientation(arrow, p) === chosen);
           heading = chosen;
         }
       } else heading = arrow.direction;
@@ -375,10 +376,21 @@ function applyMove(state           , board       , ballId        , direction    
     from: { x: ball.x, y: ball.y }, to: end, notation: "",
   };
   record.notation = formatMove(record);
-  return { kind: "ok", state: nextState, path, record, events };
+  return { kind: "ok", state: nextState, path, record, events, phases };
 }
 
 /** Parse notation without resolving ball IDs; resolution happens against each replay snapshot. */
+/** Applies a move made while the shared arrow clock shows `phase` (0-3): the orientations a notation would need are derived from the phase,
+ * so the result (and its `record.choices`) is the same as for the equivalent explicit `(->xy)` annotation. */
+function applyMoveAtPhase(state, board, ballId, direction, phase) {
+  const choices = [];
+  for (;;) {
+    const result = applyMove(state, board, ballId, direction, choices);
+    if (result.kind !== "choose-direction") return result;
+    const arrow = board.arrows.find(a => a.x === result.position.x && a.y === result.position.y);
+    choices.push(arrowOrientation(arrow, phase));
+  }
+}
 function parseSolution(text        )              {
   if (typeof text !== "string") throw new Error("A solution must be text.");
   if (text.length > 100000) throw new Error("The solution is too long (100,000 character maximum).");
@@ -458,5 +470,5 @@ function formatSolution(records                                                 
   return groups.join(",");
 }
 
-return {validateBoard,arrowOrientation,teleportExit,createInitialState,applyMove,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES};
+return {validateBoard,arrowOrientation,applyMoveAtPhase,teleportExit,createInitialState,applyMove,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES};
 })();
