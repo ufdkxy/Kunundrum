@@ -110,9 +110,9 @@ The four snippets above illustrate arrow (a rotating arrow may add `"type": "ccw
 - **Tunnels:** two small white triangles side by side along a gap in the neon outline (board edge or an outline segment), pointing in opposite directions (one out of the board, one into it). The pairing is not visible.
 - **Switches:** solid glossy disc; red = off, green with a depressed shadow = on (display state only, see 3).
 
-## 6b. Mechanics not yet implemented in the solver
+## 6b. Solver support
 
-Tunnels (formerly wraparound walls) and rotating arrows (§2) are implemented in `engine.js`, K3, the app and the editor, but **not in `solver.cpp`** (see STATUS MECH-004 / MECH-005). Until they are, the solver's rotating-arrow model (an independent choice at every rotating arrow) is looser than the game and must not be used to certify boards with rotating arrows.
+Tunnels and rotating arrows are implemented in `solver.cpp` (v0.17) with the semantics above: the solver tries every distinct arrow clock phase per move and prints the `(->xy)` annotation. The WebAssembly bundle used by the app must be rebuilt (`make wasm`) to include them; see STATUS.
 
 ## 7. Invariants to preserve when editing mechanics
 
