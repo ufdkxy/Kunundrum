@@ -976,7 +976,7 @@ window.KunundrumHost = {
   play:draft=>{adoptEdited(draft);},
   resume:()=>{render();},
   toast:message=>toast(message),
-  // Solver dialog (solver-ui.js): the current board as a K3 code without a route, plus the score and move count of the CURRENT route (the moves in the Replay panel, whole route, not just up to the cursor) when it finishes the board. Stops any playback.
+  // Solver dialog (solver-ui.js): the current board as a K3 code without a route, plus the score and move count of the CURRENT route (the full move history, `frames`, not just the moves up to the cursor and independent of the Replay text box) when it finishes the board. Stops any playback.
   prepareSolver:()=>{
     stopPlayback();
     const {solution,...bare}=board,info={code:encodeBoard(bare),title:board.title,id:currentPresetId,route:null};
