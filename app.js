@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.14.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.14.1'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -363,7 +363,7 @@ function renderSvg(b, s, options = {}) {
   for (const arrow of b.arrows) {
     const p=xy(arrow), degrees={r:0,d:90,l:180,u:270}[arrow.direction], color=arrow.rotating?'#ff8a9b':'#b9d8ff', glow=arrow.rotating?'#ff2a45':'#2f7dff';
     const chev=[-21,-10,1].map((a,i)=>`<polygon points="${a},-14 ${a+6},-14 ${a+16},0 ${a+6},14 ${a},14 ${a+10},0" opacity="${[.62,1,.45][i]}"/>`).join('');
-    svg += `<g role="img" aria-label="${arrow.rotating?({ccw:'Counterclockwise rotating',flip:'Flipping'}[arrow.type]||'Clockwise rotating'):'Fixed'} arrow ${DIRECTION_NAMES[arrow.direction]} ${pos(arrow)}" transform="translate(${p.x},${p.y})">${arrow.rotating?`<circle r="23" fill="none" stroke="${color}" stroke-opacity=".3" stroke-dasharray="3 5"/>`:''}<g transform="rotate(${degrees})"><g class="${arrow.rotating?'rotating-arrow'+(arrow.type?' rotating-'+arrow.type:''):''}"><g fill="${glow}" filter="url(#${prefix}-glow)" opacity=".9">${chev}</g><g fill="${color}" stroke="${color}" stroke-width=".8" stroke-linejoin="round">${chev}</g></g></g></g>`;
+    svg += `<g role="img" aria-label="${arrow.rotating?({ccw:'Counterclockwise rotating',flip:'Flipping'}[arrow.type]||'Clockwise rotating'):'Fixed'} arrow ${DIRECTION_NAMES[arrow.direction]} ${pos(arrow)}" transform="translate(${p.x},${p.y})"><g transform="rotate(${degrees})"><g class="${arrow.rotating?'rotating-arrow'+(arrow.type?' rotating-'+arrow.type:''):''}"><g fill="${glow}" filter="url(#${prefix}-glow)" opacity=".9">${chev}</g><g fill="${color}" stroke="${color}" stroke-width=".8" stroke-linejoin="round">${chev}</g></g></g></g>`;
   }
   for (const teleport of b.teleports) {
     const p=xy(teleport), on=s.teleportActive[teleport.id], universal=teleport.color==='*';

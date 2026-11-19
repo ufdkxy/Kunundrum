@@ -2,7 +2,7 @@
 
 *Living document: keep it current, delete resolved items instead of appending history (Git has the history). See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-**Last updated:** 2026-11-19 · **App version:** `APP_VERSION = '3.14.0'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. Invalid-but-readable boards (codes, links, JSON) now open in the editor with the problems listed instead of failing to load; Play stays gated by validation (`decodeBoard(code, problems)`, `validateBoard(raw, problems)`). The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
+**Last updated:** 2026-11-19 · **App version:** `APP_VERSION = '3.14.1'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. Invalid-but-readable boards (codes, links, JSON) now open in the editor with the problems listed instead of failing to load; Play stays gated by validation (`decodeBoard(code, problems)`, `validateBoard(raw, problems)`). The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
 
 ## 1. Components
 
@@ -33,6 +33,8 @@ Certified optimal scores (`verify.js`): 6.6 → 18, 7.1 → 15, 7.4 → 27, 7.6 
 **App 3.3.20, 2026-11-14: puzzle dialog polish.** Choosing a chapter no longer scrolls the chapter list (it only reveals the current chapter when the dialog opens), the previews scroll back to the top, and the dialog header is more compact.
 
 **App 3.3.19, 2026-11-14: puzzle dialog columns.** The puzzle dialog has a fixed height; the chapter list and the puzzle previews are equally tall and each scrolls on its own.
+
+**App 3.14.1, 2026-11-19: rotating arrows lose their dashed circle.** Rotating arrows are now drawn like fixed ones (the game has no outline); they are told apart by the animation.
 
 **App 3.14.0, 2026-11-19: rotating arrows follow the shared clock (solver pending).** Rotating arrows have a type (`cw` default, `ccw`, `flip`; board JSON `type`, editor select "Type", animated accordingly). Waiting is free and the clock is frozen during a move, so a move takes at most two orientation letters: `(->u)` for the first rotating arrow, `(->ur)` when that arrow is `flip` and a later period-4 arrow also needs fixing (rules: RULES.md §2, §5). K3 flag bit 4 stores a ternary digit string (0 flip, 1 cw, 2 ccw) only when some arrow is not clockwise, so all-clockwise codes are unchanged; the old solver rejects typed codes as an invalid header. The Solver dialog now refuses boards with rotating arrows or tunnels. Parser still guesses clockwise.
 
