@@ -217,7 +217,7 @@ int simulate(const Board&b,const State&s,int bi,int direction,int phase,State&ns
   }
  }
  if(!stopped||!entered)return 0;
- ns=s;ns.p[bi]=p;ns.hex=move(consumed);
+ ns=s;ns.p[bi]=p;ns.hex=std::move(consumed);
  int sw=b.switchAt[p];if(sw>=0){b.fireSwitch(sw,ns);}
  return 1;
 }
@@ -235,7 +235,7 @@ void successors(const Board&b,const State&s,Stats&stats,const function<void(Tran
     if(!simulate(b,s,i,d,ph,n,delta,ann))continue;
     bool dup=false;for(int q=0;q<ph;q++)if(got[q]&&seen[q]==ann)dup=true;
     seen[ph]=ann;got[ph]=true;if(dup)continue;
-    emit({move(n),{s.p[i],(Byte)b.balls[i].color,(Byte)d,(Byte)ph}});
+    emit({std::move(n),{s.p[i],(Byte)b.balls[i].color,(Byte)d,(Byte)ph}});
     if(ann.empty())break;
    }
   }
@@ -513,7 +513,7 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
   out.solved=true;out.depth=best;out.exhaustive=certified||exhausted;vector<Move> before,after;
   uint32_t at=fMeet;while(at){before.push_back(fwd.move(at));at=fwd.parent(at);}reverse(before.begin(),before.end());
   at=rMeet;while(rev.depth(at)>0){after.push_back(rev.move(at));at=rev.parent(at);}
-  out.path=move(before);out.path.insert(out.path.end(),after.begin(),after.end());
+  out.path=std::move(before);out.path.insert(out.path.end(),after.begin(),after.end());
  }else if(best==INT32_MAX){if(exhausted)out.exhaustive=true;else if(certified)out.boundProved=true;}
  else out.boundProved=certified||exhausted;
  return out;
@@ -626,7 +626,7 @@ SearchResult beamSearch(const Board&b,const Limits&lim,ClockLimit&timer,const Pa
  vector<uint8_t> ckey,buf(K);vector<Meta> cm;
  vector<uint8_t> occ(b.w*b.h,0);vector<int> touched;
  for(int depth=0;depth<maxLayers&&!limited;depth++){
-  const Layer cur=move(layers[depth]); // the layer is only read here; its path data is restored below
+  const Layer cur=std::move(layers[depth]); // the layer is only read here; its path data is restored below
   ckey.clear();cm.clear();droppedNow=false;HashSet64 local;
   auto prune=[&](size_t keep){ // keep the `keep` best candidates
    vector<uint32_t> order(cm.size());iota(order.begin(),order.end(),0);
@@ -683,7 +683,7 @@ SearchResult beamSearch(const Board&b,const Limits&lim,ClockLimit&timer,const Pa
   Layer nl;nl.key=ckey;for(size_t i=0;i<cm.size();i++){nl.parent.push_back(cm[i].parent);nl.source.push_back(cm[i].source);nl.color.push_back(cm[i].color);nl.dir.push_back(cm[i].dir);nl.phase.push_back(cm[i].phase);seen.insert(hashBytes(&nl.key[i*K],K));}
   layerBytes+=nl.size()*(K+9);
   if(lim.verbose){int best=INT32_MAX;for(auto&m:cm)best=min(best,m.sc>>4);LOG<<"beam depth "<<depth+1<<" kept "<<nl.size()<<" best rank "<<best<<" elapsed "<<timer.elapsed()<<"s\n";}
-  layers.push_back(move(nl));
+  layers.push_back(std::move(nl));
  }
  out.states=seen.n;out.transitions=transitions;out.bytes=seen.bytes()+layerBytes;
  // A solution found while generating layer D is optimal when layers 0..D-1 are complete (nothing dropped before; hex-free boards only).
@@ -692,7 +692,7 @@ SearchResult beamSearch(const Board&b,const Limits&lim,ClockLimit&timer,const Pa
  if(bestDepth>=0){
   out.solved=true;out.exhaustive=noHex&&!dropped;out.depth=bestDepth;vector<Move> rv{bestMove};uint32_t at=bestParent;
   for(int d=bestDepth-1;d>=1;d--){Move m;m.source=layers[d].source[at];m.color=layers[d].color[at];m.dir=layers[d].dir[at];m.phase=layers[d].phase[at];rv.push_back(m);at=layers[d].parent[at];}
-  reverse(rv.begin(),rv.end());out.path=move(rv);
+  reverse(rv.begin(),rv.end());out.path=std::move(rv);
  }else if(!limited&&!dropped&&!droppedNow){
   if(exhausted)out.exhaustive=true; // the whole reachable space was enumerated without dropping anything: unsolvable
   else if(noHex&&lim.maxDepth>0)out.boundProved=true; // all layers up to the depth limit were complete
@@ -711,7 +711,7 @@ vector<LabeledMove> labelAndVerify(const Board&b,const vector<Move>& path,int& f
   State next;int delta=0;string ann;
   int status=simulate(b,st,bi,m.dir,m.phase,next,delta,ann);
   if(status!=1)throw runtime_error("internal route error: illegal move");
-  labeledPositions[bi]=next.p[bi];st=move(next);depth++;
+  labeledPositions[bi]=next.p[bi];st=std::move(next);depth++;
   result.push_back({bi,m.dir,ann});
  }
  finalScore=scoreHex(b,st,depth);
