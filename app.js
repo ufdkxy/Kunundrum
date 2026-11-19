@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.16.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.17.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -34,6 +34,7 @@ const ICON_PATHS = {
   'help': '<circle cx="12" cy="12" r="9"/><path d="M9.2 9a3 3 0 0 1 5.6 1.2c0 1.7-2.8 1.8-2.8 3.6M12 17h.01"/>',
   'import': '<path d="M12 3v12m-5-5 5 5 5-5M4 20h16"/>',
   'braces': '<path d="M8 3H6v6l-3 3 3 3v6h2m8-18h2v6l3 3-3 3v6h-2"/>',
+  'hash': '<path d="M5 9h14M5 15h14M10 4 8 20m8-16-2 16"/>',
   'grid': '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18m6-18v18"/>',
   'route': '<circle cx="5" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 6h9a4 4 0 0 1 0 8H8a2 2 0 0 0 0 4h9"/>',
   'selection': '<circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/><circle cx="12" cy="12" r="3"/>',
@@ -186,7 +187,7 @@ let animationEpoch = 0;
 let playEpoch = 0;
 let toastTimer;
 let bestScores = {};
-let settings = { coordinates: false, trail: false, outline: false, speed: 1, viewDefaultsVersion: 1, outlineDefaultsVersion: 1 };
+let settings = { coordinates: false, labels: true, trail: false, outline: false, speed: 1, viewDefaultsVersion: 1, outlineDefaultsVersion: 1 };
 let viewSettingsInitialized = false;
 let storageAvailable = true;
 let currentPresetId = board.id;
@@ -325,7 +326,8 @@ function renderSvg(b, s, options = {}) {
   const dockedGoalColors = new Map(b.goals
     .filter(goal => s.balls.some(ball => ball.locked && ball.color === goal.color && ball.x === goal.x && ball.y === goal.y))
     .map(goal => [`${goal.x},${goal.y}`, PALETTE[goal.color]]));
-  const labels = mappingLabels(b);
+  const showLabels = mini || settings.labels; // the Labels toggle only affects the main board, not previews
+  const labels = showLabels ? mappingLabels(b) : { switches: new Map(), gates: new Map(), teleports: new Map() };
   let svg = `<svg class="board-svg" viewBox="0 0 ${width} ${height}" ${mini ? 'aria-hidden="true"' : `role="group" aria-label="${escape(b.title)}. ${b.width} columns by ${b.height} rows. Arrow keys move. Shift plus arrow keys select another ball."`} xmlns="http://www.w3.org/2000/svg"><defs>`;
   for (const [color, value] of Object.entries(PALETTE)) {
     svg += `<radialGradient id="${prefix}-orb-${color}" cx="35%" cy="28%" r="75%"><stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset=".28" stop-color="${value}"/><stop offset="1" stop-color="${value}" stop-opacity=".73"/></radialGradient>`;
@@ -356,7 +358,7 @@ function renderSvg(b, s, options = {}) {
     for (const e of [t.a,t.b]) {
       const px=pad+(e.x-1)*cell, py=pad+(b.height-e.y)*cell;
       const [ex,ey]={u:[px+cell/2,py],d:[px+cell/2,py+cell],l:[px,py+cell/2],r:[px+cell,py+cell/2]}[e.side];
-      svg += `<g class="tunnel-mark" role="img" aria-label="Tunnel ${i+1} opening ${DIRECTION_NAMES[e.side]} of ${pos(e)}" transform="translate(${ex},${ey})" pointer-events="none">${tunnelTriangles(e.side)}${tunnelLabel(e.side, String(i+1), b.tunnels.length > 1)}</g>`;
+      svg += `<g class="tunnel-mark" role="img" aria-label="Tunnel ${i+1} opening ${DIRECTION_NAMES[e.side]} of ${pos(e)}" transform="translate(${ex},${ey})" pointer-events="none">${tunnelTriangles(e.side)}${tunnelLabel(e.side, String(i+1), showLabels && b.tunnels.length > 1)}</g>`;
     }
   });
   if (coordinates) {
@@ -416,7 +418,7 @@ function renderSvg(b, s, options = {}) {
   }
   for (const ball of s.balls) {
     const p=xy(ball), color=PALETTE[ball.color], active=!mini && settings.outline && options.outlinedBallId===ball.id;
-    const number=b.balls.filter(original=>original.color===ball.color).length>1?ball.id.slice(1):'';
+    const number=showLabels&&b.balls.filter(original=>original.color===ball.color).length>1?ball.id.slice(1):'';
     const numberSize=number.length===1?14:number.length===2?12:10;
     svg += `<g ${mini?'':`id="ball-${ball.id}" data-ball="${ball.id}" role="button" tabindex="${ball.locked?-1:0}" aria-disabled="${ball.locked}" aria-label="${COLOR_NAMES[ball.color]} ${ball.id}, ${pos(ball)}${ball.locked?', docked':', select ball'}"`} class="ball-hit${ball.locked?' locked':''}" style="outline:none;filter:none" transform="translate(${p.x},${p.y})"><circle r="31" fill="transparent"/>${active?`<circle class="selected-ring selected-glow" r="28" fill="none" stroke="${color}" stroke-width="6.5" stroke-opacity=".65" filter="url(#${prefix}-glow)"/><circle class="selected-ring selected-dash" r="27.5" fill="none" stroke="#f5ffff" stroke-width="3" stroke-opacity=".98" stroke-dasharray="5 4"/><circle class="selected-ring selected-inner" r="23.5" fill="none" stroke="${color}" stroke-width="1.5" stroke-opacity=".95" stroke-dasharray="5 4"/>`:''}<circle r="27" fill="${color}" opacity="${ball.locked?'.24':'.58'}" filter="url(#${prefix}-orb-aura)" pointer-events="none"/><circle r="20" fill="${color}" opacity="${ball.locked?'.22':'.48'}" filter="url(#${prefix}-glow)" pointer-events="none"/><circle r="19" fill="${color}" opacity=".16" pointer-events="none"/><circle r="16" fill="none" stroke="${color}" stroke-opacity=".48" stroke-width="1.5" pointer-events="none"/><circle class="orb-core" r="${ball.locked?13:15}" fill="url(#${prefix}-orb-${ball.color})" style="stroke:${color};stroke-width:1"/>${number?`<text class="ball-number" x="0" y="0" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="${numberSize}" font-weight="700" fill="#fff" aria-hidden="true" pointer-events="none" style="paint-order:stroke;stroke:#08131b;stroke-width:2.5;stroke-linejoin:round">${number}</text>`:ball.locked?'<path d="m-6 0 4 4 8-8" fill="none" stroke="#10202a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>':''}</g>`;
   }
@@ -484,7 +486,7 @@ function renderControls() {
   $('use-example').disabled=playbackLocked||!board.solution;
   $('solution-input').disabled=isPlaying;
   $('use-example').title=board.solution?'Load the saved solution from the start':'No saved solution for this board.';
-  for(const [id,on] of [['toggle-coords',settings.coordinates],['toggle-outline',settings.outline],['toggle-trace',settings.trail]]) {$(id).classList.toggle('active',on);$(id).setAttribute('aria-pressed',String(on));}
+  for(const [id,on] of [['toggle-coords',settings.coordinates],['toggle-labels',settings.labels],['toggle-outline',settings.outline],['toggle-trace',settings.trail]]) {$(id).classList.toggle('active',on);$(id).setAttribute('aria-pressed',String(on));}
   renderHint();
 }
 function revealActiveMove() {
@@ -861,6 +863,7 @@ $('copy-route').addEventListener('click',()=>{const text=getNotation(cursor);if(
 $('move-history').addEventListener('click',event=>{if(busy||isPlaying)return;const target=event.target.closest('[data-jump]');if(target)goTo(Number(target.dataset.jump));});
 $('toggle-coords').addEventListener('click',()=>{settings.coordinates=!settings.coordinates;if(!busy)renderBoard();renderControls();persist();});
 $('toggle-trace').addEventListener('click',()=>{settings.trail=!settings.trail;if(!busy)renderBoard();renderControls();persist();});
+$('toggle-labels').addEventListener('click',()=>{settings.labels=!settings.labels;if(!busy)renderBoard();renderControls();persist();});
 $('toggle-outline').addEventListener('click',()=>{settings.outline=!settings.outline;if(!busy)renderBoard();renderControls();persist();});
 $('open-levels').addEventListener('click',()=>{levelsChapter=null;renderLevelCards();openDialog('levels-dialog');revealChapter();});
 $('chapter-bar').addEventListener('click',event=>{const b=event.target.closest('[data-chapter]');if(b)renderLevelCards(Number(b.dataset.chapter));});
@@ -911,7 +914,7 @@ document.addEventListener('keydown',event=>{
   if((event.code==='Space'||event.key===' ')&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.shiftKey){
     event.preventDefault();playRoute();return;
   }
-  const viewToggle=!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&{c:'toggle-coords',o:'toggle-outline',t:'toggle-trace'}[event.key.toLowerCase()];
+  const viewToggle=!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&{c:'toggle-coords',l:'toggle-labels',o:'toggle-outline',t:'toggle-trace'}[event.key.toLowerCase()];
   if(viewToggle){event.preventDefault();$(viewToggle).click();return;}
   if(isPlaying)return;
   const key=event.key.toLowerCase();
@@ -1011,6 +1014,7 @@ function boot() {
   if(!viewSettingsInitialized) {
     const previous=saved?.settings;
     settings.coordinates=previous?.viewDefaultsVersion===1&&previous.coordinates===true;
+    settings.labels=previous?.labels!==false; // default on
     settings.trail=previous?.viewDefaultsVersion===1&&previous.trail===true;
     // Migrate earlier installs to outline-off once; retain subsequent user choices.
     settings.outline=previous?.outlineDefaultsVersion===1 && previous.outline===true;
