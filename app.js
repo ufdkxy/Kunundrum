@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.13.1'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.13.2'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -290,6 +290,14 @@ function tunnelTriangles(side) {
   return dirs.map(([dir, off]) => `<g transform="translate(${horizontal ? off : 0},${horizontal ? 0 : off}) rotate(${angle[dir]})"><polygon points="3.5,0 -3.5,-6 -3.5,6" fill="#fff"/></g>`).join('');
 }
 
+// Pair number (like the switch/gate numbers: only when it tells pairs apart), outside the cell next to the opening; for openings on the
+// board border this lies in the margin around the grid.
+function tunnelLabel(side, label, show) {
+  if (!show) return '';
+  const half = 3.6 * label.length, dx = { u: 0, d: 0, l: -(7 + half), r: 7 + half }[side], dy = { u: -13, d: 13, l: 0, r: 0 }[side];
+  return `<text class="tile-label" x="${dx}" y="${dy}" dominant-baseline="central" fill="#e6f7ff" style="font-size:12px;font-weight:700;paint-order:stroke;stroke:#06131b;stroke-width:3;stroke-linejoin:round">${label}</text>`;
+}
+
 function renderSvg(b, s, options = {}) {
   const mini = !!options.mini;
   const theme = WALL_THEMES[b.wallColor] || WALL_THEMES.B;
@@ -336,7 +344,7 @@ function renderSvg(b, s, options = {}) {
     for (const e of [t.a,t.b]) {
       const px=pad+(e.x-1)*cell, py=pad+(b.height-e.y)*cell;
       const [ex,ey]={u:[px+cell/2,py],d:[px+cell/2,py+cell],l:[px,py+cell/2],r:[px+cell,py+cell/2]}[e.side];
-      svg += `<g class="tunnel-mark" role="img" aria-label="Tunnel ${i+1} opening ${DIRECTION_NAMES[e.side]} of ${pos(e)}" transform="translate(${ex},${ey})" pointer-events="none">${tunnelTriangles(e.side)}</g>`;
+      svg += `<g class="tunnel-mark" role="img" aria-label="Tunnel ${i+1} opening ${DIRECTION_NAMES[e.side]} of ${pos(e)}" transform="translate(${ex},${ey})" pointer-events="none">${tunnelTriangles(e.side)}${tunnelLabel(e.side, String(i+1), b.tunnels.length > 1)}</g>`;
     }
   });
   if (coordinates) {
