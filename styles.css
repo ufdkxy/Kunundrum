@@ -126,6 +126,10 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .gate-off { opacity: .42; stroke-dasharray: 4 4; }
 .rotating-arrow { transform-box: fill-box; transform-origin: center; animation: turn-arrow 4s steps(4, end) infinite; }
 @keyframes turn-arrow { to { transform: rotate(360deg); } }
+/* One shared 1 s tick: clockwise and counterclockwise arrows turn a quarter per tick (period 4); flip arrows reverse every tick (period 2). */
+.rotating-arrow.rotating-ccw { animation-name: turn-arrow-ccw; }
+@keyframes turn-arrow-ccw { to { transform: rotate(-360deg); } }
+.rotating-arrow.rotating-flip { animation-duration: 2s; animation-timing-function: steps(2, end); }
 .board-bottom { min-height: 39px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 18px; border-top: 1px solid #23343f; font-size: 10px; color: #8da1ae; background: #111d27; }
 #board-hint { display: inline-flex; align-items: center; gap: 8px; }
 .mouse-mini { display: inline-block; width: 9px; height: 12px; border: 1px solid #6b8392; border-radius: 4px; position: relative; }

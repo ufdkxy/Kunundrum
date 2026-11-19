@@ -133,7 +133,8 @@ function expandSolution(board, bytes) {
  */
 const CODE_COLORS = 'RGBY*';
 const CODE_DIRECTIONS = 'udlr';
-const KNOWN_FLAGS = 15; // bit 0 description, bit 1 solution, bit 2 wall color (K3 only), bit 3 tunnels (K3 only)
+const KNOWN_FLAGS = 31; // bit 0 description, bit 1 solution, bit 2 wall color (K3 only), bit 3 tunnels (K3 only), bit 4 arrow types (K3 only)
+const ARROW_TYPE_DIGITS = { flip: '0', cw: '1', ccw: '2' }; // ternary digit per rotating arrow, in arrow-list order
 function binaryBoard(board, k3 = true) {
   const bytes = [k3 ? 0xB3 : 0xB2, board.width, board.height];
   const strings = new Map();
@@ -153,7 +154,10 @@ function binaryBoard(board, k3 = true) {
   if (!k3 && board.wallColor !== undefined) throw new Error('K2 cannot store a wall color.');
   const tunnels = board.tunnels ?? [];
   if (!k3 && tunnels.length) throw new Error('K2 cannot store tunnels.');
-  uint((board.description !== undefined ? 1 : 0) | (board.solution !== undefined ? 2 : 0) | (board.wallColor !== undefined ? 4 : 0) | (tunnels.length ? 8 : 0));
+  // Arrow types are stored only when some rotating arrow is not clockwise (all-clockwise boards keep their old codes byte for byte).
+  const rotatingArrows = board.arrows.filter(a => a.rotating), hasTypes = rotatingArrows.some(a => a.type);
+  if (!k3 && hasTypes) throw new Error('K2 cannot store rotating arrow types.');
+  uint((board.description !== undefined ? 1 : 0) | (board.solution !== undefined ? 2 : 0) | (board.wallColor !== undefined ? 4 : 0) | (tunnels.length ? 8 : 0) | (hasTypes ? 16 : 0));
   str(board.id); str(board.title);
   if (board.description !== undefined) str(board.description);
   if (board.wallColor !== undefined) color(board.wallColor); // flag bit 4: cosmetic wall color index (RGBY); omitted for blue
@@ -173,6 +177,7 @@ function binaryBoard(board, k3 = true) {
   list(board.teleports, p => { at(p); str(p.id); color(p.color); uint(p.active ? 1 : 0); });
   list(board.hexes, p => { at(p); str(p.id); uint(p.value < 0 ? -2 * p.value - 1 : 2 * p.value); });
   if (tunnels.length) list(tunnels, t => { for (const e of [t.a, t.b]) { at(e); uint(CODE_DIRECTIONS.indexOf(e.side)); } }); // flag bit 3: one record per pair (two openings: cell, side)
+  if (hasTypes) str(rotatingArrows.map(a => ARROW_TYPE_DIGITS[a.type ?? 'cw']).join('')); // flag bit 4: one ternary digit per rotating arrow
   return new Uint8Array(bytes);
 }
 function unbinaryBoard(bytes, problems) {
@@ -210,7 +215,7 @@ function unbinaryBoard(bytes, problems) {
   };
   const magic=byte();if (magic!==0xB2 && magic!==0xB3) throw new Error('Invalid K2/K3 board header.');
   const width = byte(), height = byte(), flags = uint();
-  if (!(width >= 1 && width <= 32 && height >= 1 && height <= 32) || (flags & ~KNOWN_FLAGS) || (flags & 12 && magic === 0xB2)) throw new Error('Invalid K2 board dimensions or flags.');
+  if (!(width >= 1 && width <= 32 && height >= 1 && height <= 32) || (flags & ~KNOWN_FLAGS) || (flags & 28 && magic === 0xB2)) throw new Error('Invalid K2 board dimensions or flags.');
   const at = () => {
     const index = uint();
     if (index >= width * height) throw new Error('Invalid K2 board position.');
@@ -253,6 +258,11 @@ function unbinaryBoard(bytes, problems) {
   if (flags & 8) {
     const end = () => { const p = at(), s = uint(); if (s > 3) throw new Error('Invalid K3 tunnel side.'); return {...p, side:CODE_DIRECTIONS[s]}; };
     raw.tunnels = list(() => ({a:end(), b:end()}));
+  }
+  if (flags & 16) {
+    const digits = str(), rotating = raw.arrows.filter(a => a.rotating);
+    if (!/^[012]+$/.test(digits) || digits.length !== rotating.length) throw new Error('Invalid K3 rotating arrow types.');
+    rotating.forEach((a, i) => { const type = Object.keys(ARROW_TYPE_DIGITS).find(k => ARROW_TYPE_DIGITS[k] === digits[i]); if (type !== 'cw') a.type = type; });
   }
   if (offset !== bytes.length) throw new Error('Unexpected data after K2/K3 board.');
   if(solutionBytes){

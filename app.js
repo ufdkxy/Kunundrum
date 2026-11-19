@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.13.2'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.14.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -210,7 +210,7 @@ function buildReplay(nextBoard, notation) {
       const previous = result[result.length - 1].state;
       const id = resolveBallId(previous, token.identifier);
       const move = applyMove(previous, nextBoard, id, token.direction, token.choices);
-      if (move.kind === 'choose-direction') throw new Error(`Add a (->u), (->d), (->l), or (->r) choice for the rotating arrow at ${pos(move.position)}.`);
+      if (move.kind === 'choose-direction') throw new Error(`Add the rotating arrow's orientation to this move, e.g. (->u), for the arrow at ${pos(move.position)}.`);
       if (move.kind !== 'ok') throw new Error(move.message);
       result.push(move);
     } catch (error) { throw new Error(`Move ${i + 1} (${token.identifier}${token.direction}): ${error.message}`); }
@@ -363,7 +363,7 @@ function renderSvg(b, s, options = {}) {
   for (const arrow of b.arrows) {
     const p=xy(arrow), degrees={r:0,d:90,l:180,u:270}[arrow.direction], color=arrow.rotating?'#ff8a9b':'#b9d8ff', glow=arrow.rotating?'#ff2a45':'#2f7dff';
     const chev=[-21,-10,1].map((a,i)=>`<polygon points="${a},-14 ${a+6},-14 ${a+16},0 ${a+6},14 ${a},14 ${a+10},0" opacity="${[.62,1,.45][i]}"/>`).join('');
-    svg += `<g role="img" aria-label="${arrow.rotating?'Rotating':'Fixed'} arrow ${DIRECTION_NAMES[arrow.direction]} ${pos(arrow)}" transform="translate(${p.x},${p.y})">${arrow.rotating?`<circle r="23" fill="none" stroke="${color}" stroke-opacity=".3" stroke-dasharray="3 5"/>`:''}<g transform="rotate(${degrees})"><g class="${arrow.rotating?'rotating-arrow':''}"><g fill="${glow}" filter="url(#${prefix}-glow)" opacity=".9">${chev}</g><g fill="${color}" stroke="${color}" stroke-width=".8" stroke-linejoin="round">${chev}</g></g></g></g>`;
+    svg += `<g role="img" aria-label="${arrow.rotating?({ccw:'Counterclockwise rotating',flip:'Flipping'}[arrow.type]||'Clockwise rotating'):'Fixed'} arrow ${DIRECTION_NAMES[arrow.direction]} ${pos(arrow)}" transform="translate(${p.x},${p.y})">${arrow.rotating?`<circle r="23" fill="none" stroke="${color}" stroke-opacity=".3" stroke-dasharray="3 5"/>`:''}<g transform="rotate(${degrees})"><g class="${arrow.rotating?'rotating-arrow'+(arrow.type?' rotating-'+arrow.type:''):''}"><g fill="${glow}" filter="url(#${prefix}-glow)" opacity=".9">${chev}</g><g fill="${color}" stroke="${color}" stroke-width=".8" stroke-linejoin="round">${chev}</g></g></g></g>`;
   }
   for (const teleport of b.teleports) {
     const p=xy(teleport), on=s.teleportActive[teleport.id], universal=teleport.color==='*';
@@ -622,7 +622,10 @@ async function makeMove(id,direction,choices=[]) {
   if(result.kind==='choose-direction') {
     pendingMove={id,direction,choices};
     renderBoard({path:result.path,record:{ballId:id}});
-    $('rotate-caption').textContent=`At ${pos(result.position)}, choose the arrow's exit direction.`;
+    $('rotate-caption').textContent=result.choicesUsed
+      ?`The first arrow fixed only half of the clock. Choose which way the arrow at ${pos(result.position)} points to settle the rest.`
+      :`Choose which way the arrow at ${pos(result.position)} points when the ball reaches it.`;
+    document.querySelectorAll('[data-rotation]').forEach(button=>{button.hidden=!result.options.includes(button.dataset.rotation);});
     openDialog('rotate-dialog');
     return;
   }
@@ -978,7 +981,7 @@ window.KunundrumHost = {
   // Solver dialog (solver-ui.js): the current board as a K3 code without a route, plus the saved solution's score and moves when it replays to completion. Stops any playback.
   prepareSolver:()=>{
     stopPlayback();
-    const {solution,...bare}=board,info={code:encodeBoard(bare),title:board.title,id:currentPresetId,saved:null,tunnels:(bare.tunnels||[]).length>0};
+    const {solution,...bare}=board,info={code:encodeBoard(bare),title:board.title,id:currentPresetId,saved:null,tunnels:(bare.tunnels||[]).length>0,rotating:(bare.arrows||[]).some(a=>a.rotating)};
     if(solution){try{const f=buildReplay(board,solution),s=f[f.length-1].state;if(isComplete(s))info.saved={notation:solution,score:s.score,moves:s.moves};}catch{}}
     return info;
   },
@@ -993,7 +996,7 @@ window.KunundrumHost = {
     if(spec.type==='wall'){b.walls.push(at);if(spec.wallColor)b.wallColor=spec.wallColor;}
     if(spec.type==='gate')b.gates.push({...at,id:'G1',active:spec.active!==false});
     if(spec.type==='switch')b.switches.push({...at,id:'S',controls:[],on:false});
-    if(spec.type==='arrow')b.arrows.push({...at,direction:spec.direction||'r',...(spec.rotating?{rotating:true}:{})});
+    if(spec.type==='arrow')b.arrows.push({...at,direction:spec.direction||'r',...(spec.rotating?{rotating:true,...(spec.arrowType&&spec.arrowType!=='cw'?{type:spec.arrowType}:{})}:{})});
     if(spec.type==='teleport')b.teleports.push({...at,id:'T1',color:spec.color||'*',active:spec.active!==false});
     if(spec.type==='hex')b.hexes.push({...at,id:'hex1',value:spec.value||-5});
     if(spec.type==='tunnel')b.tunnels=[{a:{...at,side:'l'},b:{...at,side:'r'}}];

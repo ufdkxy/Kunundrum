@@ -79,7 +79,8 @@ function showResult(r, certifying) {
 
 async function run(certifying) {
   if (!info || (certifying && !info.saved)) return;
-  if (info.tunnels) { $('solver-result').hidden = true; $('solver-progress').hidden = false; $('solver-progress').textContent = 'The solver does not support tunnels yet.'; return; }
+  const unsupported = info.tunnels ? 'tunnels' : info.rotating ? 'rotating arrows (its model differs from the game)' : '';
+  if (unsupported) { $('solver-result').hidden = true; $('solver-progress').hidden = false; $('solver-progress').textContent = `The solver does not support ${unsupported} yet.`; return; }
   const token = ++runToken;
   $('solver-result').hidden = true;
   $('solver-progress').hidden = false;

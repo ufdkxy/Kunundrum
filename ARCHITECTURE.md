@@ -60,7 +60,7 @@ Core.formatMove(record) -> string
 Core.formatSolution(records) -> string
 ```
 
-`applyMove` returns `{kind:'ok', state, path, record, events}` on success; `{kind:'choose-direction',position,choicesUsed,path,message}` for a missing rotating-arrow choice; or `{kind:'blocked'|'loop'|'error',message,path?}` for failure. The input board/state are not mutated. See [RULES.md](RULES.md) for transition details.
+`applyMove` returns `{kind:'ok', state, path, record, events}` on success; `{kind:'choose-direction',position,choicesUsed,options,path,message}` for a missing rotating-arrow orientation (`options` = the valid letters); or `{kind:'blocked'|'loop'|'error',message,path?}` for failure. The input board/state are not mutated. See [RULES.md](RULES.md) for transition details.
 
 ### State and replay model
 
@@ -105,7 +105,8 @@ byte: width             1..32
 byte: height            1..32
 varuint: flags          bit 0 = description present, bit 1 = solution present,
                         bit 2 = wall color present (K3 only),
-                        bit 3 = tunnels present (K3 only)
+                        bit 3 = tunnels present (K3 only),
+                        bit 4 = rotating arrow types present (K3 only)
 string: id
 string: title
 [string: description]
@@ -120,6 +121,7 @@ list: switches           (position, id, onBool, controls[])
 list: teleports          (position, id, color, activeBool)   one record per endpoint; partners are derived from colors (RULES.md)
 list: hexes              (position, id, zigzagSignedValue)
 [list: tunnels]          (only if flags bit 3; one record per pair: position, side index in `udlr`, position, side index)
+[string: arrow types]    (only if flags bit 4, i.e. some rotating arrow is not clockwise; one ternary digit per rotating arrow in arrow-list order: 0 = flip, 1 = clockwise, 2 = counterclockwise)
 ```
 
 - **Wall color** is purely cosmetic (neon outline and floor-grid tint) and uniform per board: JSON `wallColor` is `R` or `G`, omitted for blue (an explicit `B` is accepted and normalized away, so blue boards keep their old codes byte for byte). It has no effect on the engine or the solver, which only carry it through. Readers reject unknown flag bits; K2 cannot hold it.
@@ -135,7 +137,7 @@ list: hexes              (position, id, zigzagSignedValue)
 
 ```text
 varuint: numberOfMoves (1..10000)
-byte: choiceMode         0 = none, 1 = explicit rotating-arrow choices
+byte: choiceMode         0 = none, 1 = explicit rotating-arrow orientations (at most 2 per move)
 bits: packed move codes (ceil(log2(4 * numberOfBalls)) per move)
 [if choiceMode 1: varuint choiceCount for EACH move]
 [if choiceMode 1: all packed choice directions, 2 bits each]

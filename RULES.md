@@ -19,7 +19,7 @@ Rules are applied in this order on **each newly entered cell**:
 
 1. Mark the cell as entered, and add it to the move path.
 2. If it contains an unconsumed score hexagon, collect its signed value once for the entire run.
-3. If it contains a fixed arrow, change the move heading to the arrow direction. If it contains a rotating arrow, use the next explicit player-selected heading.
+3. If it contains a fixed arrow, change the move heading to the arrow direction. If it contains a rotating arrow, its orientation comes from the shared arrow clock, whose phase the player chose before the move (see **Rotating arrows** below); during the move every arrow is fixed.
 4. If it contains a **currently active, compatible** teleport, attempt its instantaneous jump to the partner endpoint (see **Teleport pairing**). The teleport is compatible if its color matches the ball or is `*` (universal). If it has no partner for this ball, the partner is **switched off**, or the exit is occupied by another ball, the sliding ball **stops at the entrance**. Otherwise append the exit to the path and resume sliding from that exit in the current heading.
 
 **Teleport pairing.** `teleports` holds single endpoints, each with its own cell, color (`R`, `G`, `B`, `Y` or `*`) and on/off state; pairs are not stored. The partner is derived from the colors alone: same-color endpoints pair up; two universals pair only with each other (independent of the colored pairs); a lone universal is a **hub** paired with the single endpoint of every other color, and a ball entering the hub exits at the endpoint of its own color (a ball with no such endpoint stops on the hub). Valid boards have at most 2 endpoints per color and at most 2 universals, every single colored endpoint needs exactly one universal, and a lone universal needs at least one single. A switch controls endpoints individually (e.g. one half of a pair), so a pair can have one half on and one off: a matching ball entering the on half **stops there**, and the off half is ordinary floor. Pressing the switch turns the off half on.
@@ -28,7 +28,9 @@ Rules are applied in this order on **each newly entered cell**:
 
 **Important:** A teleport exit does not immediately trigger that exit cell's other features: processing resumes with the next step. The heading chosen at an arrow is retained across a teleport. An inactive or color-incompatible teleport behaves like ordinary traversable floor.
 
-A move must enter at least one new cell. A blocked first step is a no-op, not a move. A repeated `(position, heading, number-of-rotating-choices-used)` configuration or a move exceeding 65,536 simulation iterations is rejected as a loop; the original state is unchanged. An incomplete rotating-arrow decision returns a `choose-direction` result rather than committing a partial move. Extra unused choices are invalid.
+A move must enter at least one new cell. A blocked first step is a no-op, not a move. A repeated `(position, heading, number-of-rotating-orientations-used)` configuration or a move exceeding 65,536 simulation iterations is rejected as a loop; the original state is unchanged. An incomplete rotating-arrow decision returns a `choose-direction` result (with the valid orientations) rather than committing a partial move. Extra unused orientations are invalid.
+
+**Rotating arrows.** All rotating (red) arrows turn in sync on one shared clock, one tick at a time. Each has a **type**: `cw` clockwise (a quarter turn per tick, period 4, the default), `ccw` counterclockwise (period 4), or `flip` (alternates between its direction and the opposite, period 2). The board stores every arrow's direction as displayed at clock phase 0 (the screenshot instant) and, for non-clockwise arrows, its `type`. Waiting is free and the clock is frozen while a ball moves (it resumes when the move ends), so the player simply picks the clock phase p (0–3) before each move; phase is not game state. Within a move, every rotating arrow shows its orientation for p, and an arrow met twice shows the same orientation both times. Rotating arrows on the cell where the ball starts, or where it stops, have no effect (only newly entered cells count, as for fixed arrows). The move therefore needs only the orientations that determine p: the **first** rotating arrow the ball reaches is chosen by the player (4 orientations for `cw`/`ccw`, its 2 opposite directions for `flip`); if that arrow is `flip`, it fixes only the parity of p, so the **first period-4 arrow reached after it** is chosen too (its 2 orientations compatible with that parity). If no period-4 arrow is reached, nothing more is needed. A letter that is impossible for the arrow is an error. Notation: see §5.
 
 ## 3. Goals, locking, switches, and score
 
@@ -64,7 +66,7 @@ G2l,G3d,G1r,G3ru,G5d,G4l,G5ur,G3l,G6dl,G2u,G3rdld,G1l
 Rr(->u),Gd
 ```
 
-The second example is the bundled 18-move route for level 8.1. Each `u/d/l/r` is **one whole move**, not a single-cell step. For a rotating arrow encountered during a move, immediately follow that move's initial direction with one `(->u)`, `(->d)`, `(->l)`, or `(->r)` **per rotating-arrow encounter in traversal order** (Unicode `→` is accepted in place of `->`). For example `Rr(->u)` means move red right and choose up at the encountered rotating arrow. No comma separates an arrow choice from its move.
+The second example is the bundled 18-move route for level 8.1. Each `u/d/l/r` is **one whole move**, not a single-cell step. For a rotating arrow encountered during a move, immediately follow that move's initial direction with **one** annotation `(->x)`, where `x` is the orientation (`u`, `d`, `l`, or `r`) of the first rotating arrow met (Unicode `→` is accepted in place of `->`). If that arrow is a `flip` arrow and the path later reaches a period-4 arrow, add that arrow's orientation as a second letter: `(->xy)`, e.g. `Rr(->ur)` = move red right, the first (period-2) arrow points up, the first period-4 arrow points right, regardless of any further period-2 arrows in between. Two separate annotations on one move are invalid, and no comma separates the annotation from its move.
 
 Text parsing checks syntax and identifiers; applying the moves against successive states checks their legality. `Core.formatSolution` coalesces adjacent moves of the same ball into one group. A saved `solution` field need not be winning merely because its notation parses: validate by replaying it and checking `Core.isComplete`.
 
@@ -91,29 +93,26 @@ Text parsing checks syntax and identifiers; applying the moves against successiv
 Additional feature shapes:
 
 ```json
-{"x": 2, "y": 1, "direction": "u", "rotating": true}
+{"x": 2, "y": 1, "direction": "u", "rotating": true, "type": "flip"}
 {"id": "T1", "x": 1, "y": 2, "color": "*", "active": true}
 {"id": "H1", "x": 3, "y": 1, "value": -5}
 {"a": {"x": 1, "y": 3, "side": "l"}, "b": {"x": 8, "y": 3, "side": "r"}}
 ```
 
-The four snippets above illustrate arrow, teleport, hexagon and tunnel (pair of openings) entries respectively; insert them into the appropriate arrays, **not all on top of existing features**. Validation limits include 1–32 cells per dimension, 1–128 balls, up to 4,096 entries per feature array, and valid references from switches to gate and teleport IDs (a gate and a teleport may not share an ID). Duplicate feature IDs, overlapping floor features, insufficient goals by color, and initial balls inside fixed/active walls are rejected.
+The four snippets above illustrate arrow (a rotating arrow may add `"type": "ccw"` or `"flip"`; clockwise is the default and is omitted), teleport, hexagon and tunnel (pair of openings) entries respectively; insert them into the appropriate arrays, **not all on top of existing features**. Validation limits include 1–32 cells per dimension, 1–128 balls, up to 4,096 entries per feature array, and valid references from switches to gate and teleport IDs (a gate and a teleport may not share an ID). Duplicate feature IDs, overlapping floor features, insufficient goals by color, and initial balls inside fixed/active walls are rejected.
 
 ## 6a. How features look in the game (for screenshot parsing)
 
-- **Arrows:** red chevrons are **rotating** arrows (the player picks the exit); blue chevrons are **fixed** arrows. There are no green arrows. Chevron colours do not follow the level theme.
+- **Arrows:** red chevrons are **rotating** arrows (their type, clockwise / counterclockwise / flip, cannot be told from one screenshot, so the parser guesses clockwise and the type is supplied by hand); blue chevrons are **fixed** arrows. There are no green arrows. Chevron colours do not follow the level theme.
 - **Switchable elements** (gates and some teleports) are drawn on a metal tile split into quadrants by a dark central cross. A board with a single switch is unambiguous: it controls every switchable element.
 - **Gates:** plain grey metal = **inactive** (floor); metal with a yellow/brown striped border = **active** (acts as a wall).
 - **Teleports:** four coloured corner arcs, a bright centre dot and dim concentric circles. Drawn on bare floor = always on (not switchable); drawn over the metal cross tile = switchable. An **inactive** teleport loses its colour (grey concentric circles on the metal tile).
 - **Tunnels:** two small white triangles side by side along a gap in the neon outline (board edge or an outline segment), pointing in opposite directions (one out of the board, one into it). The pairing is not visible.
 - **Switches:** solid glossy disc; red = off, green with a depressed shadow = on (display state only, see 3).
 
-## 6b. Observed mechanics not yet implemented in `engine.js`
+## 6b. Mechanics not yet implemented in the solver
 
-Recorded from game screenshots; the simulator above does **not** implement this yet. (Tunnels, formerly called wraparound walls, are implemented: see §2.)
-
-- **Rotating arrows.** All red (rotating) arrows rotate **in sync** on one shared phase clock. Each rotating arrow has one of three types: **clockwise** (period 4), **counterclockwise** (period 4), or **flipping** between two opposite directions (period 2). A screenshot captures every arrow at one instant of the clock, so a board's rotating arrows are fully described by their displayed directions plus a ternary string giving each arrow's type (in lexicographic order). **Confirmed rule (2026-11-13):** orientations are frozen for the duration of one ball move. By waiting (letting the shared clock advance) before the move, the player can pick the orientation of the **first** rotating arrow the ball reaches; every later rotating arrow in the same move then shows whatever that same clock phase gives it and cannot be chosen independently. The current engine and solver differ: their "rotating" arrow lets the player pick an exit independently at **every** rotating arrow of a move (one `(->x)` per encounter). That is a looser model, so solutions and certified move counts for boards with rotating arrows describe the simplified model, not the game, until this is implemented.
-  - *Still open:* whether waiting costs a move or score; whether the clock also advances after each move; which orientations the first arrow can show (a clockwise or counterclockwise arrow cycles through all four, a flipping arrow only its two opposite directions); and how the phase and arrow types are stored in boards, the solution notation and K3.
+Tunnels (formerly wraparound walls) and rotating arrows (§2) are implemented in `engine.js`, K3, the app and the editor, but **not in `solver.cpp`** (see STATUS MECH-004 / MECH-005). Until they are, the solver's rotating-arrow model (an independent choice at every rotating arrow) is looser than the game and must not be used to certify boards with rotating arrows.
 
 ## 7. Invariants to preserve when editing mechanics
 

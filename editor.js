@@ -47,7 +47,7 @@ function applyTunnelProperty(key,value){
 // Nearest cell side to the pointer, from the cell's hit rectangle (used by the Tunnel tool).
 function sideOf(event){const el=event.target.closest?.('[data-edit-x]');if(!el)return null;const r=el.getBoundingClientRect(),fx=(event.clientX-r.left)/r.width,fy=(event.clientY-r.top)/r.height,d={l:fx,r:1-fx,u:fy,d:1-fy};return Object.keys(d).reduce((m,k)=>d[k]<d[m]?k:m,'l');}
 const openingAt=(t,x,y,side)=>[t.a,t.b].some(e=>e.x===x&&e.y===y&&(!side||e.side===side));
-const mutable = {active:false,draft:null,grab:null,floatDrag:null,preferFloor:false,pendingTunnel:null,clickSide:null,hitTunnel:null,tool:'select',color:'G',direction:'r',rotating:false,activeTile:true,hexValue:-5,selected:null,history:[],future:[],dragging:false,dragChanged:false,dragBefore:null,lastCell:'',dirty:false};
+const mutable = {active:false,draft:null,grab:null,floatDrag:null,preferFloor:false,pendingTunnel:null,clickSide:null,hitTunnel:null,tool:'select',color:'G',direction:'r',rotating:false,arrowType:'cw',activeTile:true,hexValue:-5,selected:null,history:[],future:[],dragging:false,dragChanged:false,dragBefore:null,lastCell:'',dirty:false};
 const E = mutable;
 const host = () => window.KunundrumHost;
 const same=(a,b)=>a&&b&&a.x===b.x&&a.y===b.y;
@@ -75,7 +75,7 @@ function putProps(){
  const colors=Object.keys(colorNames).filter(c=>match.type==='teleports'||c!=='*').map(c=>[c,colorNames[c]]);
  let html=`<div class="editor-object-title">${singular[match.type]||esc(match.type)}${item.id?' · '+esc(item.id):''}</div>`;
  if(item.color)html+=select('Color',colors,item.color);
- if(match.type==='arrows'){html+=select('Direction',[['u','Up'],['d','Down'],['l','Left'],['r','Right']],item.direction);html+=select('Rotating',[["false","No"],["true","Yes"]],String(!!item.rotating));}
+ if(match.type==='arrows'){html+=select('Direction',[['u','Up'],['d','Down'],['l','Left'],['r','Right']],item.direction);html+=select('Rotating',[["false","No"],["true","Yes"]],String(!!item.rotating));if(item.rotating)html+=select('Type',[['cw','Clockwise'],['ccw','Counterclockwise'],['flip','Flip']],item.type||'cw');}
  if(match.type==='gates'){html+=select('Active',[["true","On"],["false","Off"]],String(item.active));}
  if(match.type==='switches'){html+=input('Gate/Teleport IDs',item.controls.join(', '));html+=select('Active',[["true","On"],["false","Off"]],String(!!item.on));}
  if(match.type==='teleports'){html+=select('Active',[["true","On"],["false","Off"]],String(item.active));}
@@ -85,7 +85,7 @@ function putProps(){
 }
 const iconCache={};
 function renderIcons(){
- const color=E.color,spec={ball:{color},goal:{color},wall:{wallColor:E.draft?.wallColor},gate:{active:E.activeTile},switch:{},arrow:{direction:E.direction,rotating:E.rotating},teleport:{color,active:E.activeTile},hex:{value:E.hexValue||-5}};
+ const color=E.color,spec={ball:{color},goal:{color},wall:{wallColor:E.draft?.wallColor},gate:{active:E.activeTile},switch:{},arrow:{direction:E.direction,rotating:E.rotating,arrowType:E.arrowType},teleport:{color,active:E.activeTile},hex:{value:E.hexValue||-5}};
  for(const el of document.querySelectorAll('[data-tool-icon]')){
   const type=el.dataset.toolIcon,args={type,...spec[type]},key=JSON.stringify(args);
   if(el.dataset.iconKey===key)continue;
@@ -112,6 +112,7 @@ function refresh(){
  $('editor-width').value=E.draft?.width??10;$('editor-height').value=E.draft?.height??7;
  $('editor-hex').value=E.hexValue;
  $('editor-rotating').checked=E.rotating;
+ $('editor-arrow-type').value=E.arrowType;
  $('editor-active').checked=E.activeTile;
  for(const button of document.querySelectorAll('[data-editor-tool]')){button.classList.toggle('chosen',button.dataset.editorTool===E.tool);button.setAttribute('aria-pressed',String(button.dataset.editorTool===E.tool));}
  for(const button of document.querySelectorAll('[data-editor-color]')){button.classList.toggle('chosen',button.dataset.editorColor===E.color);button.setAttribute('aria-pressed',String(button.dataset.editorColor===E.color));}
@@ -127,6 +128,7 @@ function refresh(){
  $('editor-hex-label').hidden=t!=='hex';
  $('editor-active-label').hidden=!['gate','teleport'].includes(t);
  $('editor-rotating-label').hidden=t!=='arrow';
+ $('editor-arrow-type-label').hidden=t!=='arrow'||!E.rotating;
  $('board-stage').classList.toggle('editor-select-tool',E.active&&E.tool==='select');
  if(E.tool!=='select')$('board-stage').classList.remove('editor-grabbable','editor-grabbing');
  putProps();
@@ -318,7 +320,7 @@ function editAt(x,y,eraser=false){
   if(t==='goal')b.goals.push({...point,color:E.color});
   if(t==='gate')b.gates.push({...point,id:nextId(b.gates,'G'),active:E.activeTile});
   if(t==='switch')b.switches.push({...point,id:nextId(b.switches,'S'),controls:[],on:false});
-  if(t==='arrow')b.arrows.push({...point,direction:E.direction,...(E.rotating?{rotating:true}:{})});
+  if(t==='arrow')b.arrows.push({...point,direction:E.direction,...(E.rotating?{rotating:true,...(E.arrowType!=='cw'?{type:E.arrowType}:{})}:{})});
   if(t==='hex')b.hexes.push({...point,id:nextId(b.hexes,'hex'),value:E.hexValue||-5});
  }
  prune(b);
@@ -335,7 +337,8 @@ function applyProperty(key,value){
  delete E.draft.solution;
  if(key==='Color')data.color=value;
  if(key==='Direction')data.direction=value;
- if(key==='Rotating')data.rotating=value==='true';
+ if(key==='Rotating'){data.rotating=value==='true';if(!data.rotating)delete data.type;}
+ if(key==='Type'){if(value==='cw')delete data.type;else data.type=value;}
  if(key==='Active'){if(sel.type==='switches'){const on=value==='true',same=data.controls.join(',');for(const sw of E.draft.switches)if(sw===data||(same&&sw.controls.join(',')===same)){if(on)sw.on=true;else delete sw.on;}}else data.active=value==='true';}
 
  if(key==='Gate/Teleport IDs')data.controls=list(value);
@@ -378,7 +381,8 @@ panel.addEventListener('click',event=>{
  const d=event.target.closest('[data-editor-direction]');if(d){E.direction=d.dataset.editorDirection;refresh();return;}
 });
 $('editor-hex').addEventListener('change',e=>E.hexValue=Number(e.target.value)||-5);
-$('editor-rotating').addEventListener('change',e=>E.rotating=e.target.checked);
+$('editor-rotating').addEventListener('change',e=>{E.rotating=e.target.checked;refresh();});
+$('editor-arrow-type').addEventListener('change',e=>E.arrowType=e.target.value);
 $('editor-active').addEventListener('change',e=>E.activeTile=e.target.checked);
 function cellAt(event){const el=event.target.closest?.('[data-edit-x]');if(el)return [Number(el.dataset.editX),Number(el.dataset.editY)];const svg=$('board-stage').querySelector('svg');if(!svg)return null;const point=svg.createSVGPoint();point.x=event.clientX;point.y=event.clientY;const transform=svg.getScreenCTM();if(!transform)return null;const converted=point.matrixTransform(transform.inverse());const x=Math.floor((converted.x-18)/64)+1,y=E.draft.height-Math.floor((converted.y-18)/64);return [x,y];}
 const stage=$('board-stage');

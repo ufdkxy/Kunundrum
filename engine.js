@@ -11,6 +11,15 @@ const DELTAS                         = {
   u: { x: 0, y: 1 }, d: { x: 0, y: -1 }, l: { x: -1, y: 0 }, r: { x: 1, y: 0 },
 };
 const OPPOSITE = { u: "d", d: "u", l: "r", r: "l" };
+const ARROW_TYPES = ["cw", "ccw", "flip"];
+const CLOCKWISE = ["u", "r", "d", "l"];
+/** Direction a rotating arrow shows at shared clock phase 0-3. The board stores each arrow as displayed at phase 0.
+ * cw / ccw turn a quarter turn per tick (period 4); flip alternates between its direction and the opposite (period 2). */
+function arrowOrientation(arrow, phase) {
+  const type = arrow.type ?? "cw";
+  if (type === "flip") return phase % 2 ? OPPOSITE[arrow.direction] : arrow.direction;
+  return CLOCKWISE[(CLOCKWISE.indexOf(arrow.direction) + (type === "cw" ? phase : 4 - phase)) % 4];
+}
 const posKey = (p     )         => `${p.x},${p.y}`;
 const samePos = (a     , b     )          => a.x === b.x && a.y === b.y;
 const rowOrder = (a     , b     )         => a.y - b.y || a.x - b.x;
@@ -108,7 +117,10 @@ function validateBoard(raw         , problems         , notes         )        {
   const arrows = entries(source, "arrows").map((value, i) => {
     const item = object(value, `Arrow ${i + 1}`);
     const rotating = boolean(item.rotating, `Arrow ${i + 1} rotating`, false);
-    return { ...point(item, `Arrow ${i + 1}`), direction: direction(item.direction, `Arrow ${i + 1} direction`), ...(rotating ? { rotating: true } : {}) };
+    // Rotating arrows have a type: cw (clockwise, the default and never stored), ccw or flip. A fixed arrow has none.
+    const type = item.type === undefined ? "cw" : item.type;
+    if (!ARROW_TYPES.includes(type)) throw new Error(`Arrow ${i + 1} type must be cw, ccw or flip.`);
+    return { ...point(item, `Arrow ${i + 1}`), direction: direction(item.direction, `Arrow ${i + 1} direction`), ...(rotating ? { rotating: true, ...(type !== "cw" ? { type } : {}) } : {}) };
   }).sort(rowOrder);
   const gates = entries(source, "gates").map((value, i) => {
     const item = object(value, `Gate ${i + 1}`);
@@ -265,7 +277,7 @@ function applyMove(state           , board       , ballId        , direction    
   if (!ball) return fail("error", `There is no ball named ${ballId}.`);
   if (ball.locked) return fail("blocked", `${ballId} is docked and cannot move.`);
   if (!DIRECTIONS.includes(direction) || choices.some(c => !DIRECTIONS.includes(c))) return fail("error", "Directions must be u, d, l, or r.");
-  if (choices.length > 1024) return fail("error", "A move can contain at most 1024 rotating-arrow choices.");
+  if (choices.length > 2) return fail("error", "A move takes at most two rotating-arrow orientations.");
   const path              = [{ x: ball.x, y: ball.y }];
   const others = state.balls.filter(b => b.id !== ballId);
   const occupied = new Set(others.map(posKey));
@@ -279,7 +291,11 @@ function applyMove(state           , board       , ballId        , direction    
   const consumed = new Set(state.consumedHexIds);
   const visited = new Set        ();
   const events           = [];
+  // The shared arrow clock is frozen during a move, and waiting is free, so the player picks its phase before the move. `phase` (0-3) and
+  // `parity` (phase mod 2) are what the supplied orientations have fixed so far: the first rotating arrow's orientation is chosen
+  // (a flip arrow fixes only the parity), then the first period-4 arrow met after a flip arrow fixes the rest.
   let x = ball.x, y = ball.y, heading = direction, choicesUsed = 0, scoreDelta = 1;
+  let phase = null, parity = null;
   let entered = false, steps = 0;
   while (true) {
     if (++steps > 65536) return fail("loop", "This move is too long to resolve safely. Nothing was changed.", path);
@@ -301,8 +317,18 @@ function applyMove(state           , board       , ballId        , direction    
     const arrow = arrows.get(key);
     if (arrow) {
       if (arrow.rotating) {
-        if (choicesUsed >= choices.length) return { kind: "choose-direction", position: { x, y }, choicesUsed, path, message: `Choose the rotating arrow's exit at (${x},${y}).` };
-        heading = choices[choicesUsed++];
+        const flip = arrow.type === "flip";
+        if (phase !== null || (parity !== null && flip)) heading = arrowOrientation(arrow, phase ?? parity);
+        else {
+          const candidates = parity === null ? [0, 1, 2, 3] : [parity, parity + 2];
+          const options = [...new Set(candidates.map(p => arrowOrientation(arrow, p)))];
+          if (choicesUsed >= choices.length) return { kind: "choose-direction", position: { x, y }, choicesUsed, options, path, message: `Choose the rotating arrow's orientation at (${x},${y}).` };
+          const chosen = choices[choicesUsed++];
+          if (!options.includes(chosen)) return fail("error", `The rotating arrow at (${x},${y}) cannot show ${DIRECTION_NAMES[chosen]} in this move; use ${options.map(o => DIRECTION_NAMES[o]).join(" or ")}.`, path);
+          const matching = candidates.filter(p => arrowOrientation(arrow, p) === chosen);
+          if (flip) parity = matching[0] % 2; else phase = matching[0];
+          heading = chosen;
+        }
       } else heading = arrow.direction;
     }
     const endpoint = teleportCells.get(key);
@@ -316,7 +342,7 @@ function applyMove(state           , board       , ballId        , direction    
     }
   }
   if (!entered) return fail("blocked", `${ballId} cannot move ${DIRECTION_NAMES[direction]} from here.`, path);
-  if (choicesUsed !== choices.length) return fail("error", `This move uses ${choicesUsed} rotating-arrow ${choicesUsed === 1 ? "choice" : "choices"}, but ${choices.length} were supplied.`, path);
+  if (choicesUsed !== choices.length) return fail("error", `This move needs ${choicesUsed} rotating-arrow ${choicesUsed === 1 ? "orientation" : "orientations"}, but ${choices.length} ${choices.length === 1 ? "was" : "were"} supplied.`, path);
   const end = { x, y };
   const locked = board.goals.some(g => g.color === ball.color && samePos(g, end));
   const nextState            = {
@@ -372,10 +398,12 @@ function parseSolution(text        )              {
       if (!DIRECTIONS.includes(direction)) throw new Error(`Expected u, d, l, or r after ${identifier} in group ${groupIndex + 1}; found '${group[index]}'.`);
       index++; moveCount++;
       const choices              = [];
-      while (group[index] === "(") {
-        const choice = /^\((?:->|→)([udlr])\)/.exec(group.slice(index));
-        if (!choice) throw new Error(`Invalid rotating-arrow annotation in group ${groupIndex + 1}; use (->u), (->d), (->l), or (->r).`);
-        choices.push(choice[1]             ); index += choice[0].length;
+      if (group[index] === "(") {
+        // One annotation per move: (->u), or two letters (->ur) = first arrow's orientation, then the first period-4 arrow's after a flip arrow.
+        const choice = /^\((?:->|→)([udlr]{1,2})\)/.exec(group.slice(index));
+        if (!choice) throw new Error(`Invalid rotating-arrow annotation in group ${groupIndex + 1}; use (->u), or (->ur) with two letters.`);
+        choices.push(...choice[1].split("")); index += choice[0].length;
+        if (group[index] === "(") throw new Error(`Group ${groupIndex + 1} has two annotations on one move; write the letters together, e.g. (->ur).`);
       }
       tokens.push({ identifier, direction, choices });
       if (tokens.length > 10000) throw new Error("A replay can contain at most 10,000 moves.");
@@ -416,13 +444,13 @@ function resolveBallId(state           , identifier        )         {
 }
 
 function formatMove(record                                                      )         {
-  return `${record.ballId}${record.direction}${record.choices.map(c => `(->${c})`).join("")}`;
+  return `${record.ballId}${record.direction}${record.choices.length ? `(->${record.choices.join("")})` : ""}`;
 }
 function formatSolution(records                                                             )         {
   const groups           = [];
   let previousId = "";
   for (const record of records) {
-    const directions = `${record.direction}${record.choices.map(c => `(->${c})`).join("")}`;
+    const directions = `${record.direction}${record.choices.length ? `(->${record.choices.join("")})` : ""}`;
     if (record.ballId === previousId) groups[groups.length - 1] += directions;
     else groups.push(`${record.ballId}${directions}`);
     previousId = record.ballId;
@@ -430,5 +458,5 @@ function formatSolution(records                                                 
   return groups.join(",");
 }
 
-return {validateBoard,teleportExit,createInitialState,applyMove,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES};
+return {validateBoard,arrowOrientation,teleportExit,createInitialState,applyMove,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES};
 })();
