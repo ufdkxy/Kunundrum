@@ -672,5 +672,4 @@ body.edit-mode .selected-info { display:none; }
 .solver-stats { margin-top: 10px; color: #7c97a6; font: 11px var(--mono); }
 #solver-copy { margin-top: 10px; }
 
-.editor-tunnel-hit{cursor:pointer}
 .editor-note{font-size:12px;line-height:1.4;color:var(--muted,#9db4c0);margin:2px 0 6px}

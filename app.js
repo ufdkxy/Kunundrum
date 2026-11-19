@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.13.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.13.1'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -137,6 +137,7 @@ function renderHelpIcons() {
     name === 'arrow' ? '-24 -24 48 48' : undefined,
   ));
   icons.push(frame(`<g fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS.undo}</g>`, '-2 -2 28 28'));
+  icons.splice(4, 0, frame(`<g transform="scale(1.9)">${tunnelTriangles('u')}</g>`)); // "Use a tunnel" sits after the teleport entry
   return icons;
 }
 
@@ -282,11 +283,11 @@ function mappingLabels(b) {
 
 // Tunnel opening marker, as in the game: two small triangles side by side along the outline gap, pointing in opposite directions
 // (one out of the board, one into it). Coordinates are relative to the centre of the opened cell side.
-function tunnelTriangles(side, glow) {
-  const horizontal = side === 'u' || side === 'd', gap = 13;
+function tunnelTriangles(side) {
+  const horizontal = side === 'u' || side === 'd', gap = 7.5;
   const dirs = { u: [['u', -gap], ['d', gap]], d: [['u', -gap], ['d', gap]], l: [['r', -gap], ['l', gap]], r: [['r', -gap], ['l', gap]] }[side];
   const angle = { r: 0, d: 90, l: 180, u: 270 };
-  return dirs.map(([dir, off]) => `<g transform="translate(${horizontal ? off : 0},${horizontal ? 0 : off}) rotate(${angle[dir]})"><polygon points="5,0 -4,-5.5 -4,5.5" fill="#fff" opacity=".35" filter="url(#${glow})" transform="scale(1.35)"/><polygon points="5,0 -4,-5.5 -4,5.5" fill="#fff"/></g>`).join('');
+  return dirs.map(([dir, off]) => `<g transform="translate(${horizontal ? off : 0},${horizontal ? 0 : off}) rotate(${angle[dir]})"><polygon points="3.5,0 -3.5,-6 -3.5,6" fill="#fff"/></g>`).join('');
 }
 
 function renderSvg(b, s, options = {}) {
@@ -335,7 +336,7 @@ function renderSvg(b, s, options = {}) {
     for (const e of [t.a,t.b]) {
       const px=pad+(e.x-1)*cell, py=pad+(b.height-e.y)*cell;
       const [ex,ey]={u:[px+cell/2,py],d:[px+cell/2,py+cell],l:[px,py+cell/2],r:[px+cell,py+cell/2]}[e.side];
-      svg += `<g class="tunnel-mark" role="img" aria-label="Tunnel ${i+1} opening ${DIRECTION_NAMES[e.side]} of ${pos(e)}" transform="translate(${ex},${ey})" pointer-events="none">${tunnelTriangles(e.side,`${prefix}-glow`)}</g>`;
+      svg += `<g class="tunnel-mark" role="img" aria-label="Tunnel ${i+1} opening ${DIRECTION_NAMES[e.side]} of ${pos(e)}" transform="translate(${ex},${ey})" pointer-events="none">${tunnelTriangles(e.side)}</g>`;
     }
   });
   if (coordinates) {

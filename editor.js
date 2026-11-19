@@ -421,7 +421,7 @@ stage.addEventListener('pointerup',event=>{
 stage.addEventListener('pointercancel',()=>{if(E.dragChanged)remember(E.dragBefore);E.dragging=false;clearFloatingDrag();E.grab=null;stage.classList.remove('editor-grabbing');renderDraft();},true);
 stage.addEventListener('pointermove',event=>{
  if(!E.active||E.dragging)return;
- const p=cellAt(event);stage.classList.toggle('editor-grabbable',E.tool==='select'&&!!p&&!!find(p[0],p[1],event.altKey));
+ const p=cellAt(event);stage.classList.toggle('editor-grabbable',E.tool==='select'&&((!!p&&!!find(p[0],p[1],event.altKey))||!!event.target.closest?.('[data-edit-tunnel]')));
 },true);
 stage.addEventListener('pointerleave',()=>stage.classList.remove('editor-grabbable'),true);
 stage.addEventListener('click',event=>{if(E.active){event.preventDefault();event.stopImmediatePropagation();}},true);
