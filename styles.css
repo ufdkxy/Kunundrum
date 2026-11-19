@@ -666,3 +666,10 @@ body.edit-mode .selected-info { display:none; }
 #solver-copy { margin-top: 10px; }
 
 .editor-note{font-size:12px;line-height:1.4;color:var(--muted,#9db4c0);margin:2px 0 6px}
+
+/* Bottom bar stays on one row: the hint (and completion text) shrink/clip instead of wrapping. */
+.board-bottom, .compact-layout .board-bottom { flex-wrap: nowrap; }
+.board-bottom > * { flex-shrink: 0; }
+.board-bottom #board-hint, .compact-layout .board-bottom #board-hint { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; justify-content: flex-end; }
+.board-bottom .selected-info { min-width: 0; }
+.board-bottom .completion-inline { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
