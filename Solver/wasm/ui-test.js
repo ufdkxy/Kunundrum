@@ -4,10 +4,11 @@ const path=require('path'),assert=require('assert');const {chromium}=require('pl
 const root=path.join(__dirname,'..','..');
 (async()=>{const browser=await chromium.launch();const page=await browser.newPage({viewport:{width:1280,height:900}});const errors=[];
  page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
- const open=async id=>{await page.goto('file://'+path.join(root,'index.html')+'#level='+id);await page.reload();await page.waitForSelector('#open-solver');await page.click('#open-solver');await page.waitForSelector('#solver-dialog[open]');};
+ const open=async (id,withRoute=false)=>{await page.goto('file://'+path.join(root,'index.html')+'#level='+id);await page.reload();await page.waitForSelector('#open-solver');if(withRoute)await page.click('#use-example');await page.click('#open-solver');await page.waitForSelector('#solver-dialog[open]');};
  const text=id=>page.textContent(id);
- // 1. open on 6.6 (has a saved solution)
- await open('6.6');assert(/6\.6/.test(await text('#solver-board')),await text('#solver-board'));assert(/saved solution: 18 moves, score 18/.test(await text('#solver-board')));
+ // 1. open on 6.6 with its saved solution loaded as the current route; without a route Certify is disabled
+ await open('6.6');assert(/no complete route/.test(await text('#solver-board')));assert(await page.isDisabled('#solver-certify'));await page.keyboard.press('Escape');
+ await open('6.6',true);assert(/6\.6/.test(await text('#solver-board')),await text('#solver-board'));assert(/current route: 18 moves, score 18/.test(await text('#solver-board')));
  assert(await page.isEnabled('#solver-certify'));
  // 2. certify -> certified optimal
  await page.click('#solver-certify');await page.waitForSelector('#solver-result:not([hidden])',{timeout:60000});
@@ -15,7 +16,7 @@ const root=path.join(__dirname,'..','..');
  // 3. find best -> optimal, same score as saved, verified, solution present and copyable
  await page.click('#solver-solve');await page.waitForSelector('#solver-result:not([hidden])',{timeout:60000});
  const v=await text('#solver-verdict'),n=await text('#solver-note'),sol=await page.inputValue('#solver-solution');
- assert(/Optimal solution found: score 18, 18 moves/.test(v),v);assert(/Same score as your saved solution/.test(n)&&/Verified by replaying/.test(n),n);assert(/^[A-Za-z]/.test(sol)&&sol.includes(','),sol);
+ assert(/Optimal solution found: score 18, 18 moves/.test(v),v);assert(/Same score as the current route/.test(n)&&/Verified by replaying/.test(n),n);assert(/^[A-Za-z]/.test(sol)&&sol.includes(','),sol);
  await page.screenshot({path:process.argv[2]||'/tmp/solver-dialog.png'});
  await page.click('#solver-copy');await page.waitForTimeout(300);
  // 4. stop a long search

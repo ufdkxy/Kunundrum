@@ -23,7 +23,7 @@ function loadClient() {
 
 function setRunning(running) {
   $('solver-solve').disabled = running;
-  $('solver-certify').disabled = running || !info?.saved;
+  $('solver-certify').disabled = running || !info?.route;
   $('solver-stop').hidden = !running;
   for (const el of dialog.querySelectorAll('.solver-fields input, .solver-fields select')) el.disabled = running;
   $('solver-algorithm').dispatchEvent(new Event('change'));
@@ -34,22 +34,22 @@ function readOptions(certifying) {
   const o = { algorithm: $('solver-algorithm').value, seconds: num('solver-seconds'), maxMemoryMB: Math.min(1500, num('solver-memory') || 1000),
     maxStates: num('solver-max-states'), maxDepth: num('solver-max-depth'), maxScore: num('solver-max-score') };
   if (o.algorithm === 'beam') { o.beamWidth = num('solver-beam-width'); o.beamHeuristic = $('solver-beam-heuristic').value; }
-  if (certifying) o.maxScore = info.saved.score - 1;
+  if (certifying) o.maxScore = info.route.score - 1;
   return o;
 }
 
 function interpret(r, certifying) {
-  const saved = info.saved, st = r.status || '';
+  const saved = info.route, st = r.status || '';
   if (r.error) return { kind: 'bad', title: 'The solver could not finish', note: r.error === 'out of memory' ? 'It ran out of memory. Lower the max states or the memory limit, or use the beam search.' : r.error };
   if (r.hasSolution) {
     const optimal = st === 'OPTIMAL';
-    let note = saved ? (r.score < saved.score ? `Better than your saved solution (score ${saved.score}).` : r.score === saved.score ? 'Same score as your saved solution.' : `Your saved solution scores ${saved.score}, which is better.`) : '';
+    let note = saved ? (r.score < saved.score ? `Better than the current route (score ${saved.score}).` : r.score === saved.score ? 'Same score as the current route.' : `The current route scores ${saved.score}, which is better.`) : '';
     if (!optimal && r.lowerMoves) note += (note ? ' ' : '') + `No route shorter than ${r.lowerMoves} moves exists.`;
     return { kind: optimal ? 'good' : 'warn', title: optimal ? 'Optimal solution found' : 'Solution found, not proven optimal', note };
   }
   let m;
   if ((m = /SCORE <= (-?\d+)/.exec(st))) {
-    if (certifying && saved) return { kind: 'good', title: 'Saved solution certified optimal', note: `No route scores ${m[1]} or less, so the saved score of ${saved.score} cannot be beaten.` };
+    if (certifying && saved) return { kind: 'good', title: 'Current route certified optimal', note: `No route scores ${m[1]} or less, so the current route's score of ${saved.score} cannot be beaten.` };
     return { kind: 'info', title: `No route scores ${m[1]} or less`, note: r.hasLowerScore ? `The best possible score is at least ${r.lowerScore}.` : '' };
   }
   if ((m = /WITHIN (\d+) MOVES/.exec(st))) return { kind: 'info', title: `No solution within ${m[1]} moves`, note: r.lowerMoves ? `The shortest solution needs at least ${r.lowerMoves} moves.` : '' };
@@ -78,9 +78,7 @@ function showResult(r, certifying) {
 }
 
 async function run(certifying) {
-  if (!info || (certifying && !info.saved)) return;
-  const unsupported = info.tunnels ? 'tunnels' : info.rotating ? 'rotating arrows (its model differs from the game)' : '';
-  if (unsupported) { $('solver-result').hidden = true; $('solver-progress').hidden = false; $('solver-progress').textContent = `The solver does not support ${unsupported} yet.`; return; }
+  if (!info || (certifying && !info.route)) return;
   const token = ++runToken;
   $('solver-result').hidden = true;
   $('solver-progress').hidden = false;
@@ -111,8 +109,8 @@ $('open-solver').addEventListener('click', () => {
   const previous = info;
   info = host().prepareSolver();
   const sameBoard = previous && previous.code === info.code;
-  $('solver-board').textContent = info.title + (info.saved ? ` · saved solution: ${info.saved.moves} moves, score ${info.saved.score}` : ' · no saved solution');
-  $('solver-certify').title = info.saved ? 'Prove that no route scores below the saved solution' : 'This board has no saved solution';
+  $('solver-board').textContent = info.title + (info.route ? ` · current route: ${info.route.moves} moves, score ${info.route.score}` : ' · no complete route');
+  $('solver-certify').title = info.route ? 'Prove that no route scores below the current route' : 'The current route is not a solution';
   // Closing only hides the dialog: fields, progress and result stay, unless the board changed meanwhile.
   if (!sameBoard) { $('solver-result').hidden = true; $('solver-progress').hidden = true; }
   setRunning(false);

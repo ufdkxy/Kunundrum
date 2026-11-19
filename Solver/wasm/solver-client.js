@@ -1,5 +1,5 @@
 // Browser client for the WebAssembly solver. Classic script (works from file:// and http://); exposes window.KunSolver.
-//   const job = KunSolver.solve(Codec.encodeBoard(board), {algorithm:'balanced', seconds:60, maxMemoryMB:1500}, p => ...);
+//   const job = KunSolver.solve(Codec.encodeBoard(board), {algorithm:'bidirectional', seconds:60, maxMemoryMB:1500}, p => ...);
 //   job.promise -> result object (see Solver README, --json) plus heapMB;  job.cancel() terminates the worker (promise rejects with err.cancelled).
 // Each solve gets a fresh worker (fresh WASM heap) that is terminated afterwards; cancelling is just terminating it.
 (function(){'use strict';
@@ -13,7 +13,7 @@ function loadSource(url){
   s.onerror=()=>{sourcePromise=null;reject(new Error('could not load the solver (kunsolve-bundle.js)'));};
   document.head.appendChild(s);});
  return sourcePromise;}
-const ALGORITHMS=['auto','forward','bidirectional','balanced','beam'],HEURISTICS=['static','dynamic'];
+const ALGORITHMS=['auto','forward','bidirectional','beam'],HEURISTICS=['static','dynamic'];
 // options -> CLI flag string. Everything is validated; nothing user-typed reaches the flag string unchecked.
 function buildFlags(o){
  const f=[];const num=(key,flag,{int=true,min=-Infinity,max=Infinity}={})=>{const v=o[key];if(v===undefined||v===null||v==='')return;const n=Number(v);
@@ -21,7 +21,7 @@ function buildFlags(o){
  if(o.algorithm){if(!ALGORITHMS.includes(o.algorithm))throw new Error('invalid algorithm: '+o.algorithm);f.push('--algorithm',o.algorithm);}
  if(o.beamHeuristic){if(!HEURISTICS.includes(o.beamHeuristic))throw new Error('invalid beamHeuristic: '+o.beamHeuristic);f.push('--beam-heuristic',o.beamHeuristic);}
  num('seconds','--seconds',{int:false,min:0,max:86400});num('maxStates','--max-states',{min:0});num('maxMemoryMB','--max-memory',{min:1,max:4096});
- num('maxDepth','--max-depth',{min:1,max:100000});num('maxScore','--max-score',{min:-1e12,max:1e12});num('maxChoices','--max-choices',{min:0,max:32});
+ num('maxDepth','--max-depth',{min:1,max:100000});num('maxScore','--max-score',{min:-1e12,max:1e12});
  num('beamWidth','--beam-width',{min:1});num('seed','--seed',{min:0});
  return f.join(' ');}
 // Solver progress lines ("forward depth 5 visited 1234 elapsed 0.8s", "beam depth 7 kept 20000 ...") -> {line, depth, states, elapsed}

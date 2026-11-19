@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.15.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.16.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -976,11 +976,11 @@ window.KunundrumHost = {
   play:draft=>{adoptEdited(draft);},
   resume:()=>{render();},
   toast:message=>toast(message),
-  // Solver dialog (solver-ui.js): the current board as a K3 code without a route, plus the saved solution's score and moves when it replays to completion. Stops any playback.
+  // Solver dialog (solver-ui.js): the current board as a K3 code without a route, plus the score and move count of the CURRENT route (the moves in the Replay panel, whole route, not just up to the cursor) when it finishes the board. Stops any playback.
   prepareSolver:()=>{
     stopPlayback();
-    const {solution,...bare}=board,info={code:encodeBoard(bare),title:board.title,id:currentPresetId,saved:null,tunnels:(bare.tunnels||[]).length>0,rotating:(bare.arrows||[]).some(a=>a.rotating)};
-    if(solution){try{const f=buildReplay(board,solution),s=f[f.length-1].state;if(isComplete(s))info.saved={notation:solution,score:s.score,moves:s.moves};}catch{}}
+    const {solution,...bare}=board,info={code:encodeBoard(bare),title:board.title,id:currentPresetId,route:null};
+    if(frames.length>1){const s=frames[frames.length-1].state;if(isComplete(s))info.route={score:s.score,moves:frames.length-1};}
     return info;
   },
   copy:(text,message)=>copyText(text,message),
