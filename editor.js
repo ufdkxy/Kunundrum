@@ -8,10 +8,46 @@ const colorNames={R:'Red',G:'Green',B:'Blue',Y:'Yellow','*':'Universal'};
 const singular={walls:'Wall',balls:'Ball',goals:'Goal',arrows:'Arrow',gates:'Gate',switches:'Switch',teleports:'Teleport',hexes:'Hexagon'};
 const tools=['select','ball','goal','wall','gate','switch','arrow','teleport','tunnel','hex','erase'];
 const sideNames={u:'top',d:'bottom',l:'left',r:'right'};
+const tunnelOrder=(a,b)=>a.y-b.y||a.x-b.x||'udlr'.indexOf(a.side)-'udlr'.indexOf(b.side);
+// Same canonical order as the engine (ends within a pair, then pairs), so the displayed ids N1, N2, ... match the validated board.
+function normTunnels(b){if(!b.tunnels)return;b.tunnels=b.tunnels.map(t=>{const [p,q]=[t.a,t.b].sort(tunnelOrder);return {a:p,b:q};}).sort((s,t)=>tunnelOrder(s.a,t.a));if(!b.tunnels.length)delete b.tunnels;}
+const sameOpening=(e,o)=>e.x===o.x&&e.y===o.y&&e.side===o.side;
+const openingLabel=e=>`(${e.x}, ${e.y}) ${sideNames[e.side]}`;
+function tunnelProps(match,panel){
+ const list=E.draft.tunnels||[],idx=list.findIndex(t=>sameOpening(t.a,match)||sameOpening(t.b,match));
+ if(idx<0){E.selected=null;putProps();return;}
+ const t=list[idx],self=sameOpening(t.a,match)?t.a:t.b,other=self===t.a?t.b:t.a,key=e=>`${e.x},${e.y},${e.side}`;
+ const options=[];list.forEach((u,i)=>{for(const e of [u.a,u.b])if(e!==self)options.push([key(e),`N${i+1} · ${openingLabel(e)}`]);});
+ const opt=(v,text,sel)=>`<option value="${v}" ${sel?'selected':''}>${text}</option>`;
+ panel.innerHTML=`<div class="editor-object-title">Tunnel · N${idx+1}</div>`
+  +`<div class="editor-note">This opening: ${openingLabel(self)}<br>Partner: ${openingLabel(other)}</div>`
+  +`<label>Partner<select data-edit="Partner">${options.map(o=>opt(o[0],o[1],o[0]===key(other))).join('')}</select></label>`
+  +`<label>Side<select data-edit="Side">${['u','d','l','r'].map(s=>opt(s,sideNames[s][0].toUpperCase()+sideNames[s].slice(1),s===self.side)).join('')}</select></label>`
+  +'<button class="secondary-button editor-delete" id="editor-delete-object" type="button">Delete object</button>';
+}
+function applyTunnelProperty(key,value){
+ const sel=E.selected,b=E.draft,list=b.tunnels||[],ix=list.findIndex(t=>sameOpening(t.a,sel)||sameOpening(t.b,sel));
+ if(ix<0)return;
+ const t=list[ix],self=sameOpening(t.a,sel)?t.a:t.b,other=self===t.a?t.b:t.a,prev=snapshot();
+ delete b.solution;
+ if(key==='Partner'){
+  // The chosen opening Z becomes this opening's partner; Z's old partner W is paired with this opening's old partner.
+  const [zx,zy,zs]=value.split(','),z={x:Number(zx),y:Number(zy),side:zs},jz=list.findIndex(u=>sameOpening(u.a,z)||sameOpening(u.b,z));
+  if(jz<0||jz===ix)return;
+  const u=list[jz],zEnd=sameOpening(u.a,z)?u.a:u.b,w=zEnd===u.a?u.b:u.a;
+  list[ix]={a:{...self},b:{...zEnd}};list[jz]={a:{...other},b:{...w}};
+ }
+ if(key==='Side'){
+  if(value!==self.side&&list.some(u=>[u.a,u.b].some(e=>e!==self&&sameOpening(e,{x:self.x,y:self.y,side:value})))){setStatus(`The ${sideNames[value]} side of (${self.x}, ${self.y}) already has an opening.`,true);refresh();return;}
+  self.side=value;E.selected={...sel,side:value};
+ }
+ normTunnels(b);
+ if(remember(prev)){refresh();renderDraft();setStatus('Tunnel updated.');}
+}
 // Nearest cell side to the pointer, from the cell's hit rectangle (used by the Tunnel tool).
 function sideOf(event){const el=event.target.closest?.('[data-edit-x]');if(!el)return null;const r=el.getBoundingClientRect(),fx=(event.clientX-r.left)/r.width,fy=(event.clientY-r.top)/r.height,d={l:fx,r:1-fx,u:fy,d:1-fy};return Object.keys(d).reduce((m,k)=>d[k]<d[m]?k:m,'l');}
 const openingAt=(t,x,y,side)=>[t.a,t.b].some(e=>e.x===x&&e.y===y&&(!side||e.side===side));
-const mutable = {active:false,draft:null,grab:null,floatDrag:null,preferFloor:false,pendingTunnel:null,clickSide:null,tool:'select',color:'G',direction:'r',rotating:false,activeTile:true,hexValue:-5,selected:null,history:[],future:[],dragging:false,dragChanged:false,dragBefore:null,lastCell:'',dirty:false};
+const mutable = {active:false,draft:null,grab:null,floatDrag:null,preferFloor:false,pendingTunnel:null,clickSide:null,hitTunnel:null,tool:'select',color:'G',direction:'r',rotating:false,activeTile:true,hexValue:-5,selected:null,history:[],future:[],dragging:false,dragChanged:false,dragBefore:null,lastCell:'',dirty:false};
 const E = mutable;
 const host = () => window.KunundrumHost;
 const same=(a,b)=>a&&b&&a.x===b.x&&a.y===b.y;
@@ -29,6 +65,7 @@ function putProps(){
  const panel=$('editor-properties');
  if(!match){panel.replaceChildren();panel.hidden=true;return;}
  panel.hidden=false;
+ if(match.type==='tunnels'){tunnelProps(match,panel);return;}
  let item=null;
  item=E.draft[match.type]?.find(v=>v._eid===match.id || (v.id && v.id===match.id) || (v.x===match.x&&v.y===match.y));
  if(!item){E.selected=null;putProps();return;}
@@ -103,9 +140,18 @@ function overlay(){
   out+=`<rect data-edit-x="${x}" data-edit-y="${y}" x="${px}" y="${py}" width="${cell}" height="${cell}" fill="transparent" stroke="none"/>`;
  }
  out+='</g>';
+ const edge=e=>{const px=pad+(e.x-1)*cell,py=pad+(b.height-e.y)*cell;return {u:[px+cell/2,py],d:[px+cell/2,py+cell],l:[px,py+cell/2],r:[px+cell,py+cell/2]}[e.side];};
+ if(E.tool==='select')for(const t of b.tunnels||[])for(const e of [t.a,t.b]){ // clickable areas over the openings (the board edge is not a cell)
+  const [ex,ey]=edge(e),h=e.side==='u'||e.side==='d';
+  out+=`<rect class="editor-tunnel-hit" data-edit-x="${e.x}" data-edit-y="${e.y}" data-edit-tunnel="${e.x},${e.y},${e.side}" x="${ex-(h?30:15)}" y="${ey-(h?15:30)}" width="${h?60:30}" height="${h?30:60}" rx="6" fill="transparent"/>`;
+ }
+ const sel=E.selected?.type==='tunnels'?(b.tunnels||[]).find(t=>sameOpening(t.a,E.selected)||sameOpening(t.b,E.selected)):null;
+ if(sel)for(const e of [sel.a,sel.b]){
+  const [ex,ey]=edge(e),mine=sameOpening(e,E.selected),h=e.side==='u'||e.side==='d';
+  out+=`<rect class="editor-tunnel-sel" pointer-events="none" x="${ex-(h?30:15)}" y="${ey-(h?15:30)}" width="${h?60:30}" height="${h?30:60}" rx="8" fill="#43dcff" fill-opacity="${mine?.22:.08}" stroke="${mine?'#90f2ff':'#43dcff'}" stroke-width="${mine?3:2}" stroke-dasharray="${mine?'none':'5 4'}"/>`;
+ }
  if(E.pendingTunnel){
-  const e=E.pendingTunnel,px=pad+(e.x-1)*cell,py=pad+(b.height-e.y)*cell;
-  const [ex,ey]={u:[px+cell/2,py],d:[px+cell/2,py+cell],l:[px,py+cell/2],r:[px+cell,py+cell/2]}[e.side];
+  const e=E.pendingTunnel,[ex,ey]=edge(e);
   out+=`<g class="editor-drag-preview" pointer-events="none" transform="translate(${ex},${ey})"><circle r="13" fill="#43dcff" fill-opacity=".25" stroke="#90f2ff" stroke-width="3" stroke-dasharray="5 3"/></g>`;
  }
  if(E.dragging&&E.grab?.selection&&E.grab.hover&&!same(E.grab.from,E.grab.hover)){
@@ -249,7 +295,7 @@ function moveObject(start,end,selection){
 function editAt(x,y,eraser=false){
  if(!E.active||x<1||y<1||x>E.draft.width||y>E.draft.height)return false;
  const b=E.draft,t=eraser?'erase':E.tool;
- if(t==='select') {E.selected=find(x,y,E.preferFloor);refresh();setStatus(E.selected?'':'No object in this cell.');return false;}
+ if(t==='select') {const hit=E.hitTunnel;E.hitTunnel=null;E.selected=hit?{type:'tunnels',...hit}:find(x,y,E.preferFloor);refresh();renderDraft();setStatus(E.selected?'':'No object in this cell.');return false;}
  const previous=snapshot();
  if(t!=='select')delete b.solution;
  if(t==='erase') eraseAt(x,y);
@@ -261,7 +307,7 @@ function editAt(x,y,eraser=false){
   if(hit>=0){list.splice(hit,1);E.pendingTunnel=null;}
   else if(!pend||(pend.x===x&&pend.y===y&&pend.side===side)){E.pendingTunnel=pend?null:{x,y,side};renderDraft();setStatus(pend?'':`First opening: ${sideNames[side]} side of (${x}, ${y}). Click the partner opening.`);}
   else{list.push({a:{...pend},b:{x,y,side}});E.pendingTunnel=null;}
-  if(!list.length)delete b.tunnels;
+  normTunnels(b);
  }else if(t==='teleport'){
   clearFloor(x,y);
   b.teleports.push({id:nextId(b.teleports,'T'),color:E.color,active:E.activeTile,x,y});
@@ -282,6 +328,7 @@ function editAt(x,y,eraser=false){
 }
 function applyProperty(key,value){
  const sel=E.selected;if(!sel)return;
+ if(sel.type==='tunnels'){applyTunnelProperty(key,value);return;}
  const data=E.draft[sel.type]?.find(v=>v.id&&v.id===sel.id||v.x===sel.x&&v.y===sel.y);
  if(!data)return;
  const prev=snapshot();
@@ -319,7 +366,7 @@ $('editor-undo').addEventListener('click',()=>editorUndo());$('editor-redo').add
 $('editor-resize').addEventListener('click',updateDimensions);
 $('editor-title').addEventListener('change',event=>{const prev=snapshot();E.draft.title=clean(event.target.value)||'Custom board';E.draft.id=E.draft.title.toLowerCase().replace(/[^a-z0-9_.-]/g,'-').replace(/^-+/,'').slice(0,80)||'custom';remember(prev);renderDraft();refresh();});
 $('editor-properties').addEventListener('change',event=>{const key=event.target.dataset.edit;if(key)applyProperty(key,event.target.value);});
-$('editor-properties').addEventListener('click',event=>{if(event.target.id==='editor-delete-object'&&E.selected){const prev=snapshot();const s=E.selected;E.draft[s.type]=E.draft[s.type].filter(p=>!at(p,s.x,s.y));prune(E.draft);E.selected=null;remember(prev);refresh();renderDraft();}});
+$('editor-properties').addEventListener('click',event=>{if(event.target.id==='editor-delete-object'&&E.selected){const prev=snapshot();const s=E.selected;if(s.type==='tunnels'){E.draft.tunnels=(E.draft.tunnels||[]).filter(t=>!sameOpening(t.a,s)&&!sameOpening(t.b,s));normTunnels(E.draft);}else E.draft[s.type]=E.draft[s.type].filter(p=>!at(p,s.x,s.y));prune(E.draft);E.selected=null;remember(prev);refresh();renderDraft();}});
 for(const button of panel.querySelectorAll('[data-editor-tool]')) {
  button.draggable=true;
  button.addEventListener('dragstart',event=>{E.tool=button.dataset.editorTool;event.dataTransfer.setData('text/plain',E.tool);event.dataTransfer.effectAllowed='copy';refresh();});
@@ -340,7 +387,7 @@ stage.addEventListener('drop',event=>{if(!E.active)return;event.preventDefault()
 stage.addEventListener('pointerdown',event=>{
  if(!E.active)return;event.stopImmediatePropagation();event.preventDefault();if(event.button!==0&&event.button!==2)return;
  const p=cellAt(event);if(!p)return;E.dragging=true;E.dragChanged=false;E.dragBefore=snapshot();E.lastCell='';stage.setPointerCapture(event.pointerId);
- E.lastCell=p.join(',');E.preferFloor=event.altKey;E.clickSide=sideOf(event);editAt(p[0],p[1],event.button===2);E.grab=E.tool==='select'&&event.button===0&&E.selected?{from:{x:p[0],y:p[1]},selection:E.selected,hover:{x:p[0],y:p[1]}}:null;stage.classList.toggle('editor-grabbing',!!E.grab);stage.classList.remove('editor-grabbable');if(E.grab)startFloatingDrag(event);
+ E.lastCell=p.join(',');E.preferFloor=event.altKey;E.clickSide=sideOf(event);{const h=event.target.closest?.('[data-edit-tunnel]')?.dataset.editTunnel?.split(',');E.hitTunnel=h?{x:Number(h[0]),y:Number(h[1]),side:h[2]}:null;}editAt(p[0],p[1],event.button===2);E.grab=E.tool==='select'&&event.button===0&&E.selected&&E.selected.type!=='tunnels'?{from:{x:p[0],y:p[1]},selection:E.selected,hover:{x:p[0],y:p[1]}}:null;stage.classList.toggle('editor-grabbing',!!E.grab);stage.classList.remove('editor-grabbable');if(E.grab)startFloatingDrag(event);
 },true);
 stage.addEventListener('pointermove',event=>{
  if(!E.active||!E.dragging)return;event.stopImmediatePropagation();event.preventDefault();

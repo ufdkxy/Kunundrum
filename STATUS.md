@@ -2,7 +2,7 @@
 
 *Living document: keep it current, delete resolved items instead of appending history (Git has the history). See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-**Last updated:** 2026-11-18 · **App version:** `APP_VERSION = '3.12.1'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. Invalid-but-readable boards (codes, links, JSON) now open in the editor with the problems listed instead of failing to load; Play stays gated by validation (`decodeBoard(code, problems)`, `validateBoard(raw, problems)`). The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
+**Last updated:** 2026-11-18 · **App version:** `APP_VERSION = '3.13.0'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. Invalid-but-readable boards (codes, links, JSON) now open in the editor with the problems listed instead of failing to load; Play stays gated by validation (`decodeBoard(code, problems)`, `validateBoard(raw, problems)`). The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
 
 ## 1. Components
 
@@ -33,6 +33,8 @@ Certified optimal scores (`verify.js`): 6.6 → 18, 7.1 → 15, 7.4 → 27, 7.6 
 **App 3.3.20, 2026-11-14: puzzle dialog polish.** Choosing a chapter no longer scrolls the chapter list (it only reveals the current chapter when the dialog opens), the previews scroll back to the top, and the dialog header is more compact.
 
 **App 3.3.19, 2026-11-14: puzzle dialog columns.** The puzzle dialog has a fixed height; the chapter list and the puzzle previews are equally tall and each scrolls on its own.
+
+**App 3.13.0, 2026-11-19: tunnels editable.** Tunnel openings are selectable with the Select tool (invisible hit areas over each opening; the selected opening is highlighted solid, its partner dashed). The properties panel is titled `Tunnel · N<k>` (ids N1, N2, ... derived from the canonical pair order, same as the engine/K3) and has **Partner** (choose any other opening: this opening pairs with it, and the chosen opening's old partner pairs with this opening's old partner, so everything stays paired), **Side** (u/d/l/r; refused if that cell side already has an opening) and Delete (removes the pair). The marker is now two small opposite-facing triangles per opening, as in the game (board, editor button, How to play entry "Use a tunnel").
 
 **App 3.12.1, 2026-11-18: parser handles 21.1.** Tunnel arms (one-cell stubs clipped by the game's drawing area, open end marked by white triangles) made the neon outline too small, so the grid came out 5 wide instead of 7. `extendForTunnelArms` now grows the detected grid by 1-2 cells on a side when a white marker pair lies about that far beyond its edge. The pairing guess now also pairs opposite sides when the openings are offset (top-bottom, left-right): confirmed by the saved 21.1 route, which wins in 12 moves only with that pairing (the other two pairings block it). `verify.js` replays 21.1 (real level, K3 from the parser output). Not yet seen: 12.6 and other tunnel screenshots.
 

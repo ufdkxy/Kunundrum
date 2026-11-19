@@ -105,7 +105,7 @@ The four snippets above illustrate arrow, teleport, hexagon and tunnel (pair of 
 - **Switchable elements** (gates and some teleports) are drawn on a metal tile split into quadrants by a dark central cross. A board with a single switch is unambiguous: it controls every switchable element.
 - **Gates:** plain grey metal = **inactive** (floor); metal with a yellow/brown striped border = **active** (acts as a wall).
 - **Teleports:** four coloured corner arcs, a bright centre dot and dim concentric circles. Drawn on bare floor = always on (not switchable); drawn over the metal cross tile = switchable. An **inactive** teleport loses its colour (grey concentric circles on the metal tile).
-- **Tunnels:** white triangles marking a gap in the neon outline (board edge or an outline segment); each triangle points out of the board through the gap. The pairing is not visible.
+- **Tunnels:** two small white triangles side by side along a gap in the neon outline (board edge or an outline segment), pointing in opposite directions (one out of the board, one into it). The pairing is not visible.
 - **Switches:** solid glossy disc; red = off, green with a depressed shadow = on (display state only, see 3).
 
 ## 6b. Observed mechanics not yet implemented in `engine.js`
