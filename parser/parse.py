@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Offline screenshot -> editable Kunundrum board JSON, visual QA, optional K3.
 
+FROZEN / HISTORICAL: parser/parser.js is the definitive parser. This Python version is no longer
+updated (it lacks wall color, tunnels, teleport endpoints and rotating-arrow orientation) and may
+disagree with parser.js; on any difference, parser.js wins.
+
 Requires numpy and opencv-python. See README.md. Screen coordinates are
 converted to bottom-left-origin, one-based game coordinates.
 """

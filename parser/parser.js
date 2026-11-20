@@ -1,8 +1,9 @@
-/* Kunundrum screenshot parser: dependency-free JavaScript port of parse.py (v0.10.0).
+/* Kunundrum screenshot parser. THIS FILE IS THE DEFINITIVE PARSER (the web app uses it; parse.py is a frozen,
+ * historical Python version that is no longer updated and may disagree with it: on any difference, parser.js wins).
+ * Originally a dependency-free port of parse.py v0.10.0.
  *
- * Runs in the browser and in Node. parse.py stays the reference implementation; the
- * function names and measurement keys below deliberately mirror it so the two can be
- * diffed. Images are held as interleaved BGR bytes, like OpenCV, and the few OpenCV
+ * Runs in the browser and in Node. The function names and measurement keys below still mirror parse.py's
+ * where they existed, which helps when reading the history. Images are held as interleaved BGR bytes, like OpenCV, and the few OpenCV
  * primitives that parse.py uses (BGR->HSV/gray, INTER_AREA 2x shrink, bilinear
  * warpAffine, separable Gaussian) are re-implemented with
  * OpenCV's integer arithmetic where that matters for the tuned thresholds.
@@ -14,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.12.0-js.1';
+const PARSER_VERSION = '0.13.0-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -414,9 +415,14 @@ function redChevrons(patch) {
   return asym > (white ? .6 : .2);
 }
 
-function chevronDirection(patch) {
+// Direction a stack of chevrons points to (arrow tip side). Blue chevrons are weighted by the blue channel; red (rotating) ones by
+// red minus blue, so a red floor tint does not count.
+function chevronDirection(patch, red = false) {
   const v = new Float64Array(72 * 72);
-  for (let y = 0; y < 72; y++) for (let x = 0; x < 72; x++) v[y * 72 + x] = Math.max(0, patch.bgr[((y + 12) * SZ + x + 12) * 3] - 60);
+  for (let y = 0; y < 72; y++) for (let x = 0; x < 72; x++) {
+    const i = ((y + 12) * SZ + x + 12) * 3;
+    v[y * 72 + x] = red ? Math.max(0, patch.bgr[i + 2] - patch.bgr[i] - 60) : Math.max(0, patch.bgr[i] - 60);
+  }
   const c = 35.5, mid = d => d < 8, arm = d => d > 18 && d < 34;
   // Weighted mean of the measured coordinate over pixels selected by the *other* axis's distance from the centre.
   const mom = (selOn, measureHoriz) => {
@@ -454,7 +460,10 @@ function classify(patch, templates, data) {
   if (tc) return [`teleport_${tc}`, .92, f];
   const sw = switchDisc(patch);
   if (sw) return [sw, .95, f];
-  if (redChevrons(patch)) return ['arrow_rotating', .85, f];
+  if (redChevrons(patch)) {
+    const d = chevronDirection(patch, true); // orientation shown in the screenshot = phase 0 of the stored arrow
+    return [d ? 'arrow_rotating_' + d : 'arrow_rotating', d ? .85 : .6, f];
+  }
 
   const blurred = gaussianBlur(patch.gray, SZ, SZ, 5, 1), g8 = Float64Array.from(blurred, v => Math.round(v));
   let asymSum = 0;
@@ -717,6 +726,7 @@ function parseLabel(label) {
   if (parts[0] === 'teleport' && (parts.length === 2 || parts.length === 3) && [...COLORS, '*'].includes(parts[1]) && (parts.length === 2 || ['switchable', 'inactive'].includes(parts[2]))) return label;
   if (parts[0] === 'switch' && parts.length === 2) return label;
   if (parts[0] === 'arrow' && parts.length === 2 && ['u', 'd', 'l', 'r', 'rotating'].includes(parts[1])) return label;
+  if (parts[0] === 'arrow' && parts.length === 3 && parts[1] === 'rotating' && ['u', 'd', 'l', 'r'].includes(parts[2])) return label;
   if (parts[0] === 'gate' && parts.length >= 2) return label;
   if (parts[0] === 'hex' && parts.length === 2 && /^[+-]?\d+$/.test(parts[1])) return label;
   throw new Error(`Invalid cell label '${label}'`);
@@ -760,7 +770,7 @@ function guessSwitchMapping(switches, gates, teleports, switchInfo, unresolved) 
 
 function assembleBoard(labels, geom, level, overrides) {
   const walls = [], balls = [], goals = [], arrows = [], gates = [], switches = [], hexes = [];
-  const telecells = [];
+  const telecells = [], rotating = [];
   let unresolved = [];
   for (let row = geom.height - 1; row >= 0; row--) for (let col = 0; col < geom.width; col++) {
     const kind = labels[row][col], x = col + 1, y = geom.height - row, pos = () => ({ x, y });
@@ -778,8 +788,10 @@ function assembleBoard(labels, geom, level, overrides) {
       const color = i < 0 ? rest : rest.slice(0, i), flag = i < 0 ? '' : rest.slice(i + 1);
       telecells.push({ ...pos(), color, switchable: ['switchable', 'inactive'].includes(flag), inactive: flag === 'inactive' });
     } else if (kind.startsWith('arrow_')) {
-      const d = kind.slice(6);
-      arrows.push({ ...pos(), direction: d === 'rotating' ? 'u' : d, ...(d === 'rotating' ? { rotating: true } : {}) });
+      const [d, od] = kind.slice(6).split('_'); // arrow_<dir>, arrow_rotating or arrow_rotating_<dir>
+      const rot = d === 'rotating';
+      arrows.push({ ...pos(), direction: rot ? (od || 'u') : d, ...(rot ? { rotating: true } : {}) });
+      if (rot) rotating.push({ x, y, known: !!od });
     } else if (kind === 'hex_pending_G' || kind === 'hex_pending_R') {
       const v = HEX_GUESS[kind.slice(-1)];
       hexes.push({ ...pos(), id: `H${hexes.length + 1}`, value: v });
@@ -822,6 +834,12 @@ function assembleBoard(labels, geom, level, overrides) {
     for (const c of needy) unresolved.push(`${c} teleport has no partner`);
     for (const t of telecells.sort((a, b) => a.y - b.y || a.x - b.x))
       teleports.push({ id: `T${teleports.length + 1}`, x: t.x, y: t.y, color: t.inactive ? assigned.get(t) : t.color, active: !t.inactive, ...(t.switchable ? { switchable: true } : {}) });
+  }
+  // A screenshot shows a rotating arrow's current orientation only, never whether it turns clockwise, counterclockwise or flips.
+  if (rotating.length) {
+    const at = r => `(${r.x},${r.y})`, unknown = rotating.filter(r => !r.known);
+    unresolved.push(`Rotating arrow type assumed clockwise at ${rotating.map(at).join(', ')}: a screenshot cannot show whether an arrow turns clockwise, counterclockwise or flips. Set each one's Type in the editor.`
+      + (unknown.length ? ` Orientation not recognized (assumed up) at ${unknown.map(at).join(', ')}.` : ''));
   }
   const switchInfo = overrides.switches || {};
   for (const s of switches) if (s.id in switchInfo) {
@@ -898,7 +916,7 @@ function parseImage(img, options = {}) {
     warnings.push(`Tunnel pairing is a guess (${wallVotes.openings.length} openings found); check and correct it in the editor.` + (left.length ? ` One opening (${left[0].x}, ${left[0].y}, ${left[0].side}) has no partner and was dropped.` : ''));
   }
   const recognition = warnings.filter(w => w.startsWith('Cell (') || w.startsWith('Unrecognized object') || w.startsWith('No balls detected') || w.includes('balls but only'));
-  return { board, warnings, recognitionWarnings: recognition, mechanicsPending: warnings.filter(w => !recognition.includes(w)), geometry, labels, confidence, stats, level, wallColor, wallVotes: wallVotes.wallVotes };
+  return { board, warnings, recognitionWarnings: recognition, mechanicsPending: warnings.filter(w => !recognition.includes(w)), geometry, labels, confidence, stats, level, wallColor, wallVotes: wallVotes.wallVotes, openings: wallVotes.openings || [] };
 }
 
 // RGBA (canvas ImageData layout) -> the BGR image parseImage expects.
@@ -936,6 +954,20 @@ function renderReview(canvas, bitmap, result) {
     ctx.strokeRect(px + 3, py + 3, d - 6, d - 6);
     ctx.fillText(label.replace('teleport', 'tp').replace('unknown', '?'), px + 5, py + d - 8, d - 8);
   }
+  // Tunnel openings: a thick magenta bar on the gap's cell side, numbered by guessed pair (N, N; unpaired ones get '?').
+  const tunnels = result.board?.tunnels || [], same = (o, p) => o.x === p.x && o.y === p.y && o.side === p.side;
+  ctx.strokeStyle = ctx.fillStyle = '#ff40ff'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.font = `bold ${Math.round(Math.max(.34, Math.min(.65, g.cell / 160)) * 34)}px sans-serif`;
+  for (const o of result.openings || []) {
+    const col = o.x - 1, row = g.height - o.y, x0 = g.left + col * g.cell, y0 = g.top + row * g.cell, c = g.cell, m = .15 * c;
+    const [ax, ay, bx, by] = o.side === 'l' ? [x0, y0 + m, x0, y0 + c - m] : o.side === 'r' ? [x0 + c, y0 + m, x0 + c, y0 + c - m]
+      : o.side === 'u' ? [x0 + m, y0, x0 + c - m, y0] : [x0 + m, y0 + c, x0 + c - m, y0 + c];
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+    const k = tunnels.findIndex(t => same(t.a, o) || same(t.b, o));
+    const tx = o.side === 'l' ? x0 + 4 : o.side === 'r' ? x0 + c - 4 - c * .25 : x0 + c * .4, ty = o.side === 'u' ? y0 + c * .35 : o.side === 'd' ? y0 + c - 8 : y0 + c * .55;
+    ctx.fillText(k < 0 ? '?' : 'T' + (k + 1), tx, ty);
+  }
+  ctx.lineWidth = 2; ctx.lineCap = 'butt';
 }
 
 async function parseFile(file, options = {}) {

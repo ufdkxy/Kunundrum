@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.17.1'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.17.2'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -809,6 +809,7 @@ function importBoard() {
 // A well-formed but invalid board opens in the editor (Play is gated by validation there);
 // the previous valid run stays loaded underneath.
 function editInvalid(draft,problems){
+  resetRun(); // a successful import clears the previous run's move history
   // At boot app.js runs before the deferred editor.js, so wait for it.
   if(window.KunEditor)window.KunEditor.openDraft(draft,problems);
   else window.addEventListener('DOMContentLoaded',()=>window.KunEditor.openDraft(draft,problems),{once:true});
@@ -834,6 +835,7 @@ async function importScreenshot(file){
     const problems=[];
     const draft=decodeBoard(JSON.stringify(result.board),problems);
     clearLocation();
+    resetRun(); // a successful import clears the previous run's move history
     if($('board-dialog').open)$('board-dialog').close();
     window.KunEditor.openDraft(draft,problems,true);
     KunParser.renderReview($('shot-review'),result.bitmap,result);
