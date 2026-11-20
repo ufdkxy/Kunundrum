@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.0-js.1';
+const PARSER_VERSION = '0.13.1-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -421,7 +421,13 @@ function chevronDirection(patch, red = false) {
   const v = new Float64Array(72 * 72);
   for (let y = 0; y < 72; y++) for (let x = 0; x < 72; x++) {
     const i = ((y + 12) * SZ + x + 12) * 3;
-    v[y * 72 + x] = red ? Math.max(0, patch.bgr[i + 2] - patch.bgr[i] - 60) : Math.max(0, patch.bgr[i] - 60);
+    v[y * 72 + x] = red ? patch.bgr[i + 2] - patch.bgr[i] : Math.max(0, patch.bgr[i] - 60);
+  }
+  // Rotating arrows are dim (red minus blue peaks near 65 on a floor tint near 45), so a fixed threshold loses the chevrons:
+  // measure them above the cell's own median instead.
+  if (red) {
+    const sorted = Float64Array.from(v).sort(), base = sorted[sorted.length >> 1] + 5;
+    for (let i = 0; i < v.length; i++) v[i] = Math.max(0, v[i] - base);
   }
   const c = 35.5, mid = d => d < 8, arm = d => d > 18 && d < 34;
   // Weighted mean of the measured coordinate over pixels selected by the *other* axis's distance from the centre.
@@ -977,6 +983,6 @@ async function parseFile(file, options = {}) {
 }
 
 const api = { PARSER_VERSION, parseImage, parseFile, fromRGBA, renderReview, levelFromName, parseLabel,
-  _internals: { guessTunnelPairs, pyRound, bgr2hsv, bgr2gray, shrink2, gaussianBlur, cropCell, robustGeometry, insideCells, classify, Patch, patchFeatures, assembleBoard } };
+  _internals: { chevronDirection, guessTunnelPairs, pyRound, bgr2hsv, bgr2gray, shrink2, gaussianBlur, cropCell, robustGeometry, insideCells, classify, Patch, patchFeatures, assembleBoard } };
 if (typeof module === 'object' && module.exports) module.exports = api; else root.KunParser = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

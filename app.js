@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.17.5'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.17.6'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -163,6 +163,7 @@ const LEVELS = CATALOG_ENTRIES.map(({id,code}) => {
 const OFFLINE = location.protocol === 'file:';
 const STORAGE_KEY = 'kunundrum.replay.v1';
 const BEST_KEY = 'kunundrum.best.v1';
+const CHAPTER_KEY = 'kunundrum.chapter.v1';
 const MAX_REPLAY_MOVES = 2000;
 const MAX_ROUTE_CHARACTERS = 10000;
 let board = LEVELS[0];
@@ -377,7 +378,7 @@ function renderSvg(b, s, options = {}) {
     svg += `<g role="img" aria-label="${on?'Active':'Inactive'} wall${label?' · switch '+label:''} ${pos(gate)}" transform="translate(${p.x},${p.y})">${on?`<rect x="-27" y="-27" width="54" height="54" rx="2" fill="none" stroke="#ffe85c" stroke-width="7" opacity=".25" filter="url(#${prefix}-glow)"/><rect class="gate-on" x="-27" y="-27" width="54" height="54" rx="2" fill="url(#${prefix}-gate)" stroke="url(#${prefix}-gate)" style="stroke-width:3.8"/>`:''}<rect class="${on?'gate-face':'gate-off'}" x="${-inset}" y="${-inset}" width="${inset*2}" height="${inset*2}" rx="1.5" fill="url(#${prefix}-gate-metal)" stroke="${on?'#b6aa45':'#77818c'}" style="opacity:1;stroke-dasharray:none;stroke-width:1.1"/><rect x="${1-inset}" y="${1-inset}" width="${inset*2-2}" height="${inset*2-2}" rx="1" fill="url(#${prefix}-gate-texture)"/><path d="M0 ${2-inset}V${inset-2}M${2-inset} 0H${inset-2}" fill="none" stroke="#242c34" stroke-width="2"/><path d="M2 ${2-inset}V${inset-2}M${2-inset} 2H${inset-2}" fill="none" stroke="#89939d" stroke-opacity=".32" stroke-width=".8"/>${label?`<text class="tile-label" x="0" y="0" dominant-baseline="central" fill="${on?'#fff1b8':'#dbe2e8'}" style="font-size:${label.length>4?10:14}px;font-weight:700;paint-order:stroke;stroke:#1c252e;stroke-width:3;stroke-linejoin:round">${label}</text>`:''}</g>`;
   }
   for (const arrow of b.arrows) {
-    const p=xy(arrow), degrees={r:0,d:90,l:180,u:270}[arrow.direction], color=arrow.rotating?'#ff8a9b':'#b9d8ff', glow=arrow.rotating?'#ff2a45':'#2f7dff';
+    const p=xy(arrow), degrees={r:0,d:90,l:180,u:270}[arrow.direction], color=arrow.rotating?'#ff8a9b':'#a0cddb', glow=arrow.rotating?'#ff2a45':'#2a86b0';
     const chev=[-21,-10,1].map((a,i)=>`<polygon points="${a},-14 ${a+6},-14 ${a+16},0 ${a+6},14 ${a},14 ${a+10},0" opacity="${[.62,1,.45][i]}"/>`).join('');
     svg += `<g role="img" aria-label="${arrow.rotating?({ccw:'Counterclockwise rotating',flip:'Flipping'}[arrow.type]||'Clockwise rotating'):'Fixed'} arrow ${DIRECTION_NAMES[arrow.direction]} ${pos(arrow)}" transform="translate(${p.x},${p.y})"><g transform="rotate(${degrees})"><g${arrow.rotating?` class="rotating-arrow" data-type="${arrow.type||'cw'}" style="transform:rotate(${arrowAngle(arrow.type,clock.ticks)}deg)"`:''}><g fill="${glow}" filter="url(#${prefix}-glow)" opacity=".9">${chev}</g><g fill="${color}" stroke="${color}" stroke-width=".8" stroke-linejoin="round">${chev}</g></g></g></g>`;
   }
@@ -729,6 +730,8 @@ function openDialog(id) {stopPlayback();if(!$(id).open)$(id).showModal();}
 function closeDialog(dialog) {dialog.close();}
 const levelParts = id => id.split('.').map(Number);
 let levelsChapter = null;
+try { const c = Number(localStorage.getItem(CHAPTER_KEY)); if (Number.isInteger(c) && c >= 1 && c <= 30) levelsChapter = c; } catch {} // survives reloads
+const savedChapter = levelsChapter;
 function revealChapter() {
   const bar = $('chapter-bar'), act = bar.querySelector('.active');
   if (!act) return;
@@ -745,6 +748,7 @@ function renderLevelCards(chapter) {
   for (const list of byChapter.values()) list.sort((x, y) => levelParts(x.id)[1] - levelParts(y.id)[1]);
   if (chapter == null) chapter = levelsChapter ?? levelParts(currentPresetId || LEVELS[0].id)[0];
   levelsChapter = chapter;
+  try { localStorage.setItem(CHAPTER_KEY, String(chapter)); } catch {}
   const barTop = $('chapter-bar').scrollTop, barLeft = $('chapter-bar').scrollLeft;
   $('chapter-bar').innerHTML = Array.from({length: 30}, (_, i) => {
     const a = i + 1, count = byChapter.get(a)?.length || 0;
@@ -1039,6 +1043,7 @@ function boot() {
     }else if(saved?.board){
       const next=decodeBoard(saved.board);const prepared=saved.moves?buildReplay(next,saved.moves):undefined;
       adoptBoard(next,prepared,Number.isInteger(saved.at)?saved.at:0);
+      if(savedChapter)levelsChapter=savedChapter; // reloading keeps the chapter last browsed, not the loaded board's
       if(cursor===0&&state().balls.some(ball=>ball.id===saved.selected&&!ball.locked))selected=saved.selected;
       mode=saved.mode==='replay'?'replay':'manual';
       if(typeof saved.draft==='string'&&saved.draft.length<=10000)$('solution-input').value=saved.draft;
