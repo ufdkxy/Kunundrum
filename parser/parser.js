@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.5-js.1';
+const PARSER_VERSION = '0.13.6-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -375,7 +375,10 @@ function teleportSprite(patch) {
   if (Math.min(...QUADS.map(m => above(V, m, 100))) < .10) return null;
   if (above(V, M_AXIS, 170) > .08 || maskMean(V, M_R6) < 200) return null;
   if (above(V, M_R12_24, 170) > .5) return null;
-  const lit = mk(i => M_CORNER[i] && V[i] > 100);
+  // Colour is read off the corner arcs. Pixels at the cell edge (|dx| or |dy| > 40) are excluded: the neon outline bleeds in there, and on red
+  // walls it outvoted gray (universal) and green arcs next to a wall (13.2, 14.6, 14.8). Fall back to all corner pixels if too few remain.
+  let lit = mk(i => M_CORNER[i] && V[i] > 100 && DX[i] <= 40 && DY[i] <= 40);
+  if (lit.reduce((a, b) => a + b, 0) < 40) lit = mk(i => M_CORNER[i] && V[i] > 100);
   if (above(S, lit, 70) < .5) return '*';
   const counts = { R: 0, Y: 0, G: 0, B: 0 };
   for (let i = 0; i < NPX; i++) {
@@ -386,11 +389,20 @@ function teleportSprite(patch) {
   return voteColor(counts);
 }
 
+// Bright pixels on the goal-ring radius (33-40): ~80 around a switch's dark ring, 400-900 around a ball drawn inside a goal ring.
+function brightRing(patch) {
+  const V = patch.hsvChannel(2); let n = 0;
+  for (let i = 0; i < NPX; i++) if (RAD[i] > 33 && RAD[i] < 40 && V[i] > 150) n++;
+  return n;
+}
+
 function switchDisc(patch) {
   const S = patch.hsvChannel(1), V = patch.hsvChannel(2), H = patch.hsvChannel(0);
   if (maskMean(S, M_R8) < 200) return null;
   const solid = mk(i => S[i] > 150 && V[i] > 90);
   if (maskMean(solid, M_R24) < .85) return null;
+  // A goal ring drawn around a ball (13.4: red ball in a blue ring) is bright at r 33-40; a switch's dark ring is not (80 vs 660 pixels).
+  if (brightRing(patch) > 300) return null;
   const hs = []; for (let i = 0; i < NPX; i++) if (M_R8[i]) hs.push(H[i]);
   hs.sort((a, b) => a - b);
   const n = hs.length, hue = Math.trunc(n % 2 ? hs[(n - 1) / 2] : (hs[n / 2 - 1] + hs[n / 2]) / 2);
@@ -518,7 +530,7 @@ function classify(patch, templates, data) {
     d2 = d2 ? (chevronDirection(patch) || d2) : null;
     return [d2 ? 'arrow_' + d2 : 'unknown', c2, f];
   }
-  const overlap = (f.bright_count > 2400 && f.core_bright > .85 && f.ann_bright > .7) ? overlayColors(patch) : null;
+  const overlap = (f.bright_count > 2400 && f.core_bright > .85 && (f.ann_bright > .7 || (f.ann_bright > .55 && brightRing(patch) > 300))) ? overlayColors(patch) : null;
   if (overlap) return [`ball_${overlap[0]}+goal_${overlap[1]}`, .91, f];
   const onTele = f.core_bright > .88 && f.bright_count > 2800 && f.mid_bright > .8 ? ballOnTeleport(patch) : null;
   if (onTele) return [`ball_${onTele[0]}+teleport_${onTele[1]}`, .85, f];
