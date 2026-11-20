@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.3-js.1';
+const PARSER_VERSION = '0.13.4-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -642,7 +642,8 @@ function insideCells(img, geom, out) {
       if (n) { best = Math.max(best, (hit - wh) / n); mark = Math.max(mark, wh / n); }
     }
     if (best > .6) for (const k in votes) votes[k] += local[k];
-    gapMark = best <= .6 && mark > .05;
+    // Real tunnel markers cover >= 50% of the edge (12.6, 21.1); a teleport's bright square gives 7-15% (white teleport on 12.9), so require 30%.
+    gapMark = best <= .6 && mark > .3;
     return best > .6 || mark > .05;
   };
   const gaps = new Map();
