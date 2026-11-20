@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.17.2'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.17.3'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -245,6 +245,7 @@ function adoptBoard(nextBoard, replayFrames, at = 0, resetInput = true) {
   selected = (cursor > 0 ? frames[cursor].record?.ballId : null) || state().balls.find(ball => !ball.locked)?.id || state().balls[0].id;
   mode = replayFrames ? 'replay' : 'manual';
   currentPresetId = preset;
+  if (preset) levelsChapter = levelParts(preset)[0]; // the puzzle dialog reopens on the last chapter used (an edited board keeps it)
   if (resetInput) $('solution-input').value = replayFrames ? getNotation() : '';
   showError('replay-error');
   document.title = `${board.title} · Kunundrum`;
@@ -867,7 +868,7 @@ $('toggle-coords').addEventListener('click',()=>{settings.coordinates=!settings.
 $('toggle-trace').addEventListener('click',()=>{settings.trail=!settings.trail;if(!busy)renderBoard();renderControls();persist();});
 $('toggle-labels').addEventListener('click',()=>{settings.labels=!settings.labels;if(!busy)renderBoard();renderControls();persist();});
 $('toggle-outline').addEventListener('click',()=>{settings.outline=!settings.outline;if(!busy)renderBoard();renderControls();persist();});
-$('open-levels').addEventListener('click',()=>{levelsChapter=null;renderLevelCards();openDialog('levels-dialog');revealChapter();});
+$('open-levels').addEventListener('click',()=>{renderLevelCards();openDialog('levels-dialog');revealChapter();});
 $('chapter-bar').addEventListener('click',event=>{const b=event.target.closest('[data-chapter]');if(b)renderLevelCards(Number(b.dataset.chapter));});
 $('completion-inline').addEventListener('click',event=>{if(!event.target.closest('#next-puzzle')||busy||isPlaying)return;const next=nextLevel();if(next){adoptBoard(next);clearLocation();}});
 $('level-cards').addEventListener('click',event=>{const target=event.target.closest('[data-level]');if(!target)return;const next=LEVELS.find(level=>level.id===target.dataset.level);if(next){adoptBoard(next);clearLocation();$('levels-dialog').close();}});
@@ -918,6 +919,9 @@ document.addEventListener('keydown',event=>{
   }
   const viewToggle=!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&{c:'toggle-coords',l:'toggle-labels',o:'toggle-outline',t:'toggle-trace'}[event.key.toLowerCase()];
   if(viewToggle){event.preventDefault();$(viewToggle).click();return;}
+  // N = Next puzzle, S = Solver, U = Use saved solution: only while the matching button is available.
+  const action=!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&{n:'next-puzzle',s:'open-solver',u:'use-example'}[event.key.toLowerCase()];
+  if(action){const button=$(action);if(button&&!button.disabled&&!isPlaying&&!busy&&button.offsetParent!==null){event.preventDefault();button.click();return;}}
   if(isPlaying)return;
   const key=event.key.toLowerCase();
   const direction={ArrowUp:'u',ArrowDown:'d',ArrowLeft:'l',ArrowRight:'r'}[event.key];

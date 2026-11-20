@@ -114,10 +114,11 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .wall-cell { fill: #0b161e; stroke: #3a5767; stroke-width: 1.2; }
 .coord-label { fill: #607d8e; font: 10px var(--mono); text-anchor: middle; user-select: none; }
 .tile-label { font: 10px var(--mono); text-anchor: middle; pointer-events: none; }
-.ball-hit { cursor: pointer; outline: none; }
+.ball-hit { cursor: grab; outline: none; }
 .ball-hit:focus-visible .selected-ring, .ball-hit:focus-visible .orb-core { stroke: #fff; stroke-width: 3px; }
 .ball-hit:focus-visible { filter: brightness(1.22); }
 .ball-hit[aria-disabled="true"] { cursor: default; }
+.ball-hit:active { cursor: grabbing; }
 .orb-core { pointer-events: none; }
 .selected-ring { pointer-events: none; }
 .goal-ring { fill: none; opacity: .9; }
