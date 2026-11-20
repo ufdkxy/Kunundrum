@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.2-js.1';
+const PARSER_VERSION = '0.13.3-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -638,7 +638,8 @@ function insideCells(img, geom, out) {
         if (ys < 0 || ys >= H) continue;
         for (let x = Math.max(0, Math.trunc(x0)); x < Math.min(W, Math.trunc(x1)); x++) { n++; const i = ys * W + x; if (neon(i)) { hit++; const k = hueClass(i); if (k) local[k]++; } if (white(i)) wh++; }
       }
-      if (n) { best = Math.max(best, hit / n); mark = Math.max(mark, wh / n); }
+      // White marker pixels are bright too but are not outline: two triangles can cover ~70% of a cell edge (12.6), so they must not count as wall.
+      if (n) { best = Math.max(best, (hit - wh) / n); mark = Math.max(mark, wh / n); }
     }
     if (best > .6) for (const k in votes) votes[k] += local[k];
     gapMark = best <= .6 && mark > .05;
