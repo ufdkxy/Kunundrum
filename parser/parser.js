@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.6-js.1';
+const PARSER_VERSION = '0.13.7-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -331,7 +331,8 @@ function ballOnTeleport(patch) {
   const ball = voteColor(own);
   if (own[ball] < .5 * (own.R + own.Y + own.G + own.B)) return null;
   let best = null;
-  for (const c of ['R', 'Y', 'G', 'B']) if (c !== ball && arc[c] >= (c === 'R' ? 800 : 250) && axis[c] <= .45 * arc[c] && (!best || arc[c] > arc[best])) best = c;
+  // Arcs in the ball's own colour count too: plain balls give at most 17 such pixels on 45 balls of the test screenshots, real arcs 400+.
+  for (const c of ['R', 'Y', 'G', 'B']) if (arc[c] >= (c === 'R' ? (c === ball ? 600 : 800) : 250) && axis[c] <= .45 * arc[c] && (!best || arc[c] > arc[best])) best = c;
   return best ? [ball, best] : null;
 }
 
