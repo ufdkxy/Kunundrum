@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.17.4'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.17.5'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -127,18 +127,19 @@ function renderHelpIcons() {
     return '';
   }
   const frame = (body, viewBox = '-32 -32 64 64') => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="40" height="40" aria-hidden="true" focusable="false" style="display:block;width:40px;height:40px;max-width:none;flex:0 0 40px;overflow:visible">${body}</svg>`;
-  const icons = [
+  const icon = Object.fromEntries([
     ['goal', / goal /],
     ['arrow', /^Fixed arrow /],
     ['switch', /^Off switch/],
     ['teleport', /^Active Yellow teleport/],
     ['hex', /^One-use -5 score /],
-  ].map(([name, label]) => frame(
+  ].map(([name, label]) => [name, frame(
     (defs + feature(label)).replaceAll('preview-help-symbols-', `help-rule-${name}-`),
     name === 'arrow' ? '-24 -24 48 48' : undefined,
-  ));
-  icons.push(frame(`<g fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS.undo}</g>`, '-2 -2 28 28'));
-  icons.splice(4, 0, frame(`<g transform="scale(1.9)">${tunnelTriangles('u')}</g>`)); // "Use a tunnel" sits after the teleport entry
+  )]));
+  icon.tunnel = frame(`<g transform="scale(1.9)">${tunnelTriangles('u')}</g>`);
+  // Same order as the cards in index.html (How to play).
+  const icons = [icon.goal, icon.hex, icon.arrow, icon.teleport, icon.switch, icon.tunnel];
   return icons;
 }
 
@@ -187,7 +188,7 @@ let animationEpoch = 0;
 let playEpoch = 0;
 let toastTimer;
 let bestScores = {};
-let settings = { coordinates: false, labels: true, trail: false, outline: false, speed: 1, viewDefaultsVersion: 1, outlineDefaultsVersion: 1 };
+let settings = { coordinates: false, labels: true, trail: false, outline: false, speed: 1 };
 let viewSettingsInitialized = false;
 let storageAvailable = true;
 let currentPresetId = board.id;
@@ -1019,12 +1020,10 @@ function boot() {
   }catch{storageAvailable=false;}
   if(!viewSettingsInitialized) {
     const previous=saved?.settings;
-    settings.coordinates=previous?.viewDefaultsVersion===1&&previous.coordinates===true;
+    settings.coordinates=previous?.coordinates===true;
     settings.labels=previous?.labels!==false; // default on
-    settings.trail=previous?.viewDefaultsVersion===1&&previous.trail===true;
-    // Migrate earlier installs to outline-off once; retain subsequent user choices.
-    settings.outline=previous?.outlineDefaultsVersion===1 && previous.outline===true;
-    settings.outlineDefaultsVersion=1;
+    settings.trail=previous?.trail===true;
+    settings.outline=previous?.outline===true;
     settings.speed=[.5,1,2].includes(previous?.speed)?previous.speed:1;
     viewSettingsInitialized=true;
   }
