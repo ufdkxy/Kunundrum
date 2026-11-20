@@ -2,7 +2,7 @@
 
 *Living document: keep it current, delete resolved items instead of appending history (Git has the history). See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-**Last updated:** 2026-11-20 · **App version:** `APP_VERSION = '3.17.6'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. Invalid-but-readable boards (codes, links, JSON) now open in the editor with the problems listed instead of failing to load; Play stays gated by validation (`decodeBoard(code, problems)`, `validateBoard(raw, problems)`). The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
+**Last updated:** 2026-11-20 · **App version:** `APP_VERSION = '3.17.7'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. Invalid-but-readable boards (codes, links, JSON) now open in the editor with the problems listed instead of failing to load; Play stays gated by validation (`decodeBoard(code, problems)`, `validateBoard(raw, problems)`). The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
 
 ## 1. Components
 
@@ -37,6 +37,8 @@ Certified optimal scores (`verify.js`): 6.6 → 18, 7.1 → 15, 7.4 → 27, 7.6 
 **App 3.15.0, 2026-11-19: live arrow clock replaces the rotate dialog.** Rotating arrows tick once a second (inline transform driven by `clock` in `app.js`), freeze while a ball moves and resume afterwards; waiting is the player's job. A played move uses the orientations shown when it starts (`Core.applyMoveAtPhase`, which derives the `(->xy)` letters). Replay, step, jump and board/URL loading advance the clock (waiting) to the first phase that fits the move's letters (`result.phases`), also for no-animation moves. The "choose the arrow's direction" dialog is gone.
 
 **App 3.14.1, 2026-11-19: rotating arrows lose their dashed circle.** Rotating arrows are now drawn like fixed ones (the game has no outline); they are told apart by the animation.
+
+**App 3.17.7, parser v0.13.2-js.1, 2026-11-20:** parser: rotating arrows' orientation was still not recognized on 11.9 (red walls, dim chevrons: measured separation 2-4 px, below the fixed cutoff of 5 made for blue arrows). Rotating arrows now use a cutoff of 1.5 plus a dominance test (major axis at least twice the minor one); blue arrows unchanged. 11.9 now reads all six: (3,6) u, (3,5) u, (8,6) u, (8,5) u, (4,2) u, (7,2) d.
 
 **App 3.17.6, parser v0.13.1-js.1, 2026-11-20:** the puzzle dialog's chapter is kept in localStorage (`kunundrum.chapter.v1`) and survives reloads (a reload restores the chapter last browsed, not the loaded board's). Fixed arrows use a teal-steel blue (`#a0cddb` core, `#2a86b0` glow) matching `parser/arrow_templates`. Parser: rotating arrows' orientation is measured above each cell's own median red-minus-blue instead of a fixed threshold, so dim arrows like the up arrow in 11.8 are recognized (no change on the other sample screenshots).
 

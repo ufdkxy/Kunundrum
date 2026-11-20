@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.1-js.1';
+const PARSER_VERSION = '0.13.2-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -442,8 +442,11 @@ function chevronDirection(patch, red = false) {
   };
   const dv = mom(mid, false) - mom(arm, false);
   const dh = mom(mid, true) - mom(arm, true);
-  if (Math.max(Math.abs(dv), Math.abs(dh)) < 5) return null;
-  if (Math.abs(dv) >= Math.abs(dh)) return dv > 0 ? 'd' : 'u';
+  const av = Math.abs(dv), ah = Math.abs(dh), major = Math.max(av, ah), minor = Math.min(av, ah);
+  // Dim red chevrons on red-walled boards (11.9) give a weak but clear signal (about 2-4 against under 1 on the other axis),
+  // so rotating arrows use a lower cutoff plus a dominance test instead of the blue arrows' fixed 5.
+  if (red ? (major < 1.5 || major < 2 * minor) : major < 5) return null;
+  if (av >= ah) return dv > 0 ? 'd' : 'u';
   return dh > 0 ? 'r' : 'l';
 }
 
