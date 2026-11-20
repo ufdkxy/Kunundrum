@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.17.3'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.17.4'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -447,7 +447,7 @@ function renderMeta() {
   $('docked-value').innerHTML=`${docked}<span>/${state().balls.length}</span>`;
   const completed=$('completion-inline');
   const hasNext=isComplete(state())&&!!nextLevel();
-  completed.innerHTML=isComplete(state())?`Complete${hasNext?'<button class="next-puzzle" id="next-puzzle" type="button" title="Go to the next puzzle">Next puzzle ›</button>':''}`:'';
+  completed.innerHTML=isComplete(state())?`Complete${hasNext?'<button class="next-puzzle" id="next-puzzle" type="button" title="Go to the next puzzle (N)">Next puzzle ›</button>':''}`:'';
   completed.className=`completion-inline${isComplete(state())?' done':''}`;
 }
 // Bottom-bar hint. "Moving..." is shown only while autoplay is running (isPlaying), never for a
@@ -486,7 +486,7 @@ function renderControls() {
   $('load-solution').disabled=playbackLocked;
   $('use-example').disabled=playbackLocked||!board.solution;
   $('solution-input').disabled=isPlaying;
-  $('use-example').title=board.solution?'Load the saved solution from the start':'No saved solution for this board.';
+  $('use-example').title=board.solution?'Load the saved solution from the start (U)':'No saved solution for this board.';
   for(const [id,on] of [['toggle-coords',settings.coordinates],['toggle-labels',settings.labels],['toggle-outline',settings.outline],['toggle-trace',settings.trail]]) {$(id).classList.toggle('active',on);$(id).setAttribute('aria-pressed',String(on));}
   renderHint();
 }
