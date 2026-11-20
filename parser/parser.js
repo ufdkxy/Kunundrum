@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.4-js.1';
+const PARSER_VERSION = '0.13.5-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -314,6 +314,27 @@ function concentricGoal(patch) {
   return true;
 }
 
+// A ball starting on a teleport (11.6): the orb is drawn with coloured corner arcs in the teleport's colour. Returns [ballColor, teleportColor]
+// or null. Arcs are counted off the cell's axes only: a switch's blue ring also crosses the axes, corner arcs do not. Only non-red arcs are clean
+// evidence (red walls bleed into the cell); a red arc needs a much stronger signal.
+function ballOnTeleport(patch) {
+  const hsv = patch.hsv, own = { R: 0, Y: 0, G: 0, B: 0 }, arc = { R: 0, Y: 0, G: 0, B: 0 }, axis = { R: 0, Y: 0, G: 0, B: 0 };
+  for (let i = 0; i < NPX; i++) {
+    const r = RAD[i], core = r < 20, ring = r >= 34 && r < 50 && DX[i] <= 40 && DY[i] <= 40;
+    if (!core && !ring) continue;
+    const onAxis = !core && Math.min(DX[i], DY[i]) <= 14;
+    const h = hsv[i * 3], s = hsv[i * 3 + 1], v = hsv[i * 3 + 2];
+    if (!(s > 85 && v > 105)) continue;
+    const c = (h < 20 || h > 169) ? 'R' : h < 39 ? 'Y' : h < 85 ? 'G' : 'B';
+    if (core) own[c]++; else (onAxis ? axis : arc)[c]++;
+  }
+  const ball = voteColor(own);
+  if (own[ball] < .5 * (own.R + own.Y + own.G + own.B)) return null;
+  let best = null;
+  for (const c of ['R', 'Y', 'G', 'B']) if (c !== ball && arc[c] >= (c === 'R' ? 800 : 250) && axis[c] <= .45 * arc[c] && (!best || arc[c] > arc[best])) best = c;
+  return best ? [ball, best] : null;
+}
+
 function overlayColors(patch) {
   const hsv = patch.hsv, out = [];
   for (const region of [mk(i => RAD[i] < 16), mk(i => RAD[i] > 33 && RAD[i] < 40)]) {
@@ -499,6 +520,8 @@ function classify(patch, templates, data) {
   }
   const overlap = (f.bright_count > 2400 && f.core_bright > .85 && f.ann_bright > .7) ? overlayColors(patch) : null;
   if (overlap) return [`ball_${overlap[0]}+goal_${overlap[1]}`, .91, f];
+  const onTele = f.core_bright > .88 && f.bright_count > 2800 && f.mid_bright > .8 ? ballOnTeleport(patch) : null;
+  if (onTele) return [`ball_${onTele[0]}+teleport_${onTele[1]}`, .85, f];
   if (f.core_bright < .02 && f.bright_count > 120 && f.bright_count < 900 && f.ann_bright < .26 && f.mid_bright < .12) { typ = 'outside'; c = .94; }
   else if (f.presence < .18) { typ = 'outside'; c = .99; }
   else if (f.bright_count > 2700 && f.color === 'R' && f.mid_bright > .78 && f.ann_bright > .39) { typ = 'switch'; c = .98; }
@@ -789,6 +812,7 @@ function assembleBoard(labels, geom, level, overrides) {
       for (const part of kind.split('+')) {
         if (part.startsWith('ball_')) balls.push({ ...pos(), color: part.slice(5) });
         else if (part.startsWith('goal_')) goals.push({ ...pos(), color: part.slice(5) });
+        else if (part.startsWith('teleport_')) telecells.push({ ...pos(), color: part.slice(9), switchable: false, inactive: false });
       }
     } else if (kind === 'outside' || kind === 'wall') walls.push(pos());
     else if (kind === 'floor' || kind === 'empty') { /* nothing */ }
@@ -890,22 +914,36 @@ function levelFromName(name) {
 function parseImage(img, options = {}) {
   const data = getData(options), overrides = options.overrides || {}, templates = options.templates || [];
   const level = options.level || 'imported';
-  const geometry = robustGeometry(img, options.grid);
-  const warnings = [], stats = [];
-  const labels = Array.from({ length: geometry.height }, () => Array(geometry.width).fill(null));
-  const confidence = Array.from({ length: geometry.height }, () => Array(geometry.width).fill(0));
-  const cellOverrides = overrides.cells || {};
-  for (let row = geometry.height - 1; row >= 0; row--) for (let col = 0; col < geometry.width; col++) {
-    const patch = new Patch(cropCell(img, geometry, col, row));
-    let [kind, conf, features] = classify(patch, templates, data);
-    const key = `${col + 1},${geometry.height - row}`;
-    if (key in cellOverrides) { kind = parseLabel(String(cellOverrides[key])); conf = 1; }
-    labels[row][col] = kind; confidence[row][col] = conf;
-    if (kind === 'unknown' || (conf < .7 && kind !== 'outside' && kind !== 'floor')) warnings.push(`Cell (${key}) classified ${kind}, confidence ${conf.toFixed(2)}`);
-    const measurements = {};
-    for (const [k, v] of Object.entries(features)) measurements[k] = typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 1000) / 1000 : v;
-    stats.push({ x: col + 1, y: geometry.height - row, kind, confidence: Math.round(conf * 1000) / 1000, measurements });
+  let geometry = robustGeometry(img, options.grid);
+  const warnings = [], cellOverrides = overrides.cells || {};
+  const classifyGrid = geom => {
+    const labels = Array.from({ length: geom.height }, () => Array(geom.width).fill(null));
+    const confidence = Array.from({ length: geom.height }, () => Array(geom.width).fill(0));
+    const stats = [], notes = [];
+    for (let row = geom.height - 1; row >= 0; row--) for (let col = 0; col < geom.width; col++) {
+      const patch = new Patch(cropCell(img, geom, col, row));
+      let [kind, conf, features] = classify(patch, templates, data);
+      const key = `${col + 1},${geom.height - row}`;
+      if (key in cellOverrides) { kind = parseLabel(String(cellOverrides[key])); conf = 1; }
+      labels[row][col] = kind; confidence[row][col] = conf;
+      if (kind === 'unknown' || (conf < .7 && kind !== 'outside' && kind !== 'floor')) notes.push(`Cell (${key}) classified ${kind}, confidence ${conf.toFixed(2)}`);
+      const measurements = {};
+      for (const [k, v] of Object.entries(features)) measurements[k] = typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 1000) / 1000 : v;
+      stats.push({ x: col + 1, y: geom.height - row, kind, confidence: Math.round(conf * 1000) / 1000, measurements });
+    }
+    return { labels, confidence, stats, notes };
+  };
+  let grid = classifyGrid(geometry);
+  // Boards made of separate rooms (11.6: six 2x2 rooms) can fool the seam search into a cell twice the real size. Every real level has
+  // balls, so when none were found try the half-size grid (same origin) and keep it only if it finds some.
+  const hasBall = g => g.labels.some(r => r.some(k => String(k).startsWith('ball_')));
+  if (!options.grid && !hasBall(grid) && geometry.cell >= 84) {
+    const half = { ...geometry, cell: geometry.cell / 2, width: geometry.width * 2, height: geometry.height * 2 };
+    const alt = classifyGrid(half);
+    if (hasBall(alt)) { geometry = half; grid = alt; }
   }
+  const { labels, confidence, stats } = grid;
+  warnings.push(...grid.notes);
   const wallVotes = {};
   try {
     const inside = insideCells(img, geometry, wallVotes);
