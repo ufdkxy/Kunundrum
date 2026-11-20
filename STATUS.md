@@ -2,7 +2,7 @@
 
 *Living document: keep it current, delete resolved items instead of appending history (Git has the history). See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-**Last updated:** 2026-11-20 · **App version:** `APP_VERSION = '3.17.8'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. Invalid-but-readable boards (codes, links, JSON) now open in the editor with the problems listed instead of failing to load; Play stays gated by validation (`decodeBoard(code, problems)`, `validateBoard(raw, problems)`). The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
+**Last updated:** 2026-11-20 · **App version:** `APP_VERSION = '3.17.9'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. Invalid-but-readable boards (codes, links, JSON) now open in the editor with the problems listed instead of failing to load; Play stays gated by validation (`decodeBoard(code, problems)`, `validateBoard(raw, problems)`). The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
 
 ## 1. Components
 
@@ -38,7 +38,9 @@ Certified optimal scores (`verify.js`): 6.6 → 18, 7.1 → 15, 7.4 → 27, 7.6 
 
 **App 3.14.1, 2026-11-19: rotating arrows lose their dashed circle.** Rotating arrows are now drawn like fixed ones (the game has no outline); they are told apart by the animation.
 
-**App 3.17.8, parser v0.13.3-js.1, 2026-11-20:** parser: tunnels were not recognized on 12.6 (red walls, four openings on the outline: top, bottom, left, right). The wall test counted bright pixels, and the two white marker triangles of an opening cover ~70% of that edge, above the 0.6 threshold, so the opening was read as a wall. White marker pixels are now excluded from the wall measure (real outline edges stay at 1.00). 12.6 now yields 4 openings, guessed pairing top-bottom and left-right (offset, as in 21.1); check it in the editor. Only the 12.6 screenshot was available for this change (no stored screenshots in the repo). `Solver/tests/verify.js` stops at `bidirectional 10.9 lower bound 0`, before and after this change (unrelated; not investigated).
+**App 3.17.9, 2026-11-20:** editor: switching Play -> Edit no longer discards the screenshot review thumbnail; it is replaced only by a new screenshot import (or cleared by New board / opening a non-screenshot draft).
+
+**App 3.17.8, parser v0.13.3-js.1, 2026-11-20:** parser: tunnels were not recognized on 12.6 (red walls, four openings on the outline: top, bottom, left, right). The wall test counted bright pixels, and the two white marker triangles of an opening cover ~70% of that edge, above the 0.6 threshold, so the opening was read as a wall. White marker pixels are now excluded from the wall measure (real outline edges stay at 1.00). 12.6 now yields 4 openings, guessed pairing top-bottom and left-right (offset, as in 21.1); check it in the editor. Only the 12.6 screenshot was available for this change (no stored screenshots in the repo). `Solver/tests/verify.js` passes after `make` (its earlier stop at `bidirectional 10.9 lower bound 0` came from a stale local `kunsolve` v0.16 binary, not from the parser).
 
 **App 3.17.7, parser v0.13.2-js.1, 2026-11-20:** parser: rotating arrows' orientation was still not recognized on 11.9 (red walls, dim chevrons: measured separation 2-4 px, below the fixed cutoff of 5 made for blue arrows). Rotating arrows now use a cutoff of 1.5 plus a dominance test (major axis at least twice the minor one); blue arrows unchanged. 11.9 now reads all six: (3,6) u, (3,5) u, (8,6) u, (8,5) u, (4,2) u, (7,2) d.
 

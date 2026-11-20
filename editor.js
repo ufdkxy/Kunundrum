@@ -233,7 +233,7 @@ function setMode(active){
  if(active){
   host().stop();
   E.draft=clone(host().getBoard());E.fromHost=true;E.history=[];E.future=[];E.selected=null;E.tool='select';E.dirty=false;
-  setReview(null,false);
+  // The screenshot review stays across Play/Edit toggles; only a new import (setReview) or a new/blank board replaces it.
   E.active=true;$('editor-export-code').hidden=true;setStatus('');refresh();renderDraft();
  }else{
   try{
