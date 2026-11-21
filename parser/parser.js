@@ -15,10 +15,11 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.7-js.1';
+const PARSER_VERSION = '0.13.8-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
+const TAB_X0 = .40, TAB_X1 = .55; // x range (fraction of the width) of the bottom tab, which is not part of the board
 
 /* ---------------------------------------------------------------- numeric helpers */
 
@@ -571,10 +572,11 @@ function classify(patch, templates, data) {
 // the grid continues there (checked up to two cells out, on all four sides). Ordinary tunnel markers sit right at the outline instead.
 function extendForTunnelArms(img, g) {
   const { width: W, height: H } = img, hsv = img.hsv || (img.hsv = bgr2hsv(img.bgr));
-  const yLo = Math.trunc(H * .125), yHi = Math.trunc(H * .94);
+  const yLo = Math.trunc(H * .125), yHi = H;
   const whites = (xa, xb, ya, yb) => {
     let n = 0;
     for (let y = Math.max(yLo, Math.trunc(ya)); y < Math.min(yHi, Math.trunc(yb)); y++) for (let x = Math.max(0, Math.trunc(xa)); x < Math.min(W, Math.trunc(xb)); x++) {
+      if (y >= H * .94 && x >= W * TAB_X0 && x < W * TAB_X1) continue; // the bottom tab
       const i = y * W + x; if (hsv[i * 3 + 2] > 200 && hsv[i * 3 + 1] < 50) n++;
     }
     return n;
@@ -604,7 +606,9 @@ function robustGeometry(img, grid) {
     cyan[p] = ((b > 88 && g > 88 && r < 155 && b > r + 30) || (hsv[p * 3 + 1] > 110 && hsv[p * 3 + 2] > 170)) ? 1 : 0;
   }
   cyan.fill(0, 0, Math.trunc(h * .125) * w);
-  cyan.fill(0, Math.trunc(h * .94) * w);
+  // The bottom tab (three white triangles, x ~41-54% of the width, y > 94%) must not count, but the board itself can run below
+  // y = 94% (15.8, 16.1), so only the tab's columns are cut there.
+  for (let y = Math.trunc(h * .94); y < h; y++) cyan.fill(0, y * w + Math.trunc(w * TAB_X0), y * w + Math.trunc(w * TAB_X1));
   let x0 = Infinity, x1 = -1, y0 = Infinity, y1 = -1, count = 0;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (cyan[y * w + x]) {
     count++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
@@ -627,6 +631,7 @@ function robustGeometry(img, grid) {
     return vals.length ? mean(vals) : 0;
   };
   let best = null;
+  const cands = [];
   for (let cell = 42; cell <= 180; cell++) {
     const cols = pyRound((spanx - 23) / cell), rows = pyRound((spany - 17) / cell);
     if (cols < 2 || cols > 32 || rows < 2 || rows > 32) continue;
@@ -640,9 +645,18 @@ function robustGeometry(img, grid) {
     const fit = Math.abs(mx - 23) * .15 + Math.min(Math.abs(my - 10), Math.abs(my - 23)) * .12;
     const half = seamAt(px, left + cell / 2, cols) + seamAt(py, top + cell / 2, rows);
     const score = (seam - half) * .12 - fit - .008 * (cols + rows) - .45 * Math.abs(cell - pyRound(cell / 10) * 10);
-    if (!best || score > best.score) best = { left, top, cell, width: cols, height: rows, score };
+    cands.push({ left, top, cell, width: cols, height: rows, score, seam });
+    if (!best || score > best.score) best = { left, top, cell, width: cols, height: rows, score, seam };
   }
   if (!best) throw new Error('Could not establish a grid from the full cyan outline; supply the grid geometry manually');
+  // A grid of twice the real cell size contains every second seam of the real one, so it scores almost the same (16.1: 5x4 cells of 141
+  // px beat the true 10x8 of 72 px by 0.3). If a candidate with half the cell size and nearly as strong seams exists, the finer grid is the real one.
+  let fine = null;
+  for (const c of cands) {
+    if (Math.abs(c.cell - best.cell / 2) <= 2 && Math.abs(c.width - 2 * best.width) <= 1 && Math.abs(c.height - 2 * best.height) <= 1 &&
+        c.seam >= .85 * best.seam && c.score >= best.score - 1 && (!fine || c.score > fine.score)) fine = c;
+  }
+  if (fine) best = fine;
   return extendForTunnelArms(img, best);
 }
 
