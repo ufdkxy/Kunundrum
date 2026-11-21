@@ -24,10 +24,11 @@ function buildFlags(o){
  num('maxDepth','--max-depth',{min:1,max:100000});num('maxScore','--max-score',{min:-1e12,max:1e12});
  num('beamWidth','--beam-width',{min:1});num('seed','--seed',{min:0});
  return f.join(' ');}
-// Solver progress lines ("forward depth 5 visited 1234 elapsed 0.8s", "beam depth 7 kept 20000 ...") -> {line, depth, states, elapsed}
+// Solver progress lines ("forward depth 5 visited 1234 elapsed 0.8s", "beam depth 7 kept 20000 ...") -> {line, depth, fwdDepth, revDepth, states, elapsed}
 function parseProgress(line){const d=/\bdepth (\d+)/g;let depth=null,m;while((m=d.exec(line)))depth=Math.max(depth||0,+m[1]);
  const s=/\b(?:states|visited|kept) (\d+)/.exec(line),e=/elapsed ([\d.]+)s/.exec(line);
- return {line,depth,states:s?+s[1]:null,elapsed:e?+e[1]:null};}
+ const f=/\bforward depth (\d+)/.exec(line),r=/\breverse depth (\d+)/.exec(line);
+ return {line,depth,fwdDepth:f?+f[1]:null,revDepth:r?+r[1]:null,states:s?+s[1]:null,elapsed:e?+e[1]:null};}
 function solve(code,options,onProgress){
  let worker=null,url=null,settled=false,rejectFn;
  const cleanup=()=>{if(worker){worker.terminate();worker=null;}if(url){URL.revokeObjectURL(url);url=null;}};

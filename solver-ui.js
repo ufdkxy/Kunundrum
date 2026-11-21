@@ -90,7 +90,7 @@ async function run(certifying) {
     if (token !== runToken) return;
     job = window.KunSolver.solve(info.code, options, p => {
       if (token !== runToken) return;
-      const parts = [p.depth != null ? `depth ${p.depth}` : '', p.states != null ? `${fmt(p.states)} states` : '', p.elapsed != null ? `${p.elapsed.toFixed(1)} s` : ''].filter(Boolean);
+      const parts = [p.revDepth != null ? `forward depth ${p.fwdDepth ?? '?'} · reverse depth ${p.revDepth}` : p.depth != null ? `depth ${p.depth}` : '', p.states != null ? `${fmt(p.states)} states` : '', p.elapsed != null ? `${p.elapsed.toFixed(1)} s` : ''].filter(Boolean);
       $('solver-progress').textContent = 'Searching… ' + (parts.join(' · ') || p.line);
     });
     const r = await job.promise;
