@@ -2,7 +2,7 @@
 
 *Living document: keep it current, delete resolved items instead of appending history (Git has the history). See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-**Last updated:** 2026-11-21 · **App version:** `APP_VERSION = '3.17.18'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. Invalid-but-readable boards (codes, links, JSON) now open in the editor with the problems listed instead of failing to load; Play stays gated by validation (`decodeBoard(code, problems)`, `validateBoard(raw, problems)`). The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
+**Last updated:** 2026-11-21 · **App version:** `APP_VERSION = '3.17.19'` in `app.js` (single source; shown after the brand name, top left, and as its tooltip). Bump it with every app change. Invalid-but-readable boards (codes, links, JSON) now open in the editor with the problems listed instead of failing to load; Play stays gated by validation (`decodeBoard(code, problems)`, `validateBoard(raw, problems)`). The parser and solver have their own versions (`PARSER_VERSION` in `parser/parse.py`, `SOLVER_VERSION` in `Solver/solver.cpp`; both print with `--version`); bump each only when that component changes, never with the app.
 
 ## 1. Components
 
@@ -37,6 +37,8 @@ Certified optimal scores (`verify.js`): 6.6 → 18, 7.1 → 15, 7.4 → 27, 7.6 
 **App 3.15.0, 2026-11-19: live arrow clock replaces the rotate dialog.** Rotating arrows tick once a second (inline transform driven by `clock` in `app.js`), freeze while a ball moves and resume afterwards; waiting is the player's job. A played move uses the orientations shown when it starts (`Core.applyMoveAtPhase`, which derives the `(->xy)` letters). Replay, step, jump and board/URL loading advance the clock (waiting) to the first phase that fits the move's letters (`result.phases`), also for no-animation moves. The "choose the arrow's direction" dialog is gone.
 
 **App 3.14.1, 2026-11-19: rotating arrows lose their dashed circle.** Rotating arrows are now drawn like fixed ones (the game has no outline); they are told apart by the animation.
+
+**App 3.17.19, 2026-11-21: help wording.** "How to play": hexagon text now "Passing through a hexagon consumes it.", tunnel text "a gap in a wall" and "a ball that moves through one emerges from the other", notation text "two directions".
 
 **App 3.17.18, parser v0.13.10-js.1, 2026-11-21:** parser: a board with exactly two tunnel openings no longer gets the "pairing is a guess" warning (the pair is certain; 19.8).
 
