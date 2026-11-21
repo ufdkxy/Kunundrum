@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.9-js.1';
+const PARSER_VERSION = '0.13.10-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -1025,7 +1025,8 @@ function parseImage(img, options = {}) {
   if (wallVotes.openings?.length) {
     const { pairs, left } = guessTunnelPairs(wallVotes.openings);
     if (pairs.length) board.tunnels = pairs;
-    warnings.push(`Tunnel pairing is a guess (${wallVotes.openings.length} openings found); check and correct it in the editor.` + (left.length ? ` One opening (${left[0].x}, ${left[0].y}, ${left[0].side}) has no partner and was dropped.` : ''));
+    // Exactly two openings can only pair with each other: nothing to check.
+    if (wallVotes.openings.length !== 2) warnings.push(`Tunnel pairing is a guess (${wallVotes.openings.length} openings found); check and correct it in the editor.` + (left.length ? ` One opening (${left[0].x}, ${left[0].y}, ${left[0].side}) has no partner and was dropped.` : ''));
   }
   const recognition = warnings.filter(w => w.startsWith('Cell (') || w.startsWith('Unrecognized object') || w.startsWith('No balls detected') || w.includes('balls but only'));
   return { board, warnings, recognitionWarnings: recognition, mechanicsPending: warnings.filter(w => !recognition.includes(w)), geometry, labels, confidence, stats, level, wallColor, wallVotes: wallVotes.wallVotes, openings: wallVotes.openings || [] };
