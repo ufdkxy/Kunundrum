@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.10-js.1';
+const PARSER_VERSION = '0.13.11-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -600,7 +600,7 @@ function classify(patch, templates, data) {
 // Tunnel arms (21.1): one-cell stubs whose open end is clipped by the game's drawing area and marked with white triangles. Their strokes
 // can be too pale for the outline measurement, so the grid comes out short. A marker pair about one cell beyond a grid edge means that
 // the grid continues there (checked up to two cells out, on all four sides). Ordinary tunnel markers sit right at the outline instead.
-function extendForTunnelArms(img, g) {
+function extendForTunnelArms(img, g, skip = {}) {
   const { width: W, height: H } = img, hsv = img.hsv || (img.hsv = bgr2hsv(img.bgr));
   const yLo = Math.trunc(H * .125), yHi = H;
   const whites = (xa, xb, ya, yb) => {
@@ -616,10 +616,10 @@ function extendForTunnelArms(img, g) {
     return vertical ? whites(lo, hi, edge - 14, edge + 16) : whites(edge - 14, edge + 16, lo, hi);
   };
   const right = g.left + g.width * c, bottom = g.top + g.height * c;
-  for (let d = 1; d <= 2; d++) if (probe(g.left - d * c, g.top, bottom, false) >= 25) { out.left = g.left - d * c; out.width += d; break; }
-  for (let d = 1; d <= 2; d++) if (probe(right + d * c, g.top, bottom, false) >= 25) { out.width += d; break; }
-  for (let d = 1; d <= 2; d++) if (probe(g.top - d * c, g.left, right, true) >= 25) { out.top = g.top - d * c; out.height += d; break; }
-  for (let d = 1; d <= 2; d++) if (probe(bottom + d * c, g.left, right, true) >= 25) { out.height += d; break; }
+  for (let d = 1; d <= 2 && !skip.l; d++) if (probe(g.left - d * c, g.top, bottom, false) >= 25) { out.left = g.left - d * c; out.width += d; break; }
+  for (let d = 1; d <= 2 && !skip.r; d++) if (probe(right + d * c, g.top, bottom, false) >= 25) { out.width += d; break; }
+  for (let d = 1; d <= 2 && !skip.u; d++) if (probe(g.top - d * c, g.left, right, true) >= 25) { out.top = g.top - d * c; out.height += d; break; }
+  for (let d = 1; d <= 2 && !skip.d; d++) if (probe(bottom + d * c, g.left, right, true) >= 25) { out.height += d; break; }
   return out;
 }
 
@@ -644,6 +644,42 @@ function robustGeometry(img, grid) {
     count++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
   }
   if (count < 200) throw new Error('Could not find cyan board outline');
+  // Tunnel arms that run off the game's drawing area (23.4) are cut flush: their strokes stretch the outline box past the real grid edge,
+  // which carries the white markers. A side whose outer strip holds only such stroke ends (no vertical outline) and has a marker
+  // line further in is trimmed to that line.
+  const trimmed = {};
+  {
+    const hsv2 = img.hsv || (img.hsv = bgr2hsv(bgr));
+    const isW = (x, y) => { if (y >= h * .94 && x >= w * TAB_X0 && x < w * TAB_X1) return false; const i = (y * w + x) * 3; return hsv2[i + 2] > 200 && hsv2[i + 1] < 50; };
+    const flush = (vertical, at) => { // share of the outline box length that has outline pixels within the 10 outermost lines
+      let n = 0;
+      if (vertical) for (let y = y0; y <= y1; y++) { for (let k = 0; k < 10; k++) if (hsv2[(y * w + at + k) * 3 + 2] > 150) { n++; break; } }
+      else for (let x = x0; x <= x1; x++) { for (let k = 0; k < 10; k++) if (hsv2[((at + k) * w + x) * 3 + 2] > 150) { n++; break; } }
+      return n / (vertical ? y1 - y0 + 1 : x1 - x0 + 1);
+    };
+    // Marker line: >= 4 consecutive lines whose white count exceeds the median by 15. Returns the run's centre or -1.
+    const markerLine = (vertical, from, to) => {
+      const cnt = [];
+      for (let t = from; t < to; t++) {
+        let n = 0;
+        if (vertical) for (let y = y0; y <= y1; y++) n += isW(t, y) ? 1 : 0; else for (let x = x0; x <= x1; x++) n += isW(x, t) ? 1 : 0;
+        cnt.push(n);
+      }
+      const med = Float64Array.from(cnt).sort()[cnt.length >> 1];
+      for (let i = 0; i < cnt.length; i++) {
+        if (cnt[i] - med < 15) continue;
+        let j = i; while (j < cnt.length && cnt[j] - med >= 15) j++;
+        if (j - i >= 4 && j - i <= 16) return from + (i + j - 1) / 2;
+        i = j;
+      }
+      return -1;
+    };
+    const reach = 200, sx = x1 - x0 + 1, sy = y1 - y0 + 1;
+    if (flush(true, x0) < .2) { const m = markerLine(true, x0 + 25, Math.min(x0 + reach, x0 + sx * .4)); if (m > 0) { x0 = Math.round(m - 10); trimmed.l = true; } }
+    if (flush(true, x1 - 9) < .2) { const m = markerLine(true, Math.max(x1 - reach, x1 - sx * .4), x1 - 25); if (m > 0) { x1 = Math.round(m + 5); trimmed.r = true; } }
+    if (flush(false, y0) < .2) { const m = markerLine(false, y0 + 25, Math.min(y0 + reach, y0 + sy * .4)); if (m > 0) { y0 = Math.round(m - 5); trimmed.u = true; } }
+    if (flush(false, y1 - 9) < .2) { const m = markerLine(false, Math.max(y1 - reach, y1 - sy * .4), y1 - 25); if (m > 0) { y1 = Math.round(m + 5); trimmed.d = true; } }
+  }
   const spanx = x1 - x0 + 1, spany = y1 - y0 + 1;
   // Seam profiles do not depend on the candidate cell size.
   const xb = new Uint8Array(w * h);
@@ -690,7 +726,7 @@ function robustGeometry(img, grid) {
         c.seam >= .85 * best.seam && c.score >= best.score - 1 && (!fine || c.score > fine.score)) fine = c;
   }
   if (fine) best = fine;
-  return extendForTunnelArms(img, best);
+  return extendForTunnelArms(img, best, trimmed);
 }
 
 // Cells inside the neon outline, from outline topology (see parse.py inside_cells).
@@ -759,6 +795,20 @@ function insideCells(img, geom, out) {
   }
   const inside = new Set();
   for (let col = 0; col < cw; col++) for (let row = 0; row < ch; row++) if ((dist.has(key(col, row)) ? dist.get(key(col, row)) : INF) % 2 === 1) inside.add(key(col, row));
+  // A tunnel notch that the outline closes off (21.2) is void, but the outline topology counts it as inside. Such a cell is pure black
+  // (real cells carry a faint grid), so a marked gap between two "inside" cells whose one side is pure black has that side removed.
+  const voidCell = (col, row) => {
+    let s = 0, n = 0;
+    for (let y = Math.trunc(geom.top + (row + .25) * c); y < geom.top + (row + .75) * c; y++) for (let x = Math.trunc(geom.left + (col + .25) * c); x < geom.left + (col + .75) * c; x++) {
+      if (x < 0 || y < 0 || x >= W || y >= H) continue; s += hsv[(y * W + x) * 3 + 2]; n++;
+    }
+    return n > 0 && s / n < 3;
+  };
+  for (const [[ac, ar], [bc, br]] of gaps.values()) {
+    const ka = ac + ',' + ar, kb = bc + ',' + br;
+    if (!inside.has(ka) || !inside.has(kb)) continue;
+    if (voidCell(ac, ar)) inside.delete(ka); else if (voidCell(bc, br)) inside.delete(kb);
+  }
   if (out) {
     out.wallVotes = votes;
     // Tunnel openings: marked gap between an inside cell and a non-inside one. Side = direction the ball travels to enter it.
