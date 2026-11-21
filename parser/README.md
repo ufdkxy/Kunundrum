@@ -112,7 +112,7 @@ new sprites, and nonstandard scaling.
 
 ## Changes in v0.7
 
-- Plain grey metal = inactive gate (`gate_inactive`); metal with a yellow/brown striped frame = active gate (`gate_detected`). Inactive teleports (grey concentric circles on metal) are `teleport_*_inactive`: colour is unknown, so `*` is guessed.
+- Plain grey metal = inactive gate (`gate_inactive`); metal with a yellow/brown striped frame = active gate (`gate_detected`). Inactive teleports (grey concentric circles on metal) are `teleport_*_inactive` (detected by the swirl in the tile's corners, `metalSwirl`; a ball on one is `ball_X+teleport_*_inactive`): colour is unknown, so `*` is guessed.
 - Red chevrons are detected as rotating arrows (direction not determined; blue fixed arrows as before).
 - Floor vs exterior now also uses outline topology (crossing a neon edge toggles inside/outside, enclosed holes stay outside), because dark themes have floors as black as the exterior.
 - A K3 code is always written (unless `--no-code`). Switches without an override get a mapping guessed by proximity: each switchable element goes to the nearest switch (Manhattan distance, ties to the first switch in lexicographic order), then empty switches take the nearest element from a switch holding several. The guess is reported as a warning; `--overrides` still wins.

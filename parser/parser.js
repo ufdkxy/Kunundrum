@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.8-js.1';
+const PARSER_VERSION = '0.13.9-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -413,6 +413,32 @@ function switchDisc(patch) {
   return null;
 }
 
+// Inactive (grey) teleport on its metal tile: concentric swirl and four dark slashes in the corners. The dot pulses (V 150-178), so the dot is not
+// used; the corner texture is (std of V at r 44-56 in the corners: 25-27 for the swirl, 10-11 for a plain gate), and the tile must be grey and
+// bright there (r 38-46). Measured on 16.5 (green walls) and 12.6 / 14.x (red walls); a ball's glow does not reach those corners.
+const M_SW_OUT = mk(i => RAD[i] >= 38 && RAD[i] < 46), M_SW_CORNER = mk(i => DX[i] > 12 && DY[i] > 12 && DX[i] < 42 && DY[i] < 42 && RAD[i] >= 44 && RAD[i] < 56);
+function metalSwirl(patch) {
+  const S = patch.hsvChannel(1), V = patch.hsvChannel(2);
+  let n = 0, g = 0;
+  for (let i = 0; i < NPX; i++) if (M_SW_OUT[i]) { n++; if (S[i] < 70 && V[i] > 70) g++; }
+  if (g / n < .65) return false;
+  let m = 0, m2 = 0, k = 0;
+  for (let i = 0; i < NPX; i++) if (M_SW_CORNER[i]) { k++; m += V[i]; m2 += V[i] * V[i]; }
+  m /= k;
+  return Math.sqrt(m2 / k - m * m) > 20 && m > 60;
+}
+// Colour of a ball drawn on a metal tile: a solid, saturated glow in the core.
+function ballOnMetal(patch) {
+  const hsv = patch.hsv, bins = { R: 0, Y: 0, G: 0, B: 0 };
+  let n = 0, c = 0;
+  for (let i = 0; i < NPX; i++) if (RAD[i] < 12) {
+    n++;
+    const h = hsv[i * 3], s = hsv[i * 3 + 1], v = hsv[i * 3 + 2];
+    if (s > 100 && v > 150) { c++; if (h < 20 || h > 169) bins.R++; else if (h < 39) bins.Y++; else if (h < 85) bins.G++; else bins.B++; }
+  }
+  return c / n > .5 ? voteColor(bins) : null;
+}
+
 const M_FRAME = mk(i => Math.max(DX[i], DY[i]) > 40);
 function stripedBorder(patch) {
   const H = patch.hsvChannel(0), S = patch.hsvChannel(1), V = patch.hsvChannel(2);
@@ -493,11 +519,15 @@ function classify(patch, templates, data) {
   if (dir !== null) return ['arrow_' + (chevronDirection(patch) || dir), conf, f];
   [dir, conf] = arrowShapeMatch(patch, data, true, false);
   if (dir !== null) return ['arrow_' + (chevronDirection(patch) || dir), Math.min(conf, .8), f];
-  if (metalCross(patch)) {
-    if (stripedBorder(patch)) return ['gate_detected', .95, f];
+  const swirl = metalSwirl(patch);
+  if (swirl || metalCross(patch)) {
+    if (!swirl && stripedBorder(patch)) return ['gate_detected', .95, f];
+    // A ball starting on an inactive teleport (16.5): its glow hides the cross and the dot but not the swirl in the corners.
+    const bc = swirl ? ballOnMetal(patch) : null;
+    if (bc) return [`ball_${bc}+teleport_*_inactive`, .85, f];
     const tc = teleportSprite(patch);
     if (tc) return [`teleport_${tc}_switchable`, .93, f];
-    if (concentricSprite(patch)) return ['teleport_*_inactive', .85, f];
+    if (swirl || concentricSprite(patch)) return ['teleport_*_inactive', .85, f];
     return ['gate_inactive', .93, f];
   }
   const tc = teleportSprite(patch);
@@ -636,13 +666,16 @@ function robustGeometry(img, grid) {
     const cols = pyRound((spanx - 23) / cell), rows = pyRound((spany - 17) / cell);
     if (cols < 2 || cols > 32 || rows < 2 || rows > 32) continue;
     const mx = spanx - cols * cell, my = spany - rows * cell;
-    if (!(mx >= 6 && mx <= 40 && my >= 2 && my <= 40)) continue;
+    // A span with (almost) no margin is also possible: clipped tunnel arms (19.8) or thin room outlines (16.6) end on the cell edge itself.
+    // Such tight candidates search a wider origin window and pay a fixed penalty, so ordinary screenshots (margin 6-40) are unaffected.
+    const tight = mx < 6 || my < 2;
+    if (!(mx >= -6 && mx <= 40 && my >= -6 && my <= 40)) continue;
     seamAt.cell = cell;
     let left = x0 + 4, ls = -Infinity, top = y0, ts = -Infinity;
-    for (let v = x0 + 4; v < x0 + 22; v++) { const s = seamAt(px, v, cols); if (s > ls) { ls = s; left = v; } }
-    for (let v = y0; v < y0 + 16; v++) { const s = seamAt(py, v, rows); if (s > ts) { ts = s; top = v; } }
+    for (let v = x0 + (tight ? -6 : 4); v < x0 + 22; v++) { const s = seamAt(px, v, cols); if (s > ls) { ls = s; left = v; } }
+    for (let v = y0 - (tight ? 6 : 0); v < y0 + 16; v++) { const s = seamAt(py, v, rows); if (s > ts) { ts = s; top = v; } }
     const seam = seamAt(px, left, cols) + seamAt(py, top, rows);
-    const fit = Math.abs(mx - 23) * .15 + Math.min(Math.abs(my - 10), Math.abs(my - 23)) * .12;
+    const fit = tight ? 1 + Math.abs(mx) * .05 + Math.abs(my) * .05 : Math.abs(mx - 23) * .15 + Math.min(Math.abs(my - 10), Math.abs(my - 23)) * .12;
     const half = seamAt(px, left + cell / 2, cols) + seamAt(py, top + cell / 2, rows);
     const score = (seam - half) * .12 - fit - .008 * (cols + rows) - .45 * Math.abs(cell - pyRound(cell / 10) * 10);
     cands.push({ left, top, cell, width: cols, height: rows, score, seam });
@@ -839,7 +872,10 @@ function assembleBoard(labels, geom, level, overrides) {
       for (const part of kind.split('+')) {
         if (part.startsWith('ball_')) balls.push({ ...pos(), color: part.slice(5) });
         else if (part.startsWith('goal_')) goals.push({ ...pos(), color: part.slice(5) });
-        else if (part.startsWith('teleport_')) telecells.push({ ...pos(), color: part.slice(9), switchable: false, inactive: false });
+        else if (part.startsWith('teleport_')) {
+          const rest = part.slice(9), i = rest.indexOf('_'), flag = i < 0 ? '' : rest.slice(i + 1);
+          telecells.push({ ...pos(), color: i < 0 ? rest : rest.slice(0, i), switchable: ['switchable', 'inactive'].includes(flag), inactive: flag === 'inactive' });
+        }
       }
     } else if (kind === 'outside' || kind === 'wall') walls.push(pos());
     else if (kind === 'floor' || kind === 'empty') { /* nothing */ }
