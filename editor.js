@@ -444,6 +444,6 @@ $('editor-json-apply').addEventListener('click',()=>{
   refresh();renderDraft();setStatus(notes.length?`JSON applied. ${notes.join('; ')}`:'JSON applied.');
  }catch(err){setStatus(`Invalid JSON board: ${err.message}`,true);}
 });
-window.KunEditor={get active(){return E.active;},render:renderDraft,open:()=>setMode(true),openDraft,setReview};
+window.KunEditor={get active(){return E.active;},render:renderDraft,openDraft,setReview};
 refresh();
 })();

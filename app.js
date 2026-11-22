@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.19.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.19.1'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -487,7 +487,7 @@ function renderControls() {
   $('load-solution').disabled=playbackLocked;
   $('use-example').disabled=playbackLocked||!board.solution;
   $('solution-input').disabled=isPlaying;
-  $('use-example').title=board.solution?'Load the saved solution from the start (U)':'No saved solution for this board.';
+  $('use-example').title=board.solution?'Load the saved solution from the start':'No saved solution for this board.';
   for(const [id,on] of [['toggle-coords',settings.coordinates],['toggle-labels',settings.labels],['toggle-outline',settings.outline],['toggle-trace',settings.trail]]) {$(id).classList.toggle('active',on);$(id).setAttribute('aria-pressed',String(on));}
   renderHint();
 }
@@ -502,7 +502,6 @@ function revealActiveMove() {
 }
 function renderHistory() {
   const count=frames.length-1;
-  if ($('cursor-label')) $('cursor-label').textContent=cursor?`Move ${cursor} of ${count} · score ${state().score}`:'At the start';
   if(!count) {
     $('move-history').innerHTML='<div class="history-empty"><span>No moves.</span></div>';
     return;
@@ -1041,8 +1040,8 @@ document.addEventListener('keydown',event=>{
   }
   const viewToggle=!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&{c:'toggle-coords',l:'toggle-labels',o:'toggle-outline',t:'toggle-trace'}[event.key.toLowerCase()];
   if(viewToggle){event.preventDefault();$(viewToggle).click();return;}
-  // N = Next puzzle, P = Puzzles, S = Solver, U = Use saved solution: only while the matching button is available.
-  const action=!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&{n:'next-puzzle',p:'open-levels',s:'open-solver',u:'use-example'}[event.key.toLowerCase()];
+  // N = Next puzzle, P = Puzzles, S = Solver, Shift+S = Use saved solution (a hidden shortcut, shown nowhere in the UI): only while the matching button is available.
+  const action=!event.ctrlKey&&!event.metaKey&&!event.altKey&&(event.shiftKey?(event.key==='S'?'use-example':null):{n:'next-puzzle',p:'open-levels',s:'open-solver'}[event.key.toLowerCase()]);
   if(action){const button=$(action);if(button&&!button.disabled&&!isPlaying&&!busy&&button.offsetParent!==null){event.preventDefault();button.click();return;}}
   if(isPlaying)return;
   const key=event.key.toLowerCase();
