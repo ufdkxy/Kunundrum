@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.14-js.1';
+const PARSER_VERSION = '0.13.15-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -655,7 +655,7 @@ function robustGeometry(img, grid) {
       let n = 0;
       // k starts a few lines outside the box: the outline's bright core can lie just beyond the first pixel the cyan mask accepted (22.2, green walls)
       if (vertical) for (let y = y0; y <= y1; y++) { for (let k = -6; k < 10; k++) if (at + k >= 0 && at + k < w && hsv2[(y * w + at + k) * 3 + 2] > 150) { n++; break; } }
-      else for (let x = x0; x <= x1; x++) { for (let k = -6; k < 10; k++) if (at + k >= 0 && at + k < h && hsv2[((at + k) * w + x) * 3 + 2] > 150) { n++; break; } }
+      else for (let x = x0; x <= x1; x++) { for (let k = -6; k < 10; k++) if (at + k >= 0 && at + k < h && hsv2[((at + k) * w + x) * 3 + 2] > 150 && !(at + k >= h * .94 && x >= w * TAB_X0 && x < w * TAB_X1)) { n++; break; } } // not the bottom tab (24.1)
       return n / (vertical ? y1 - y0 + 1 : x1 - x0 + 1);
     };
     // Marker line: >= 4 consecutive lines whose white count exceeds the median by 15. Returns the run's centre or -1.
@@ -673,10 +673,11 @@ function robustGeometry(img, grid) {
         if (j - i >= 4 && j - i <= 16) {
           // Markers are short triangle pairs. A line whose white pixels form a long unbroken run is an outline stroke (22.6: the edge of a corridor).
           const mid = Math.round(from + (i + j - 1) / 2);
-          let run = 0, longest = 0;
-          if (vertical) for (let y = y0; y <= y1; y++) { run = isW(mid, y) ? run + 1 : 0; if (run > longest) longest = run; }
-          else for (let x = x0; x <= x1; x++) { run = isW(x, mid) ? run + 1 : 0; if (run > longest) longest = run; }
-          if (longest <= 48) return from + (i + j - 1) / 2;
+          let run = 0, longest = 0, runs = 0;
+          if (vertical) for (let y = y0; y <= y1; y++) { run = isW(mid, y) ? run + 1 : 0; if (run === 1) runs++; if (run > longest) longest = run; }
+          else for (let x = x0; x <= x1; x++) { run = isW(x, mid) ? run + 1 : 0; if (run === 1) runs++; if (run > longest) longest = run; }
+          // A marker is a pair of triangles, so the line crosses two separate blobs (13.2: a teleport's single white centre dot is not a marker).
+          if (longest <= 48 && runs >= 2) return from + (i + j - 1) / 2;
         }
         i = j;
       }
@@ -685,7 +686,9 @@ function robustGeometry(img, grid) {
     const reach = 200, sx = x1 - x0 + 1, sy = y1 - y0 + 1;
     if (flush(true, x0) < .2) { const m = markerLine(true, x0 + 25, Math.min(x0 + reach, x0 + sx * .4)); if (m > 0) { x0 = Math.round(m - 10); trimmed.l = true; } }
     if (flush(true, x1 - 9) < .2) { const m = markerLine(true, Math.max(x1 - reach, x1 - sx * .4), x1 - 25); if (m > 0) { x1 = Math.round(m + 5); trimmed.r = true; } }
-    if (flush(false, y0) < .2) { const m = markerLine(false, y0 + 25, Math.min(y0 + reach, y0 + sy * .4)); if (m > 0) { y0 = Math.round(m - 5); trimmed.u = true; } }
+    // y0 at the mask cut (24.1): the markers can sit right below it, so the search starts there.
+    // The top search starts right below y0: the mask cut (24.1) can leave the markers just under it.
+    if (flush(false, y0) < .2) { const m = markerLine(false, y0 + 2, Math.min(y0 + reach, y0 + sy * .4)); if (m > 0) { y0 = Math.round(m - 5); trimmed.u = true; } }
     if (flush(false, y1 - 9) < .2) { const m = markerLine(false, Math.max(y1 - reach, y1 - sy * .4), y1 - 25); if (m > 0) { y1 = Math.round(m + 5); trimmed.d = true; } }
   }
   const spanx = x1 - x0 + 1, spany = y1 - y0 + 1;
@@ -734,6 +737,8 @@ function robustGeometry(img, grid) {
         c.seam >= .85 * best.seam && c.score >= best.score - 1 && (!fine || c.score > fine.score)) fine = c;
   }
   if (fine) best = fine;
+  // The score prefers cell sizes near a multiple of 10 (a tie-breaker); a neighbouring size with the same grid and clearly stronger seams is the real one (23.5: 72, not 71).
+  for (const c of cands) if (c !== best && c.width === best.width && c.height === best.height && Math.abs(c.cell - best.cell) <= 2 && c.seam > 1.15 * best.seam && c.score > best.score - 1.5 && c.seam > best.seam) best = c;
   return extendForTunnelArms(img, best, trimmed);
 }
 
