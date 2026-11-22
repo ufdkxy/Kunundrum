@@ -1,5 +1,4 @@
 // Kunundrum K3 catalog. Edit the lines inside the template string.
-// Imported K2. entries remain supported; new exports use K3.
 window.KUNUNDRUM_LEVEL_CODES = `
 1.1 = K3.swMEAgYxLjESTGV2ZWwgMS4xAwEAQAICCQEKAQEBAQAAAAAA
 1.2 = K3.swMEAgYxLjISTGV2ZWwgMS4yAwMAYAIFBgEKAQEDAQAAAAAA

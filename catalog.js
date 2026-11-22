@@ -11,7 +11,7 @@ const Collection = (() => {
   for (const [index, raw] of text.split(/\r?\n/).entries()) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
-    const match = /^(\d{1,2}\.(?:10|[1-9]))\s*=\s*((?:K2|K3)\.[A-Za-z0-9_-]+)$/.exec(line);
+    const match = /^(\d{1,2}\.(?:10|[1-9]))\s*=\s*(K3\.[A-Za-z0-9_-]+)$/.exec(line);
     if (!match) {
       throw new Error(`Invalid levels.js line ${index + 1}. Use: 10.2 = K3.your_code`);
     }

@@ -1,6 +1,6 @@
 # Kunundrum native C++ solver — prototype 0.17 (`SOLVER_VERSION` in `solver.cpp`, `kunsolve --version`; independent of the web app)
 
-A dependency-free C++17 exact search engine for the **K2/K3 Kunundrum board format**. The solver accepts a board code (or a file containing one), searches for the **lowest-score** solution (score = moves plus one-time hex bonuses and penalties; fewest moves among equal scores), checks the resulting path against its simulator, and exports a new K3 code with the solution embedded.
+A dependency-free C++17 exact search engine for the **K3 Kunundrum board format**. The solver accepts a board code (or a file containing one), searches for the **lowest-score** solution (score = moves plus one-time hex bonuses and penalties; fewest moves among equal scores), checks the resulting path against its simulator, and exports a new K3 code with the solution embedded.
 
 **This is a separate solver, not an update to the Replay Lab app.** The solver core is `solveBoard()` (board code + limits in, structured `Outcome` out, progress lines to a log stream); `main()` is a thin CLI wrapper. `make wasm` (see `wasm/README.md`) builds it with Emscripten and exports `kun_solve(code, flags)`; the worker and browser UI are **not included** yet.
 
@@ -185,7 +185,7 @@ The C++17 search/state model deliberately has no external libraries. It can be c
 
 ## Known limits
 
-- The app's K2 and K3 **board codes** are supported. Legacy K1 and arbitrary JSON board files are not directly accepted; import/export JSON through Replay Lab first.
+- The app's K3 **board codes** are supported. Legacy K1 and arbitrary JSON board files are not directly accepted; import/export JSON through Replay Lab first.
 
 - Memory usage is dominated by the graph of visited states. `--max-states` is a count, **not** a strict memory budget.
 - Boards with many hexes still have a large search space, since every subset of consumed hexes is a distinct state, and the score bound is weak with large negative hexes (7.3 is inconclusive at small budgets; the project owner has since proven it optimal with a tight `--max-score`).

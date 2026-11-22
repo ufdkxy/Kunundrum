@@ -1,4 +1,4 @@
-// Kunundrum native exact solver. C++17; no dependencies. K2/K3 codes.
+// Kunundrum native exact solver. C++17; no dependencies. K3 codes.
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -43,7 +43,7 @@ struct Hex{int p,value;string id;};
 struct Arrow{int p,dir;bool rotating;int type=0;}; // type: 0 clockwise, 1 counterclockwise, 2 flip (rotating arrows only)
 struct Tunnel{int pa,sa,pb,sb;}; // two openings: cell and side (0..3 = u,d,l,r)
 struct Board{
- int w=0,h=0;string id,title,description; bool hasDescription=false;int wallColor=-1;vector<Ball> balls;vector<int> wall,goals;vector<Gate> gates;vector<Switch> switches;vector<Teleport> teleports;vector<Hex> hexes;vector<Arrow> arrows;vector<Tunnel> tunnels;vector<Byte> prefix,tail;string storedSolution;
+ int w=0,h=0;string id,title,description; bool hasDescription=false;int wallColor=-1;vector<Ball> balls;vector<int> wall,goals;vector<Gate> gates;vector<Switch> switches;vector<Teleport> teleports;vector<Hex> hexes;vector<Arrow> arrows;vector<Tunnel> tunnels;vector<Byte> prefix,tail;
  array<int,MAX_CELLS> fixed,arrowAt,gateAt,switchAt,teleAt,hexAt,goalColor;vector<vector<int>> groupGates,switchGroups,switchTele;vector<array<int,4>> teleExit; // teleExit[endpoint][ball color]: endpoint index the ball is sent to, -1 = none (the ball stops on the entrance)
   // groupGates: gates controlled by exactly the same switches (they always toggle together)
  template<class S> void fireSwitch(int sw,S&s)const{ // all-or-nothing: one blocked closing gate freezes the whole switch
@@ -109,8 +109,8 @@ struct Board{
   staticReverse=hexes.empty();
  }
 };
-Board parseCode(string code){code=trim(code);if(code.rfind("K3.",0)!=0&&code.rfind("K2.",0)!=0)throw runtime_error("expected K2. or K3. board code");auto raw=b64decode(code.substr(3));Reader r(raw);int magic=r.byte();if(magic!=0xB2&&magic!=0xB3)throw runtime_error("invalid board magic");Board b;b.w=r.byte();b.h=r.byte();int flags=r.u();if((flags&~31)||(magic==0xB2&&(flags&28))||b.w<1||b.h<1||b.w>32||b.h>32)throw runtime_error("invalid board header");b.id=r.str();b.title=r.str();if(flags&1){b.hasDescription=true;b.description=r.str();}if(flags&4){int c=r.u();if(c>3)throw runtime_error("invalid wall color");if(c!=2)b.wallColor=c;}
- size_t solutionStart=r.i;if(flags&2){if(magic==0xB2)b.storedSolution=r.str();else{size_t len=r.u();if(r.i+len>raw.size())throw runtime_error("truncated solution");r.i+=len;}}size_t bodyStart=r.i;
+Board parseCode(string code){code=trim(code);if(code.rfind("K3.",0)!=0)throw runtime_error("expected K3. board code");auto raw=b64decode(code.substr(3));Reader r(raw);int magic=r.byte();if(magic!=0xB3)throw runtime_error("invalid board magic");Board b;b.w=r.byte();b.h=r.byte();int flags=r.u();if((flags&~31)||b.w<1||b.h<1||b.w>32||b.h>32)throw runtime_error("invalid board header");b.id=r.str();b.title=r.str();if(flags&1){b.hasDescription=true;b.description=r.str();}if(flags&4){int c=r.u();if(c>3)throw runtime_error("invalid wall color");if(c!=2)b.wallColor=c;}
+ size_t solutionStart=r.i;if(flags&2){size_t len=r.u();if(r.i+len>raw.size())throw runtime_error("truncated solution");r.i+=len;}size_t bodyStart=r.i;
  b.prefix.assign(raw.begin()+4,raw.begin()+solutionStart);
  auto at=[&](){int p=r.u();if(p>=b.w*b.h)throw runtime_error("position out of bounds");return p;};
  for(int i=r.count();i>0;i--)b.wall.push_back(at());
@@ -752,7 +752,7 @@ string catalogCode(const string& id,const string& filename){ifstream file(filena
 static const char* SOLVER_VERSION="0.17"; // Solver's own version, independent of the web app's APP_VERSION.
 // ---- Core entry point (shared by the CLI and the WebAssembly build) ----
 struct Cli{Limits lim;string input,level,catalog="levels.js";bool wantK3=true,version=false,help=false,json=false;};
-static const char* HELP_TEXT="Kunundrum exact C++ solver (K2/K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--max-states N] [--seconds N] [--max-memory MB] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nauto = bidirectional search when applicable (no hexes, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic: certifies optimality (exit 0) only on hex-free boards when no state was ever dropped by the beam width, otherwise an upper bound (exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";
+static const char* HELP_TEXT="Kunundrum exact C++ solver (K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--max-states N] [--seconds N] [--max-memory MB] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nauto = bidirectional search when applicable (no hexes, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic: certifies optimality (exit 0) only on hex-free boards when no state was ever dropped by the beam width, otherwise an upper bound (exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";
 // Same flags as the command line; the WebAssembly export passes its options as a flag string.
 static Cli parseArgs(const vector<string>&args){
  Cli c;Limits&lim=c.lim;string&input=c.input,&level=c.level,&catalog=c.catalog;bool&wantK3=c.wantK3;

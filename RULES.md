@@ -117,7 +117,7 @@ Tunnels and rotating arrows are implemented in `solver.cpp` (v0.17) with the sem
 ## 7. Invariants to preserve when editing mechanics
 
 1. `Core.applyMove` is immutable: failed/incomplete moves do not modify the supplied state.
-2. Initial IDs and geometry are deterministic and stable across JSON, K2/K3, replay, and the solver.
+2. Initial IDs and geometry are deterministic and stable across JSON, K3, replay, and the solver.
 3. The switch's `on` indicator is **display state**, distinct from actual gate/teleport active flags.
 4. Locked balls remain on the board and block movement; locking only occurs at the **end** of a move (or at initialization).
 5. Teleport exits occupied by other balls block jumps, not entry; arrow, hex, teleport, then final switch/goal processing must keep the documented order.

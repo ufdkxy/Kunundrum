@@ -1,4 +1,4 @@
-/* K3 adaptive binary solution codec, backwards-compatible K2 reader. */
+/* K3 adaptive binary board and solution codec. */
 'use strict';
 const Codec = (() => {
 const { validateBoard,parseSolution,resolveBallId,createInitialState,applyMove,formatSolution } = Core;
@@ -126,17 +126,17 @@ function expandSolution(board, bytes) {
   return formatSolution(records);
 }
 
-/** K2 is a compact, lossless binary encoding of the validated board.
+/** K3 is a compact, lossless binary encoding of the validated board.
  * Positions are zero-based cell offsets; integers are unsigned LEB128.
  * Strings use a small back-reference dictionary, including feature IDs.
  * The format is self-contained; no server, compression library or catalog required.
  */
 const CODE_COLORS = 'RGBY*';
 const CODE_DIRECTIONS = 'udlr';
-const KNOWN_FLAGS = 31; // bit 0 description, bit 1 solution, bit 2 wall color (K3 only), bit 3 tunnels (K3 only), bit 4 arrow types (K3 only)
+const KNOWN_FLAGS = 31; // bit 0 description, bit 1 solution, bit 2 wall color, bit 3 tunnels, bit 4 arrow types
 const ARROW_TYPE_DIGITS = { flip: '0', cw: '1', ccw: '2' }; // ternary digit per rotating arrow, in arrow-list order
-function binaryBoard(board, k3 = true) {
-  const bytes = [k3 ? 0xB3 : 0xB2, board.width, board.height];
+function binaryBoard(board) {
+  const bytes = [0xB3, board.width, board.height];
   const strings = new Map();
   const encoder = new TextEncoder();
   const uint = value => {
@@ -151,19 +151,15 @@ function binaryBoard(board, k3 = true) {
   const at = point => uint((point.y - 1) * board.width + point.x - 1);
   const list = (items, fn) => { uint(items.length); items.forEach(fn); };
   const color = value => uint(CODE_COLORS.indexOf(value));
-  if (!k3 && board.wallColor !== undefined) throw new Error('K2 cannot store a wall color.');
   const tunnels = board.tunnels ?? [];
-  if (!k3 && tunnels.length) throw new Error('K2 cannot store tunnels.');
   // Arrow types are stored only when some rotating arrow is not clockwise (all-clockwise boards keep their old codes byte for byte).
   const rotatingArrows = board.arrows.filter(a => a.rotating), hasTypes = rotatingArrows.some(a => a.type);
-  if (!k3 && hasTypes) throw new Error('K2 cannot store rotating arrow types.');
   uint((board.description !== undefined ? 1 : 0) | (board.solution !== undefined ? 2 : 0) | (board.wallColor !== undefined ? 4 : 0) | (tunnels.length ? 8 : 0) | (hasTypes ? 16 : 0));
   str(board.id); str(board.title);
   if (board.description !== undefined) str(board.description);
   if (board.wallColor !== undefined) color(board.wallColor); // flag bit 4: cosmetic wall color index (RGBY); omitted for blue
   if (board.solution !== undefined) {
-    if (k3) {const packed=compactSolution(board,board.solution);uint(packed.length);bytes.push(...packed);}
-    else str(board.solution);
+    const packed=compactSolution(board,board.solution);uint(packed.length);bytes.push(...packed);
   }
   list(board.walls, at);
   list(board.balls, p => { at(p); color(p.color); });
@@ -185,7 +181,7 @@ function unbinaryBoard(bytes, problems) {
   const strings = [];
   const decoder = new TextDecoder('utf-8', { fatal: true });
   const byte = () => {
-    if (offset >= bytes.length) throw new Error('Truncated K2 board code.');
+    if (offset >= bytes.length) throw new Error('Truncated K3 board code.');
     return bytes[offset++];
   };
   const uint = () => {
@@ -193,42 +189,42 @@ function unbinaryBoard(bytes, problems) {
     for (let i = 0; i < 8; i++) {
       const b = byte();
       value += (b & 127) * multiplier;
-      if (!Number.isSafeInteger(value)) throw new Error('Invalid K2 integer.');
+      if (!Number.isSafeInteger(value)) throw new Error('Invalid K3 integer.');
       if (!(b & 128)) return value;
       multiplier *= 128;
     }
-    throw new Error('Invalid K2 variable-length integer.');
+    throw new Error('Invalid K3 variable-length integer.');
   };
   const str = () => {
     const tag = uint();
     if (tag & 1) {
       const value = strings[(tag - 1) / 2];
-      if (value === undefined) throw new Error('Invalid K2 string reference.');
+      if (value === undefined) throw new Error('Invalid K3 string reference.');
       return value;
     }
     const length = tag / 2;
-    if (length > 20000 || offset + length > bytes.length) throw new Error('Invalid K2 string length.');
+    if (length > 20000 || offset + length > bytes.length) throw new Error('Invalid K3 string length.');
     const value = decoder.decode(bytes.subarray(offset, offset + length));
     offset += length;
     strings.push(value);
     return value;
   };
-  const magic=byte();if (magic!==0xB2 && magic!==0xB3) throw new Error('Invalid K2/K3 board header.');
+  const magic=byte();if (magic!==0xB3) throw new Error('Invalid K3 board header.');
   const width = byte(), height = byte(), flags = uint();
-  if (!(width >= 1 && width <= 32 && height >= 1 && height <= 32) || (flags & ~KNOWN_FLAGS) || (flags & 28 && magic === 0xB2)) throw new Error('Invalid K2 board dimensions or flags.');
+  if (!(width >= 1 && width <= 32 && height >= 1 && height <= 32) || (flags & ~KNOWN_FLAGS)) throw new Error('Invalid K3 board dimensions or flags.');
   const at = () => {
     const index = uint();
-    if (index >= width * height) throw new Error('Invalid K2 board position.');
+    if (index >= width * height) throw new Error('Invalid K3 board position.');
     return { x: index % width + 1, y: Math.floor(index / width) + 1 };
   };
   const list = fn => {
     const count = uint();
-    if (count > 4096) throw new Error('K2 board feature count exceeds limit.');
+    if (count > 4096) throw new Error('K3 board feature count exceeds limit.');
     return Array.from({length:count}, fn);
   };
   const color = (universal = false) => {
     const i = uint();
-    if (i >= (universal ? 5 : 4)) throw new Error('Invalid K2 color.');
+    if (i >= (universal ? 5 : 4)) throw new Error('Invalid K3 color.');
     return CODE_COLORS[i];
   };
   const raw = {version:1, width, height, id:str(), title:str()};
@@ -236,19 +232,18 @@ function unbinaryBoard(bytes, problems) {
   if (flags & 4) { const c = uint(); if (c > 3) throw new Error('Invalid K3 wall color.'); raw.wallColor = CODE_COLORS[c]; }
   let solutionBytes;
   if (flags & 2) {
-    if (magic===0xB2) raw.solution=str();
-    else {const size=uint();if(size>20000||offset+size>bytes.length)throw new Error('Invalid K3 solution length.');solutionBytes=bytes.subarray(offset,offset+size);offset+=size;}
+    const size=uint();if(size>20000||offset+size>bytes.length)throw new Error('Invalid K3 solution length.');solutionBytes=bytes.subarray(offset,offset+size);offset+=size;
   }
   raw.walls = list(at);
   raw.balls = list(() => ({...at(), color:color()}));
   raw.goals = list(() => ({...at(), color:color()}));
   raw.arrows = list(() => {
     const p = at(), option = uint();
-    if (option > 7) throw new Error('Invalid K2 arrow.');
+    if (option > 7) throw new Error('Invalid K3 arrow.');
     return {...p, direction:CODE_DIRECTIONS[Math.floor(option / 2)], ...(option % 2 ? {rotating:true} : {})};
   });
   raw.gates = list(() => ({...at(), id:str(), active:bool()}));
-  function bool() { const v=uint(); if (v > 1) throw new Error('Invalid K2 boolean.'); return !!v; }
+  function bool() { const v=uint(); if (v > 1) throw new Error('Invalid K3 boolean.'); return !!v; }
   raw.switches = list(() => {
     const p = at(), id = str(), on = bool(), controls = list(str);
     return {...p,id,controls,...(on ? {on:true} : {})};
@@ -264,7 +259,7 @@ function unbinaryBoard(bytes, problems) {
     if (!/^[012]+$/.test(digits) || digits.length !== rotating.length) throw new Error('Invalid K3 rotating arrow types.');
     rotating.forEach((a, i) => { const type = Object.keys(ARROW_TYPE_DIGITS).find(k => ARROW_TYPE_DIGITS[k] === digits[i]); if (type !== 'cw') a.type = type; });
   }
-  if (offset !== bytes.length) throw new Error('Unexpected data after K2/K3 board.');
+  if (offset !== bytes.length) throw new Error('Unexpected data after K3 board.');
   if(solutionBytes){
     const own=[];const checked=validateBoard(raw,own);
     if(own.length){if(!problems)validateBoard(raw);problems.push('The embedded solution was dropped because the board is invalid.');}
@@ -307,13 +302,13 @@ function decodeBoard(input        , problems         )        {
     throw new Error("The board data is too large (maximum 32 KB).");
   }
   if (code.startsWith("{")) return parseJsonBoard(code, problems);
-  if (code.startsWith('K3.') || code.startsWith('K2.')) {
+  if (code.startsWith('K3.')) {
     const bytes=fromBase64Url(code.slice(3));
-    if(bytes[0] !== (code.startsWith('K3.')?0xB3:0xB2))throw new Error('Board code prefix and payload version disagree.');
+    if(bytes[0] !== 0xB3)throw new Error('Invalid K3 board header.');
     return unbinaryBoard(bytes, problems);
   }
-  if (/^K\d+\./.test(code)) throw new Error('Unsupported board-code version; this player supports K2 and K3.');
-  throw new Error('A board code must start with K3. (K2 imports are also supported.)');
+  if (/^K\d+\./.test(code)) throw new Error('Unsupported board-code version; this player supports K3.');
+  throw new Error('A board code must start with K3.');
 }
 
 function parseUrl(input        )      {

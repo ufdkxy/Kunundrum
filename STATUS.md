@@ -39,7 +39,7 @@ Closing the gap means either raising the lower bound (exact search with parallel
 
 1. **Local optimizer** (SOLVER-020): take a stored route, free a window of consecutive moves (or a subset of balls) and search exactly for a cheaper replacement; iterate. Prototype outside the repo cut 10.10 from 113 to 107; a full-mechanics scratch copy (2026-11-22) found no improvement on 9.9, 15.8 or 30.4, so it is not yet worth adding to `solver.cpp` (port it only if a rough long route turns up that exact search cannot finish).
 2. **Parallelization** (SOLVER-021): multi-threaded layer expansion for forward/bidirectional/beam search (currently single-threaded; the WASM build stays single-threaded). Aimed at lifting lower bounds on 9.9 and 10.10.
-3. Keep this file, `RULES.md` and `ARCHITECTURE.md` current with every milestone; keep K2 imports, K3 codes and legacy replay links backward compatible unless told otherwise.
+3. Keep this file, `RULES.md` and `ARCHITECTURE.md` current with every milestone; keep K3 codes and legacy replay links backward compatible unless told otherwise.
 
 ## 5. Open solver backlog (P2)
 
@@ -79,5 +79,5 @@ python3 parse.py --help
 
 - `APP_VERSION` bumped; app tested from `index.html`.
 - Rule regression tests pass; solver output replays through the original JS engine; `Solver/kunsolve-linux-x86_64 --version` matches `SOLVER_VERSION`.
-- K2 imports readable; K3 JS↔Python round trip unchanged; compact and legacy replay links both work.
+- K3 JS↔Python round trip unchanged; compact and legacy replay links both work.
 - Any new optimality claim has the solver's `OPTIMAL` certificate (or, on boards without hexes, `NO SOLUTION WITHIN L-1 MOVES`, exit 4, matching a replay-verified solution of L moves, or `NO SOLUTION WITH SCORE <= S-1` on boards with hexes) plus an independent replay; inconclusive stays inconclusive.

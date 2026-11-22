@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.19.1'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.19.2'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -485,9 +485,7 @@ function renderControls() {
   $('replay-speed').value=String(settings.speed);
   $('replay-badge').textContent=isPlaying?'PLAYING':frames.length>1?`${cursor} / ${frames.length-1}`:'';
   $('load-solution').disabled=playbackLocked;
-  $('use-example').disabled=playbackLocked||!board.solution;
   $('solution-input').disabled=isPlaying;
-  $('use-example').title=board.solution?'Load the saved solution from the start':'No saved solution for this board.';
   for(const [id,on] of [['toggle-coords',settings.coordinates],['toggle-labels',settings.labels],['toggle-outline',settings.outline],['toggle-trace',settings.trail]]) {$(id).classList.toggle('active',on);$(id).setAttribute('aria-pressed',String(on));}
   renderHint();
 }
@@ -896,7 +894,7 @@ function renderShare() {
   let link='',code='',error='';
   try{link=shareLink(withRoute);code=shareCode(withRoute);}catch(e){error=e.message;}
   $('share-link').value=link;$('share-code').value=code;
-  $('share-code-help').textContent=error||('Paste in Import'+(withRoute?'. Route is the saved solution: click "Use saved solution" to recover it.':'.'));
+  $('share-code-help').textContent=error||('Paste in Import'+(withRoute?'. The route is stored as the saved solution of the board.':'.'));
   $('share-link-help').textContent=error||(withRoute?`Opens at move ${cursor}.`:'');
 }
 async function copyText(text,success) {
@@ -976,7 +974,6 @@ $('replay-last').addEventListener('click',()=>goTo(frames.length-1));
 $('replay-play').addEventListener('click',playRoute);
 $('replay-speed').addEventListener('change',event=>{settings.speed=Number(event.target.value);persist();});
 $('load-solution').addEventListener('click',()=>loadSolution($('solution-input').value));
-$('use-example').addEventListener('click',()=>{if(board.solution)loadSolution(board.solution);});
 $('solution-input').addEventListener('input',()=>{if(isPlaying)return;showError('replay-error');updateResetControl();persist();});
 $('solution-input').addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();loadSolution(event.target.value);}});
 $('copy-route').addEventListener('click',()=>{const text=getNotation(cursor);if(!text){toast('No moves to copy yet.');return;}copyText(text,'Route notation copied.');});
@@ -1040,8 +1037,9 @@ document.addEventListener('keydown',event=>{
   }
   const viewToggle=!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&{c:'toggle-coords',l:'toggle-labels',o:'toggle-outline',t:'toggle-trace'}[event.key.toLowerCase()];
   if(viewToggle){event.preventDefault();$(viewToggle).click();return;}
-  // N = Next puzzle, P = Puzzles, S = Solver, Shift+S = Use saved solution (a hidden shortcut, shown nowhere in the UI): only while the matching button is available.
-  const action=!event.ctrlKey&&!event.metaKey&&!event.altKey&&(event.shiftKey?(event.key==='S'?'use-example':null):{n:'next-puzzle',p:'open-levels',s:'open-solver'}[event.key.toLowerCase()]);
+  // N = Next puzzle, P = Puzzles, S = Solver, only while the matching button is available. Shift+S = load the saved solution (a hidden shortcut, shown nowhere in the UI).
+  const action=!event.ctrlKey&&!event.metaKey&&!event.altKey&&(!event.shiftKey&&{n:'next-puzzle',p:'open-levels',s:'open-solver'}[event.key.toLowerCase()]);
+  if(event.shiftKey&&event.key==='S'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){if(board.solution&&!isPlaying&&!busy&&$('load-solution').offsetParent!==null){event.preventDefault();loadSolution(board.solution);}return;}
   if(action){const button=$(action);if(button&&!button.disabled&&!isPlaying&&!busy&&button.offsetParent!==null){event.preventDefault();button.click();return;}}
   if(isPlaying)return;
   const key=event.key.toLowerCase();

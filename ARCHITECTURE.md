@@ -8,7 +8,7 @@
 | `parser/` | Screenshot recognition (`parser.js` is definitive; `parse.py` is frozen) and K3 writers | `parse.py`, `encode_k3.py`, `parser.js`, `parser_data.js` |
 | `Solver/` | Native exact optimal solver | `solver.cpp`, `Makefile`, `tests/*.js` |
 
-**Source-of-truth policy:** `engine.js` defines gameplay; `codec.js` defines the browser's K2/K3 implementation; `solver.cpp` independently implements transitions and binary I/O; `parser/parser.js` is the **definitive** screenshot parser and supplies candidate board data requiring human review (`parse.py` is frozen/historical and may disagree; parser.js wins). `engine.js` and `codec.js` exist **once**, in the repository root; the solver tests and `parser/encode_k3.js` load them from there, so there is no copy to keep in sync.
+**Source-of-truth policy:** `engine.js` defines gameplay; `codec.js` defines the browser's K3 implementation; `solver.cpp` independently implements transitions and binary I/O; `parser/parser.js` is the **definitive** screenshot parser and supplies candidate board data requiring human review (`parse.py` is frozen/historical and may disagree; parser.js wins). `engine.js` and `codec.js` exist **once**, in the repository root; the solver tests and `parser/encode_k3.js` load them from there, so there is no copy to keep in sync.
 
 ## 1. Overall data flow
 
@@ -18,11 +18,11 @@ Screenshots --parse.py/OpenCV--> board JSON + review PNG + diagnostics
                v
            encode_k3.py --> K3 board code --------------+
                                                         |
-Existing JSON / K2 / K3 --> Codec.decodeBoard ----------+--> Core.validateBoard
+Existing JSON / K3 --> Codec.decodeBoard ----------+--> Core.validateBoard
                                                         |       |
                                                         |       +--> Browser game / editor / replay
                                                         |       |
-                                                        +-------+--> C++ solver (K2/K3 input)
+                                                        +-------+--> C++ solver (K3 input)
                                                                     |
                                                  verified optimal notation + embedded K3
                                                                     |
@@ -36,7 +36,7 @@ No server or framework is required by the JavaScript sources. The native solver 
 | File | Responsibility | Important exposed interface |
 | --- | --- | --- |
 | `engine.js` | Board normalization, validation, immutable state and move simulation, notation parsing | global `Core` |
-| `codec.js` | K2/K3 board binary encoding/decoding; compact K3 routes; replay URLs | global `Codec` |
+| `codec.js` | K3 board binary encoding/decoding; compact K3 routes; replay URLs | global `Codec` |
 | `levels.js` | Editable newline catalog data, held as a template-string assignment | `window.KUNUNDRUM_LEVEL_CODES` |
 | `catalog.js` | Parse and validate catalog entries and IDs | global `Collection.entries` |
 | `app.js` | Render SVG board, play/move controls, replay history, import/export, URL and localStorage state | `window.KunundrumHost` for editor integration |
@@ -94,25 +94,25 @@ Coordinate and index conventions:
 
 **Switch mappings are explicit data**: each switch has one `controls` list of gate and teleport IDs. The numeric/cardinal appearance of a switch is not the mapping. Only the screenshot parser guesses (each unmapped element goes to its nearest switch, Manhattan distance) and reports the guess as a warning; in the editor the mapping is typed into the switch's "Gate/Teleport IDs" field only (gates and teleports show just their ID). The screenshot parser can emit an unresolved mapping warning and an editable, not-yet-authoritative JSON board.
 
-## 4. K2/K3 binary board format
+## 4. K3 binary board format
 
-Codes are `K2.` or `K3.` plus **unpadded base64url** (RFC-style `-` and `_` alphabet) of a binary stream. The browser **writes K3**, reads K2 and K3, and rejects K1. The parser's Python writer emits K3. The native solver reads K2/K3 and emits K3 with a solution.
+Codes are `K3.` plus **unpadded base64url** (RFC-style `-` and `_` alphabet) of a binary stream. The browser reads and writes K3 only. The parser's Python writer emits K3. The native solver reads K3 and emits K3 with a solution.
 
 At the stream level:
 
 ```text
-byte: magic             0xB2 (K2) or 0xB3 (K3)
+byte: magic             0xB3
 byte: width             1..32
 byte: height            1..32
 varuint: flags          bit 0 = description present, bit 1 = solution present,
-                        bit 2 = wall color present (K3 only),
-                        bit 3 = tunnels present (K3 only),
-                        bit 4 = rotating arrow types present (K3 only)
+                        bit 2 = wall color present,
+                        bit 3 = tunnels present,
+                        bit 4 = rotating arrow types present
 string: id
 string: title
 [string: description]
 [varuint: wall color index into RGBY (cosmetic; only if flags bit 2; blue is never stored)]
-[solution: K2 string; K3 varuint byteLength + binary solution bytes]
+[solution: varuint byteLength + binary solution bytes]
 list: walls              (position)
 list: balls              (position, color)
 list: goals              (position, color)
@@ -125,7 +125,7 @@ list: hexes              (position, id, zigzagSignedValue)
 [string: arrow types]    (only if flags bit 4, i.e. some rotating arrow is not clockwise; one ternary digit per rotating arrow in arrow-list order: 0 = flip, 1 = clockwise, 2 = counterclockwise)
 ```
 
-- **Wall color** is purely cosmetic (neon outline and floor-grid tint) and uniform per board: JSON `wallColor` is `R` or `G`, omitted for blue (an explicit `B` is accepted and normalized away, so blue boards keep their old codes byte for byte). It has no effect on the engine or the solver, which only carry it through. Readers reject unknown flag bits; K2 cannot hold it.
+- **Wall color** is purely cosmetic (neon outline and floor-grid tint) and uniform per board: JSON `wallColor` is `R` or `G`, omitted for blue (an explicit `B` is accepted and normalized away, so blue boards keep their old codes byte for byte). It has no effect on the engine or the solver, which only carry it through. Readers reject unknown flag bits;
 - `varuint` is unsigned **LEB128** (7 data bits per byte, continuation bit high).
 - `list` is varuint count then its elements.
 - `position` is the zero-based lexicographic offset above (`x` fastest, then `y` upward from the bottom row), stored as varuint.
@@ -224,7 +224,7 @@ For changes to game rules, binary layout, notation, parser, or solver:
 
 1. Add a minimal reproducible board JSON and expected replay/state transition.
 2. Validate using `Core.validateBoard` and `Core.applyMove` (gameplay oracle).
-3. Check K2 import, K3 JS encode/decode, Python K3 interoperability, and route/link backward compatibility as applicable.
+3. Check K3 JS encode/decode, Python K3 interoperability, and route/link backward compatibility as applicable.
 4. Compare solver results with JavaScript replay; require an optimality certificate before recording a score as optimal.
 5. Extend parser tests with representative **original screenshot + corrected JSON + review/diagnostics**, especially animated arrows, nonstandard grids, goals occupied by balls, switches and hexes.
 6. Update [RULES.md](RULES.md), this document, and [STATUS.md](STATUS.md) at milestones; do not silently reinterpret mechanics or overwrite the full private catalog with the sample catalog.
