@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.16-js.1';
+const PARSER_VERSION = '0.13.17-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -659,6 +659,15 @@ function robustGeometry(img, grid) {
       else for (let x = x0; x <= x1; x++) { for (let k = -6; k < kHi; k++) if (at + k >= 0 && at + k < h && hsv2[((at + k) * w + x) * 3 + 2] > 150 && !(at + k >= h * .94 && x >= w * TAB_X0 && x < w * TAB_X1)) { n++; break; } } // not the bottom tab (24.1)
       return n / (vertical ? y1 - y0 + 1 : x1 - x0 + 1);
     };
+    // A real one-cell notch (29.5: the yellow goal in a notch on the left) has a solid outline stroke on the box edge, a run of lines about a cell long.
+    // Clipped tunnel arms only leave short stroke ends there (a few pixels each), so a long run means the edge is a genuine grid edge.
+    const solid = (vertical, at, kHi = 10) => {
+      let run = 0, longest = 0;
+      const hit = (a, b) => { for (let k = -6; k < kHi; k++) { const t = at + k; if (vertical ? (t >= 0 && t < w && hsv2[(a * w + t) * 3 + 2] > 150) : (t >= 0 && t < h && hsv2[(t * w + a) * 3 + 2] > 150 && !(t >= h * .94 && a >= w * TAB_X0 && a < w * TAB_X1))) return true; } return false; };
+      const lo = vertical ? y0 : x0, hi = vertical ? y1 : x1;
+      for (let a = lo; a <= hi; a++) { run = hit(a) ? run + 1 : 0; if (run > longest) longest = run; }
+      return longest >= 40;
+    };
     // Marker line: >= 4 consecutive lines whose white count exceeds the median by 15. Returns the run's centre or -1.
     const markerLine = (vertical, from, to) => {
       const cnt = [];
@@ -689,7 +698,7 @@ function robustGeometry(img, grid) {
     // to a marker line further in (that line is an ordinary opening on the outline).
     const atEdge = (vertical, lo, hi) => markerLine(vertical, lo, hi) > 0;
     const clipped = {};
-    const sideL = flush(true, x0) < .2, sideR = flush(true, x1 - 9, 16) < .2, sideU = flush(false, y0) < .2, sideD = flush(false, y1 - 9, 16) < .2;
+    const sideL = flush(true, x0) < .2 && !solid(true, x0), sideR = flush(true, x1 - 9, 16) < .2 && !solid(true, x1 - 9, 16), sideU = flush(false, y0) < .2 && !solid(false, y0), sideD = flush(false, y1 - 9, 16) < .2 && !solid(false, y1 - 9, 16);
     if (sideL) { if (atEdge(true, x0 - 6, x0 + 22)) clipped.l = true; else { const m = markerLine(true, x0 + 25, Math.min(x0 + reach, x0 + sx * .4)); if (m > 0) { x0 = Math.round(m - 10); trimmed.l = true; } } }
     if (sideR) { if (atEdge(true, x1 - 22, x1 + 6)) clipped.r = true; else { const m = markerLine(true, Math.max(x1 - reach, x1 - sx * .4), x1 - 25); if (m > 0) { x1 = Math.round(m + 5); trimmed.r = true; } } }
     // y0 at the mask cut (24.1): the markers can sit right below it, so the search starts there.
@@ -783,7 +792,7 @@ function findMarkerGaps(hsv, W, H, geom) {
     // A triangle's centroid lies off the middle of its box towards the base; a rectangle's does not.
     const cx = sumx / n, cy = sumy / n, bcx = (bx0 + bx1) / 2, bcy = (by0 + by1) / 2;
     const shift = wide ? cy - bcy : cx - bcx;
-    if (Math.abs(shift) < .1 * short) continue;
+    if (Math.abs(shift) < .05 * short) continue;
     tris.push({ wide, long, cx: bcx, cy: bcy, dir: Math.sign(shift) });
   }
   const gaps = [];
