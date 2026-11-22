@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.18.2'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.18.3'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -732,7 +732,7 @@ const levelParts = id => id.split('.').map(Number);
 let levelsChapter = null;
 try { const c = Number(localStorage.getItem(CHAPTER_KEY)); if (Number.isInteger(c) && c >= 1 && c <= 30) levelsChapter = c; } catch {} // survives reloads
 const savedChapter = levelsChapter;
-// Puzzle dialog: one continuous list of all levels (a section per chapter, 4 cards per row). Cards are built once;
+// Puzzle dialog: one continuous list of all levels (a section per chapter, 4 cards per row, no chapter headings). Cards are built once;
 // previews are rendered lazily when they scroll near the viewport.
 let levelCardsBuilt = false, levelObserver = null, spyFrame = 0;
 const levelById = new Map(LEVELS.map(level => [level.id, level]));
@@ -755,7 +755,7 @@ function buildLevelCards() {
     return `<button type="button" class="chapter-button${byChapter.has(a) ? '' : ' empty'}" data-chapter="${a}" aria-pressed="false"><strong>${a}</strong></button>`;
   }).join('');
   $('level-cards').innerHTML = [...byChapter.keys()].sort((x, y) => x - y).map(a =>
-    `<section class="level-chapter" data-chapter="${a}"><h3 class="chapter-heading">Chapter ${a}</h3><div class="chapter-grid">${byChapter.get(a).map(level =>
+    `<section class="level-chapter" data-chapter="${a}"><div class="chapter-grid">${byChapter.get(a).map(level =>
       `<button class="level-card" data-level="${escape(level.id)}"><div class="level-preview"></div><div class="level-card-title"><strong>${escape(level.title)}</strong><span></span></div></button>`).join('')}</div></section>`
   ).join('') + '<div class="level-spacer" aria-hidden="true"></div>';
   const previews = $('level-cards').querySelectorAll('.level-preview');

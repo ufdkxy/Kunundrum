@@ -2,7 +2,7 @@
 
 *Living document: keep it current, delete resolved items instead of appending history (Git has the history). See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-**Last updated:** 2026-11-22 · **App** `APP_VERSION = '3.18.2'` in `app.js` (single source; bump it with every app change) · **Solver** v0.17 (`SOLVER_VERSION` in `Solver/solver.cpp`) · **Parser** `parser.js` v0.13.17-js.1. Parser and solver versions change only when that component changes, never with the app.
+**Last updated:** 2026-11-22 · **App** `APP_VERSION = '3.18.3'` in `app.js` (single source; bump it with every app change) · **Solver** v0.17 (`SOLVER_VERSION` in `Solver/solver.cpp`) · **Parser** `parser.js` v0.13.17-js.1. Parser and solver versions change only when that component changes, never with the app.
 
 ## 1. Where the project stands
 
