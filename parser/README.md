@@ -2,7 +2,7 @@
 
 Offline Python/OpenCV screenshot-to-K3 converter. **Node.js is not required for `parse.py`.**
 
-**`parser.js` is the definitive parser** (with generated `parser_data.js`; dependency-free, used by the web app via Board data → Import screenshot). `parse.py` is frozen and historical: it is no longer updated (no wall color, tunnels, teleport endpoints or rotating-arrow orientation) and on any difference `parser.js` wins. Its helpers remain for comparing the OpenCV primitives: `python3 test_primitives.py` checks the re-implemented OpenCV primitives, `python3 compare_js.py Screenshots/` diffs both parsers' labels, measurements, boards and warnings. Re-run `python3 build_data.py` after changing `arrow_shapes/` or `arrow_templates/`.
+**Parser development is concluded (2026-11-22; the full 300-level catalog was built with it).** **`parser.js` is the definitive parser** (with generated `parser_data.js`; dependency-free, used by the web app via Board data → Import screenshot). `parse.py` is frozen and historical: it is no longer updated (no wall color, tunnels, teleport endpoints or rotating-arrow orientation) and on any difference `parser.js` wins. Its helpers remain for comparing the OpenCV primitives: `python3 test_primitives.py` checks the re-implemented OpenCV primitives, `python3 compare_js.py Screenshots/` diffs both parsers' labels, measurements, boards and warnings. Re-run `python3 build_data.py` after changing `arrow_shapes/` or `arrow_templates/`.
 
 ## Installation
 
@@ -116,7 +116,7 @@ new sprites, and nonstandard scaling.
 - Red chevrons are detected as rotating arrows (direction not determined; blue fixed arrows as before).
 - Floor vs exterior now also uses outline topology (crossing a neon edge toggles inside/outside, enclosed holes stay outside), because dark themes have floors as black as the exterior.
 - A K3 code is always written (unless `--no-code`). Switches without an override get a mapping guessed by proximity: each switchable element goes to the nearest switch (Manhattan distance, ties to the first switch in lexicographic order), then empty switches take the nearest element from a switch holding several. The guess is reported as a warning; `--overrides` still wins.
-- Known gaps: a ball sitting on a goal of a similar hue (e.g. green ball on a cyan ring in 11.9) is misread; rotating-arrow direction; tunnel openings (white markers on an outline gap) are detected and paired by a guess, not yet tested on 12.6/21.1 screenshots; K3 of a board the engine rejects (e.g. missing goals) is written but will not open in the app.
+- Known gaps: a ball sitting on a goal of a similar hue (e.g. green ball on a cyan ring in 11.9) is misread; rotating-arrow direction; tunnel openings (white markers on an outline gap) are detected and paired by a guess; K3 of a board the engine rejects (e.g. missing goals) is written but will not open in the app.
 
 ## Changes in v0.6
 

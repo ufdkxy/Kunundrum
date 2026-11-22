@@ -177,7 +177,7 @@ Tested on the following supplied catalog levels (times vary by machine):
 | 8.1 | 18 | Bidirectional BFS | ~ 10 s |
 | 10.8 | 28 | Bidirectional BFS (`--max-depth 27`) | ~ 25 s |
 
-Levels **7.3** (16 hexagons, so forward BFS) and **10.9** remain **inconclusive** within 3,000,000 states. This is not a correctness failure; their search spaces are simply larger than the budget. Their optimality has not been certified by this program yet.
+With the default 3,000,000-state budget, **7.3** (16 hexagons, so forward BFS) and **10.9** are inconclusive; this is not a correctness failure, their search spaces are simply larger. 10.9 (like 10.8) certifies optimal at 28 with larger limits. As of 2026-11-22 five catalog levels still have no optimality proof for their embedded routes: **7.3** (26 moves, score 1), **9.9** (42; proven >= 30), **10.10** (107; proven >= 64), **15.8** (29) and **30.4** (27); see STATUS.md section 3. Possible future work: a local optimizer for stored routes and a parallel search.
 
 ## WebAssembly direction
 
@@ -189,7 +189,7 @@ The C++17 search/state model deliberately has no external libraries. It can be c
 
 - Memory usage is dominated by the graph of visited states. `--max-states` is a count, **not** a strict memory budget.
 - Boards with many hexes still have a large search space, since every subset of consumed hexes is a distinct state, and the score bound is weak with large negative hexes (7.3 is inconclusive).
-- Only single-threaded CPU search is currently implemented. No WASM binary or randomizer is bundled.
+- Only single-threaded CPU search is implemented (parallelization is a possible future step, see STATUS.md). The WASM build lives in `wasm/`.
 
 ### Switch regression suite
 
