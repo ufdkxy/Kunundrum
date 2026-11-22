@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.11-js.1';
+const PARSER_VERSION = '0.13.12-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -653,8 +653,9 @@ function robustGeometry(img, grid) {
     const isW = (x, y) => { if (y >= h * .94 && x >= w * TAB_X0 && x < w * TAB_X1) return false; const i = (y * w + x) * 3; return hsv2[i + 2] > 200 && hsv2[i + 1] < 50; };
     const flush = (vertical, at) => { // share of the outline box length that has outline pixels within the 10 outermost lines
       let n = 0;
-      if (vertical) for (let y = y0; y <= y1; y++) { for (let k = 0; k < 10; k++) if (hsv2[(y * w + at + k) * 3 + 2] > 150) { n++; break; } }
-      else for (let x = x0; x <= x1; x++) { for (let k = 0; k < 10; k++) if (hsv2[((at + k) * w + x) * 3 + 2] > 150) { n++; break; } }
+      // k starts a few lines outside the box: the outline's bright core can lie just beyond the first pixel the cyan mask accepted (22.2, green walls)
+      if (vertical) for (let y = y0; y <= y1; y++) { for (let k = -6; k < 10; k++) if (at + k >= 0 && at + k < w && hsv2[(y * w + at + k) * 3 + 2] > 150) { n++; break; } }
+      else for (let x = x0; x <= x1; x++) { for (let k = -6; k < 10; k++) if (at + k >= 0 && at + k < h && hsv2[((at + k) * w + x) * 3 + 2] > 150) { n++; break; } }
       return n / (vertical ? y1 - y0 + 1 : x1 - x0 + 1);
     };
     // Marker line: >= 4 consecutive lines whose white count exceeds the median by 15. Returns the run's centre or -1.
@@ -669,7 +670,14 @@ function robustGeometry(img, grid) {
       for (let i = 0; i < cnt.length; i++) {
         if (cnt[i] - med < 15) continue;
         let j = i; while (j < cnt.length && cnt[j] - med >= 15) j++;
-        if (j - i >= 4 && j - i <= 16) return from + (i + j - 1) / 2;
+        if (j - i >= 4 && j - i <= 16) {
+          // Markers are short triangle pairs. A line whose white pixels form a long unbroken run is an outline stroke (22.6: the edge of a corridor).
+          const mid = Math.round(from + (i + j - 1) / 2);
+          let run = 0, longest = 0;
+          if (vertical) for (let y = y0; y <= y1; y++) { run = isW(mid, y) ? run + 1 : 0; if (run > longest) longest = run; }
+          else for (let x = x0; x <= x1; x++) { run = isW(x, mid) ? run + 1 : 0; if (run > longest) longest = run; }
+          if (longest <= 48) return from + (i + j - 1) / 2;
+        }
         i = j;
       }
       return -1;
