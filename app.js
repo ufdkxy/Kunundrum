@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.18.4'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.19.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -163,7 +163,7 @@ const LEVELS = CATALOG_ENTRIES.map(({id,code}) => {
 const OFFLINE = location.protocol === 'file:';
 const STORAGE_KEY = 'kunundrum.replay.v1';
 const BEST_KEY = 'kunundrum.best.v1';
-const CHAPTER_KEY = 'kunundrum.chapter.v1';
+const PUZZLES_KEY = 'kunundrum.puzzles.v1'; // puzzle dialog: {scroll, selected}
 const MAX_REPLAY_MOVES = 2000;
 const MAX_ROUTE_CHARACTERS = 10000;
 let board = LEVELS[0];
@@ -247,7 +247,6 @@ function adoptBoard(nextBoard, replayFrames, at = 0, resetInput = true) {
   selected = (cursor > 0 ? frames[cursor].record?.ballId : null) || state().balls.find(ball => !ball.locked)?.id || state().balls[0].id;
   mode = replayFrames ? 'replay' : 'manual';
   currentPresetId = preset;
-  if (preset) levelsChapter = levelParts(preset)[0]; // the puzzle dialog reopens on the last chapter used (an edited board keeps it)
   if (resetInput) $('solution-input').value = replayFrames ? getNotation() : '';
   showError('replay-error');
   document.title = `${board.title} · Kunundrum`;
@@ -729,9 +728,10 @@ function loadSolution(text) {
 function openDialog(id) {stopPlayback();if(!$(id).open)$(id).showModal();}
 function closeDialog(dialog) {dialog.close();}
 const levelParts = id => id.split('.').map(Number);
-let levelsChapter = null;
-try { const c = Number(localStorage.getItem(CHAPTER_KEY)); if (Number.isInteger(c) && c >= 1 && c <= 30) levelsChapter = c; } catch {} // survives reloads
-const savedChapter = levelsChapter;
+// Puzzle dialog state: the scroll position and the selected card survive closing the dialog and reloading the page; the active chapter is derived from the scroll position.
+let levelsChapter = null, levelsScroll = null, levelsSelected = null, chapterPin = null, chapterDigits = '', digitTimer = 0;
+try { const p = JSON.parse(localStorage.getItem(PUZZLES_KEY)); if (Number.isFinite(p?.scroll) && p.scroll >= 0) levelsScroll = p.scroll; if (typeof p?.selected === 'string') levelsSelected = p.selected; } catch {}
+try { localStorage.removeItem('kunundrum.chapter.v1'); } catch {} // superseded by the saved scroll position
 // Puzzle dialog: one continuous list of all levels (a section per chapter, 4 cards per row, plain non-sticky chapter headings). Cards are built once;
 // previews are rendered lazily when they scroll near the viewport.
 let levelCardsBuilt = false, levelObserver = null, spyFrame = 0;
@@ -781,18 +781,22 @@ function revealChapterButton() { // keep the active chapter button visible in th
     if (a.left < r.left || a.right > r.right) bar.scrollLeft = act.offsetLeft - bar.offsetLeft - (bar.clientWidth - act.offsetWidth) / 2;
   } else if (a.top < r.top || a.bottom > r.bottom) bar.scrollTop = act.offsetTop - bar.offsetTop - (bar.clientHeight - act.offsetHeight) / 2; // centre, so the previous chapter stays visible
 }
-function updateChapterSpy() { // highlight the chapter at the top of the list
+function updateChapterSpy() { // the active chapter is the last one whose heading has reached the middle of the list (unless a jump pinned it)
   spyFrame = 0;
   const box = $('level-cards');
+  if (!box.clientHeight) return;
+  levelsScroll = box.scrollTop;
   let current = null;
-  for (const sec of box.querySelectorAll('.level-chapter')) {
-    if (sec.offsetTop <= box.scrollTop + 4) current = Number(sec.dataset.chapter); else break;
+  if (chapterPin && Math.abs(box.scrollTop - chapterPin.top) < 2) current = chapterPin.chapter;
+  else {
+    chapterPin = null;
+    const line = box.scrollTop + box.clientHeight / 2;
+    for (const sec of box.querySelectorAll('.level-chapter')) {
+      if (sec.offsetTop <= line) current = Number(sec.dataset.chapter); else break;
+    }
   }
   if (current == null) return;
-  if (current !== levelsChapter) {
-    levelsChapter = current;
-    try { localStorage.setItem(CHAPTER_KEY, String(current)); } catch {}
-  }
+  levelsChapter = current;
   for (const btn of $('chapter-bar').querySelectorAll('.chapter-button')) {
     const on = Number(btn.dataset.chapter) === current;
     btn.classList.toggle('active', on); btn.setAttribute('aria-pressed', String(on));
@@ -803,11 +807,73 @@ function sizeLevelSpacer() { // lets the last (short) chapters scroll up to the 
   const box = $('level-cards'), last = box.querySelector('.level-chapter:last-of-type');
   if (last) box.querySelector('.level-spacer').style.height = Math.max(0, box.clientHeight - last.offsetHeight) + 'px';
 }
-function scrollToChapter(chapter) {
-  const sec = $('level-cards').querySelector(`.level-chapter[data-chapter="${chapter}"]`);
-  if (!sec) return;
-  $('level-cards').scrollTop = sec.offsetTop;
+const levelCardList = () => [...$('level-cards').querySelectorAll('.level-card')];
+function selectCard(card, scroll = true) { // the keyboard selection: highlighted, focused (Enter opens it) and kept in view
+  const box = $('level-cards');
+  box.querySelector('.level-card.selected')?.classList.remove('selected');
+  card.classList.add('selected');
+  levelsSelected = card.dataset.level;
+  card.focus({preventScroll: true});
+  if (!scroll) return;
+  const sec = card.closest('.level-chapter'), b = box.getBoundingClientRect();
+  const firstRow = card.getBoundingClientRect().top - sec.querySelector('.chapter-grid').getBoundingClientRect().top < 4;
+  let r = card.getBoundingClientRect();
+  if (firstRow) { if (sec.getBoundingClientRect().top < b.top) box.scrollTop = sec.offsetTop; } // show the heading with the first row
+  else if (r.top < b.top + 8) box.scrollTop += r.top - b.top - 8;
+  r = card.getBoundingClientRect();
+  if (r.bottom > b.bottom - 8) box.scrollTop += r.bottom - b.bottom + 8;
+  chapterPin = {chapter: Number(sec.dataset.chapter), top: box.scrollTop};
   updateChapterSpy();
+}
+function scrollToChapter(chapter) { // jump to a chapter, keeping the selected position within the chapter (1..10)
+  const box = $('level-cards'), sec = box.querySelector(`.level-chapter[data-chapter="${chapter}"]`);
+  if (!sec) return;
+  box.scrollTop = sec.offsetTop;
+  const num = levelParts(levelsSelected || '1.1')[1], cards = [...sec.querySelectorAll('.level-card')];
+  selectCard(cards.find(c => levelParts(c.dataset.level)[1] === num) || cards[cards.length - 1]);
+}
+function neighbourCard(from, dir) { // nearest card in the row above/below, by horizontal centre (rows differ across chapters)
+  const r = from.getBoundingClientRect(), cx = r.left + r.width / 2;
+  const cand = levelCardList().map(c => ({c, r: c.getBoundingClientRect()})).filter(o => dir > 0 ? o.r.top > r.top + 4 : o.r.top < r.top - 4);
+  if (!cand.length) return null;
+  const row = dir > 0 ? Math.min(...cand.map(o => o.r.top)) : Math.max(...cand.map(o => o.r.top));
+  const inRow = cand.filter(o => Math.abs(o.r.top - row) < 4);
+  inRow.sort((x, y) => Math.abs(x.r.left + x.r.width / 2 - cx) - Math.abs(y.r.left + y.r.width / 2 - cx));
+  return inRow[0].c;
+}
+function openLevels() {
+  if (!levelCardsBuilt) buildLevelCards();
+  refreshLevelCards();
+  openDialog('levels-dialog');
+  sizeLevelSpacer();
+  const box = $('level-cards');
+  if (!levelById.has(levelsSelected)) { levelsSelected = levelById.has(currentPresetId) ? currentPresetId : LEVELS[0].id; levelsScroll = null; }
+  const card = levelCardList().find(c => c.dataset.level === levelsSelected);
+  if (levelsScroll == null) scrollToChapter(levelParts(levelsSelected)[0]);
+  else { box.scrollTop = levelsScroll; chapterPin = null; updateChapterSpy(); selectCard(card, false); }
+}
+function levelsKey(event) {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
+  if (/^[0-9]$/.test(event.key)) { // digits type a chapter number (1-30); a pause starts a new number
+    chapterDigits += event.key;
+    if (Number(chapterDigits) > 30) chapterDigits = event.key;
+    clearTimeout(digitTimer); digitTimer = setTimeout(() => { chapterDigits = ''; }, 900);
+    event.preventDefault();
+    if (Number(chapterDigits) >= 1) scrollToChapter(Number(chapterDigits));
+    return;
+  }
+  const cards = levelCardList(), cur = cards.findIndex(c => c.dataset.level === levelsSelected), from = cards[cur];
+  let next = null;
+  if (event.key === 'Home') next = cards[0];
+  else if (event.key === 'End') next = cards[cards.length - 1];
+  else if (!from) { if (event.key.startsWith('Arrow')) next = cards[0]; }
+  else if (event.key === 'ArrowLeft') next = cards[Math.max(0, cur - 1)];
+  else if (event.key === 'ArrowRight') next = cards[Math.min(cards.length - 1, cur + 1)];
+  else if (event.key === 'ArrowUp') next = neighbourCard(from, -1) || from;
+  else if (event.key === 'ArrowDown') next = neighbourCard(from, 1) || from;
+  if (!next) return;
+  event.preventDefault();
+  selectCard(next);
 }
 // Export dialog: a full permalink and a K3 board code, both optionally carrying the current route.
 let shareRoute = false;
@@ -920,13 +986,14 @@ $('toggle-coords').addEventListener('click',()=>{settings.coordinates=!settings.
 $('toggle-trace').addEventListener('click',()=>{settings.trail=!settings.trail;if(!busy)renderBoard();renderControls();persist();});
 $('toggle-labels').addEventListener('click',()=>{settings.labels=!settings.labels;if(!busy)renderBoard();renderControls();persist();});
 $('toggle-outline').addEventListener('click',()=>{settings.outline=!settings.outline;if(!busy)renderBoard();renderControls();persist();});
-$('open-levels').addEventListener('click',()=>{if(!levelCardsBuilt)buildLevelCards();refreshLevelCards();openDialog('levels-dialog');sizeLevelSpacer();scrollToChapter(levelsChapter??levelParts(currentPresetId||LEVELS[0].id)[0]);});
-$('levels-dialog').addEventListener('keydown',event=>{if((event.key!=='Home'&&event.key!=='End')||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;event.preventDefault();const box=$('level-cards');box.scrollTop=event.key==='Home'?0:box.scrollHeight;});
+$('open-levels').addEventListener('click',openLevels);
+$('levels-dialog').addEventListener('keydown',levelsKey);
+$('levels-dialog').addEventListener('close',()=>{try{localStorage.setItem(PUZZLES_KEY,JSON.stringify({scroll:levelsScroll,selected:levelsSelected}));}catch{}});
 $('level-cards').addEventListener('scroll',()=>{if(!spyFrame)spyFrame=requestAnimationFrame(updateChapterSpy);});
 window.addEventListener('resize',()=>{if(levelCardsBuilt&&$('levels-dialog').open)sizeLevelSpacer();});
 $('chapter-bar').addEventListener('click',event=>{const b=event.target.closest('[data-chapter]');if(b)scrollToChapter(Number(b.dataset.chapter));});
 $('completion-inline').addEventListener('click',event=>{if(!event.target.closest('#next-puzzle')||busy||isPlaying)return;const next=nextLevel();if(next){adoptBoard(next);clearLocation();}});
-$('level-cards').addEventListener('click',event=>{const target=event.target.closest('[data-level]');if(!target)return;const next=LEVELS.find(level=>level.id===target.dataset.level);if(next){adoptBoard(next);clearLocation();$('levels-dialog').close();}});
+$('level-cards').addEventListener('click',event=>{const target=event.target.closest('[data-level]');if(!target)return;const next=LEVELS.find(level=>level.id===target.dataset.level);if(next){levelsSelected=next.id;adoptBoard(next);clearLocation();$('levels-dialog').close();}});
 $('open-help').addEventListener('click',()=>openDialog('help-dialog'));
 $('open-share').addEventListener('click',()=>{shareRoute=true;$('share-include-route').checked=true;renderShare();openDialog('share-dialog');});
 $('share-include-route').addEventListener('change',event=>{shareRoute=event.target.checked;renderShare();});
@@ -974,8 +1041,8 @@ document.addEventListener('keydown',event=>{
   }
   const viewToggle=!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&{c:'toggle-coords',l:'toggle-labels',o:'toggle-outline',t:'toggle-trace'}[event.key.toLowerCase()];
   if(viewToggle){event.preventDefault();$(viewToggle).click();return;}
-  // N = Next puzzle, S = Solver, U = Use saved solution: only while the matching button is available.
-  const action=!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&{n:'next-puzzle',s:'open-solver',u:'use-example'}[event.key.toLowerCase()];
+  // N = Next puzzle, P = Puzzles, S = Solver, U = Use saved solution: only while the matching button is available.
+  const action=!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&{n:'next-puzzle',p:'open-levels',s:'open-solver',u:'use-example'}[event.key.toLowerCase()];
   if(action){const button=$(action);if(button&&!button.disabled&&!isPlaying&&!busy&&button.offsetParent!==null){event.preventDefault();button.click();return;}}
   if(isPlaying)return;
   const key=event.key.toLowerCase();
@@ -1093,7 +1160,6 @@ function boot() {
     }else if(saved?.board){
       const next=decodeBoard(saved.board);const prepared=saved.moves?buildReplay(next,saved.moves):undefined;
       adoptBoard(next,prepared,Number.isInteger(saved.at)?saved.at:0);
-      if(savedChapter)levelsChapter=savedChapter; // reloading keeps the chapter last browsed, not the loaded board's
       if(cursor===0&&state().balls.some(ball=>ball.id===saved.selected&&!ball.locked))selected=saved.selected;
       mode=saved.mode==='replay'?'replay':'manual';
       if(typeof saved.draft==='string'&&saved.draft.length<=10000)$('solution-input').value=saved.draft;
