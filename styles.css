@@ -540,7 +540,7 @@ body.edit-mode .selected-info { display:none; }
 #editor-json-box pre{overflow:auto;font-size:10px}
 
 /* Solver button (Replay panel) and dialog */
-.section-heading .next-puzzle { margin-left: 0; padding: 4px 11px; font-size: 11px; }
+.section-heading .next-puzzle, .solution-actions .next-puzzle { margin-left: 0; padding: 4px 11px; font-size: 11px; }
 .next-puzzle:disabled { opacity: .4; cursor: default; background: #203d36; color: #98e8c7; }
 .solver-modal { max-width: 640px; }
 .solver-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; }
