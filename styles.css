@@ -229,28 +229,31 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .modal-heading p { margin-top: 9px; font-size: 12px; color: #8ea6b4; }
 .modal-heading > .icon-button { width: 31px; height: 31px; flex-shrink: 0; }
 .modal-bottom { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 20px; margin-top: 22px; border-top: 1px solid #293e4b; color: #7c97a6; font-size: 11px; }
-.levels-modal { width: min(1100px, calc(100vw - 48px)); overflow: hidden; padding-top: 16px; padding-bottom: 20px; }
+.levels-modal { width: min(1240px, calc(100vw - 32px)); overflow: hidden; padding: 16px 18px 14px; }
 .levels-modal .modal-heading { margin-bottom: 12px; align-items: center; }
 .levels-modal .modal-heading h2 { margin-top: 0; font-size: 20px; }
 .levels-modal[open] { display: flex; flex-direction: column; height: calc(100dvh - 48px); }
-.levels-layout { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: 52px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 16px; align-items: stretch; }
-.chapter-bar { display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; padding-right: 6px; border-right: 1px solid #293e4b; }
+.levels-layout { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: 44px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 10px; align-items: stretch; }
+.chapter-bar { display: flex; flex-direction: column; gap: 3px; min-height: 0; overflow-y: auto; padding-right: 5px; border-right: 1px solid #293e4b; }
 .chapter-button { display: flex; align-items: baseline; justify-content: center; gap: 6px; padding: 7px 4px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #9fb6c3; text-align: left; }
 .chapter-button strong { font-size: 14px; font-weight: 600; }
 .chapter-button span { font-size: 9px; color: #6b8594; }
 .chapter-button:hover { background: #1a2b35; }
 .chapter-button.empty { opacity: .45; }
 .chapter-button.active { border-color: var(--mint); background: #13222c; color: var(--text); opacity: 1; }
+.level-spacer { flex: none; }
 .level-empty { grid-column: 1 / -1; padding: 40px 0; text-align: center; color: #7d96a5; font-size: 12px; }
-.level-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-content: start; min-height: 0; overflow-y: auto; padding-right: 8px; margin-right: -8px; }
-.level-card { display: block; min-width: 0; text-align: left; padding: 10px; border: 1px solid #2e4553; border-radius: 9px; background: #13222c; }
+.level-cards { position: relative; min-height: 0; overflow-y: auto; padding-right: 8px; margin-right: -8px; }
+.chapter-heading { position: sticky; top: 0; z-index: 2; margin: 0; padding: 4px 2px 5px; background: #111d27; color: #8ea6b4; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.chapter-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.level-card { display: block; min-width: 0; text-align: left; padding: 6px; border: 1px solid #2e4553; border-radius: 9px; background: #13222c; }
 .level-card:hover { border-color: #6b928e; background: #1a2b35; }
 .level-card.active { border-color: var(--mint); box-shadow: 0 0 0 1px #b7efd829; }
-.level-preview { display: flex; align-items: center; justify-content: center; height: 126px; margin-bottom: 12px; padding: 7px; border-radius: 5px; background: #0c1720; overflow: hidden; pointer-events: none; }
+.level-preview { display: flex; align-items: center; justify-content: center; height: 132px; margin-bottom: 6px; padding: 4px; border-radius: 5px; background: #0c1720; overflow: hidden; pointer-events: none; }
 .level-preview svg { display: block; width: 100%; height: 100%; max-height: 100%; }
 .level-preview .coord-label { display: none; }
-.level-card-title { display: flex; align-items: center; justify-content: space-between; gap: 5px; font-size: 13px; font-weight: 600; }
-.level-card-title > span { color: var(--mint); font-size: 9px; font-weight: 400; }
+.level-card-title { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 0 2px; font-size: 14px; font-weight: 600; }
+.level-card-title > span { display: inline-flex; align-items: center; gap: 3px; color: var(--mint); font-size: 14px; font-weight: 500; }
 .level-card-desc { margin-top: 5px; min-height: 30px; color: #7d96a5; font-size: 10px; line-height: 1.5; }
 .feature-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; color: #91acae; font-size: 8px; }
 .feature-tags span { padding: 3px 5px; border: 1px solid #2b424b; border-radius: 3px; background: #162c32; }
@@ -319,7 +322,6 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
   .board-stage { min-height: 370px; padding: 14px; }
   .board-svg { max-height: 550px; }
   .board-legend .legend-note { flex-basis: auto; margin-left: auto; }
-  .level-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .workspace-footer { margin-top: 25px; }
 }
 
@@ -394,10 +396,8 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
   .levels-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 12px; }
   .chapter-bar { flex-direction: row; flex-shrink: 0; overflow-x: auto; overflow-y: hidden; padding: 0 0 8px; border-right: 0; border-bottom: 1px solid #293e4b; position: static; }
   .chapter-button { flex-direction: column; align-items: center; gap: 1px; flex: 0 0 auto; min-width: 44px; padding: 6px 8px; }
-  .level-cards { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .level-card { display: grid; grid-template-columns: 122px minmax(0, 1fr); gap: 0 13px; padding: 11px; }
-  .level-preview { grid-row: span 3; height: 105px; margin-bottom: 0; }
-  .level-card-title { align-self: end; }
+  .chapter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .level-preview { height: 110px; }
   .level-card-desc { margin-top: 4px; min-height: 0; }
   .feature-tags { margin-top: 7px; align-self: start; }
   .rule-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; }
@@ -415,8 +415,6 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 @media (max-width: 370px) {
   .workspace { padding-left: 11px; padding-right: 11px; }
   .site-header { padding-left: 12px; padding-right: 12px; }
-  .level-card { display: block; }
-  .level-preview { margin-bottom: 10px; height: 130px; }
   .board-legend { gap: 10px; }
 }
 

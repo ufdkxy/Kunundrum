@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.17.26'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.18.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -316,6 +316,7 @@ function tunnelLabel(side, label, show) {
 
 function renderSvg(b, s, options = {}) {
   const mini = !!options.mini;
+  const lite = mini && !!options.lite; // thumbnails: no blur filters (glow layers are hidden, not blurred)
   const theme = WALL_THEMES[b.wallColor] || WALL_THEMES.B;
   const coordinates = !mini && settings.coordinates;
   const cell = 64;
@@ -425,7 +426,9 @@ function renderSvg(b, s, options = {}) {
     const numberSize=number.length===1?14:number.length===2?12:10;
     svg += `<g ${mini?'':`id="ball-${ball.id}" data-ball="${ball.id}" role="button" tabindex="${ball.locked?-1:0}" aria-disabled="${ball.locked}" aria-label="${COLOR_NAMES[ball.color]} ${ball.id}, ${pos(ball)}${ball.locked?', docked':', select ball'}"`} class="ball-hit${ball.locked?' locked':''}" style="outline:none;filter:none" transform="translate(${p.x},${p.y})"><circle r="31" fill="transparent"/>${active?`<circle class="selected-ring selected-glow" r="28" fill="none" stroke="${color}" stroke-width="6.5" stroke-opacity=".65" filter="url(#${prefix}-glow)"/><circle class="selected-ring selected-dash" r="27.5" fill="none" stroke="#f5ffff" stroke-width="3" stroke-opacity=".98" stroke-dasharray="5 4"/><circle class="selected-ring selected-inner" r="23.5" fill="none" stroke="${color}" stroke-width="1.5" stroke-opacity=".95" stroke-dasharray="5 4"/>`:''}<circle r="27" fill="${color}" opacity="${ball.locked?'.24':'.58'}" filter="url(#${prefix}-orb-aura)" pointer-events="none"/><circle r="20" fill="${color}" opacity="${ball.locked?'.22':'.48'}" filter="url(#${prefix}-glow)" pointer-events="none"/><circle r="19" fill="${color}" opacity=".16" pointer-events="none"/><circle r="16" fill="none" stroke="${color}" stroke-opacity=".48" stroke-width="1.5" pointer-events="none"/><circle class="orb-core" r="${ball.locked?13:15}" fill="url(#${prefix}-orb-${ball.color})" style="stroke:${color};stroke-width:1"/>${number?`<text class="ball-number" x="0" y="0" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="${numberSize}" font-weight="700" fill="#fff" aria-hidden="true" pointer-events="none" style="paint-order:stroke;stroke:#08131b;stroke-width:2.5;stroke-linejoin:round">${number}</text>`:ball.locked?'<path d="m-6 0 4 4 8-8" fill="none" stroke="#10202a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>':''}</g>`;
   }
-  return svg+'</svg>';
+  svg += '</svg>';
+  if (lite) svg = svg.replace(/<filter id="[^"]*-(?:glow|orb-aura)"[^>]*>.*?<\/filter>/g, '').replace(/ filter="url\(#[^")]*-(?:glow|orb-aura)\)"/g, ' display="none"');
+  return svg;
 }
 
 function renderBoard(trace = frames[cursor]) {
@@ -732,35 +735,82 @@ const levelParts = id => id.split('.').map(Number);
 let levelsChapter = null;
 try { const c = Number(localStorage.getItem(CHAPTER_KEY)); if (Number.isInteger(c) && c >= 1 && c <= 30) levelsChapter = c; } catch {} // survives reloads
 const savedChapter = levelsChapter;
-function revealChapter() {
-  const bar = $('chapter-bar'), act = bar.querySelector('.active');
-  if (!act) return;
-  if (getComputedStyle(bar).flexDirection === 'row') bar.scrollLeft = act.offsetLeft - bar.offsetLeft - (bar.clientWidth - act.offsetWidth) / 2;
-  else bar.scrollTop = act.offsetTop - bar.offsetTop - (bar.clientHeight - act.offsetHeight) / 2; // centre, so the previous chapter stays visible
+// Puzzle dialog: one continuous list of all levels (a section per chapter, 5x2 cards). Cards are built once;
+// previews are rendered lazily (lite mode, no blur filters) when they scroll near the viewport.
+let levelCardsBuilt = false, levelObserver = null, spyFrame = 0;
+const levelById = new Map(LEVELS.map(level => [level.id, level]));
+function fillPreview(el) {
+  if (el.firstChild) return;
+  const level = levelById.get(el.parentElement.dataset.level);
+  if (level) el.innerHTML = renderSvg(level, createInitialState(level), {mini: true, lite: true});
 }
-function renderLevelCards(chapter) {
+function buildLevelCards() {
+  levelCardsBuilt = true;
   const byChapter = new Map();
   for (const level of LEVELS) {
-    const [a] = levelParts(level.id);
+    const a = levelParts(level.id)[0];
     if (!byChapter.has(a)) byChapter.set(a, []);
     byChapter.get(a).push(level);
   }
   for (const list of byChapter.values()) list.sort((x, y) => levelParts(x.id)[1] - levelParts(y.id)[1]);
-  if (chapter == null) chapter = levelsChapter ?? levelParts(currentPresetId || LEVELS[0].id)[0];
-  levelsChapter = chapter;
-  try { localStorage.setItem(CHAPTER_KEY, String(chapter)); } catch {}
-  const barTop = $('chapter-bar').scrollTop, barLeft = $('chapter-bar').scrollLeft;
   $('chapter-bar').innerHTML = Array.from({length: 30}, (_, i) => {
-    const a = i + 1, count = byChapter.get(a)?.length || 0;
-    return `<button type="button" class="chapter-button${a === chapter ? ' active' : ''}${count ? '' : ' empty'}" data-chapter="${a}" aria-pressed="${a === chapter}"><strong>${a}</strong></button>`;
+    const a = i + 1;
+    return `<button type="button" class="chapter-button${byChapter.has(a) ? '' : ' empty'}" data-chapter="${a}" aria-pressed="false"><strong>${a}</strong></button>`;
   }).join('');
-  $('chapter-bar').scrollTop = barTop; $('chapter-bar').scrollLeft = barLeft;
-  const list = byChapter.get(chapter) || [];
-  $('level-cards').scrollTop = 0;
-  $('level-cards').innerHTML = list.length ? list.map(level => {
-    const best = bestScores[level.id];
-    return `<button class="level-card${currentPresetId===level.id?' active':''}" data-level="${escape(level.id)}"><div class="level-preview" style="grid-row:auto">${renderSvg(level,createInitialState(level),{mini:true})}</div><div class="level-card-title" style="align-self:center"><strong>${escape(level.title)}</strong><span>${best?`${icon('check')} ${best.score}`:''}</span></div></button>`;
-  }).join('') : `<p class="level-empty">No puzzles in chapter ${chapter} yet.</p>`;
+  $('level-cards').innerHTML = [...byChapter.keys()].sort((x, y) => x - y).map(a =>
+    `<section class="level-chapter" data-chapter="${a}"><h3 class="chapter-heading">Chapter ${a}</h3><div class="chapter-grid">${byChapter.get(a).map(level =>
+      `<button class="level-card" data-level="${escape(level.id)}"><div class="level-preview"></div><div class="level-card-title"><strong>${escape(level.title)}</strong><span></span></div></button>`).join('')}</div></section>`
+  ).join('') + '<div class="level-spacer" aria-hidden="true"></div>';
+  const previews = $('level-cards').querySelectorAll('.level-preview');
+  if (typeof IntersectionObserver === 'function') {
+    levelObserver = new IntersectionObserver(entries => {
+      for (const entry of entries) if (entry.isIntersecting) { fillPreview(entry.target); levelObserver.unobserve(entry.target); }
+    }, {root: $('level-cards'), rootMargin: '500px 0px'});
+    previews.forEach(el => levelObserver.observe(el));
+  } else previews.forEach(fillPreview);
+}
+function refreshLevelCards() { // best scores and the current level change between visits
+  for (const card of $('level-cards').querySelectorAll('.level-card')) {
+    const best = bestScores[card.dataset.level];
+    card.classList.toggle('active', currentPresetId === card.dataset.level);
+    card.querySelector('.level-card-title span').innerHTML = best ? `${icon('check')} ${best.score}` : '';
+  }
+}
+function revealChapterButton() { // keep the active chapter button visible in the chapter bar
+  const bar = $('chapter-bar'), act = bar.querySelector('.active');
+  if (!act) return;
+  const a = act.getBoundingClientRect(), r = bar.getBoundingClientRect();
+  if (getComputedStyle(bar).flexDirection === 'row') {
+    if (a.left < r.left || a.right > r.right) bar.scrollLeft = act.offsetLeft - bar.offsetLeft - (bar.clientWidth - act.offsetWidth) / 2;
+  } else if (a.top < r.top || a.bottom > r.bottom) bar.scrollTop = act.offsetTop - bar.offsetTop - (bar.clientHeight - act.offsetHeight) / 2; // centre, so the previous chapter stays visible
+}
+function updateChapterSpy() { // highlight the chapter at the top of the list
+  spyFrame = 0;
+  const box = $('level-cards');
+  let current = null;
+  for (const sec of box.querySelectorAll('.level-chapter')) {
+    if (sec.offsetTop <= box.scrollTop + 4) current = Number(sec.dataset.chapter); else break;
+  }
+  if (current == null) return;
+  if (current !== levelsChapter) {
+    levelsChapter = current;
+    try { localStorage.setItem(CHAPTER_KEY, String(current)); } catch {}
+  }
+  for (const btn of $('chapter-bar').querySelectorAll('.chapter-button')) {
+    const on = Number(btn.dataset.chapter) === current;
+    btn.classList.toggle('active', on); btn.setAttribute('aria-pressed', String(on));
+  }
+  revealChapterButton();
+}
+function sizeLevelSpacer() { // lets the last (short) chapters scroll up to the top, so every chapter button can be reached
+  const box = $('level-cards'), last = box.querySelector('.level-chapter:last-of-type');
+  if (last) box.querySelector('.level-spacer').style.height = Math.max(0, box.clientHeight - last.offsetHeight) + 'px';
+}
+function scrollToChapter(chapter) {
+  const sec = $('level-cards').querySelector(`.level-chapter[data-chapter="${chapter}"]`);
+  if (!sec) return;
+  $('level-cards').scrollTop = sec.offsetTop;
+  updateChapterSpy();
 }
 // Export dialog: a full permalink and a K3 board code, both optionally carrying the current route.
 let shareRoute = false;
@@ -873,8 +923,10 @@ $('toggle-coords').addEventListener('click',()=>{settings.coordinates=!settings.
 $('toggle-trace').addEventListener('click',()=>{settings.trail=!settings.trail;if(!busy)renderBoard();renderControls();persist();});
 $('toggle-labels').addEventListener('click',()=>{settings.labels=!settings.labels;if(!busy)renderBoard();renderControls();persist();});
 $('toggle-outline').addEventListener('click',()=>{settings.outline=!settings.outline;if(!busy)renderBoard();renderControls();persist();});
-$('open-levels').addEventListener('click',()=>{renderLevelCards();openDialog('levels-dialog');revealChapter();});
-$('chapter-bar').addEventListener('click',event=>{const b=event.target.closest('[data-chapter]');if(b)renderLevelCards(Number(b.dataset.chapter));});
+$('open-levels').addEventListener('click',()=>{if(!levelCardsBuilt)buildLevelCards();refreshLevelCards();openDialog('levels-dialog');sizeLevelSpacer();scrollToChapter(levelsChapter??levelParts(currentPresetId||LEVELS[0].id)[0]);});
+$('level-cards').addEventListener('scroll',()=>{if(!spyFrame)spyFrame=requestAnimationFrame(updateChapterSpy);});
+window.addEventListener('resize',()=>{if(levelCardsBuilt&&$('levels-dialog').open)sizeLevelSpacer();});
+$('chapter-bar').addEventListener('click',event=>{const b=event.target.closest('[data-chapter]');if(b)scrollToChapter(Number(b.dataset.chapter));});
 $('completion-inline').addEventListener('click',event=>{if(!event.target.closest('#next-puzzle')||busy||isPlaying)return;const next=nextLevel();if(next){adoptBoard(next);clearLocation();}});
 $('level-cards').addEventListener('click',event=>{const target=event.target.closest('[data-level]');if(!target)return;const next=LEVELS.find(level=>level.id===target.dataset.level);if(next){adoptBoard(next);clearLocation();$('levels-dialog').close();}});
 $('open-help').addEventListener('click',()=>openDialog('help-dialog'));
