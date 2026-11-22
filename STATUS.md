@@ -11,33 +11,33 @@
 - **Web app is essentially done.** All game mechanics are implemented (RULES.md), including teleport endpoints, tunnels, rotating arrows and wall colors. Only bug fixes are expected.
 - **Solver:** exact forward and bidirectional search, beam search, `--max-depth` / `--max-score` certificates, tunnels and rotating arrows (v0.17); in the browser through the WASM bundle (`Solver/wasm/kunsolve-bundle.js`, v0.17). Remaining ideas: a local optimizer and parallelization (section 3).
 
-## 2. Catalog statistics (embedded solutions, 2026-11-22)
+## 2. Catalog statistics (embedded solutions, 2026-11-22, after the 20.8 fix)
 
 | | Total | Average | Median | Min | Max |
 | --- | --- | --- | --- | --- | --- |
-| Moves | 4,962 | 16.54 | 15 | 1 | 107 |
-| Score | 4,797 | 15.99 | 15 | −2 | 107 |
+| Moves | 4,966 | 16.55 | 15 | 1 | 107 |
+| Score | 4,801 | 16.00 | 15 | −2 | 107 |
 
 - 16 levels have score ≠ moves because of hexagons (total saving 165): 1.7, 1.8, 2.2, 4.9, 5.4, 5.7, 5.8, 7.2, 7.3, 7.8, 8.4, 8.5, 9.8, 12.5, 25.8, 27.9. Lowest scores: 27.9 (−2), 9.8 (0), 1.1 and 7.3 (1).
 - Highest scores: 10.10 (107), 15.4 (53), 9.9 (42), 6.9 and 16.5 (38). Chapter 10 is the hardest (average score 34.7), then chapter 15 (27.4); chapter 1 is the easiest (5.9).
 
 ## 3. Optimality of the embedded solutions
 
-Per the project owner, **295 of the 300 embedded solutions have been proven optimal** (certified lowest score). Five are **not proven**; the embedded route is the best known (an upper bound):
+Per the project owner, **297 of the 300 embedded solutions have been proven optimal** (certified lowest score; 7.3 and 30.4 were closed on 2026-11-22, see below). Three are **not proven**; the embedded route is the best known (an upper bound):
 
 | Level | Moves | Score | Known lower bound / notes |
 | --- | --- | --- | --- |
-| 7.3 | 26 | 1 | 16 hexagons (values −15..20): the score bound is weak with large negative hexes (SOLVER-010); the solver alone only finds a score-16 route |
 | 9.9 | 42 | 42 | 8 balls, corridors; proven ≥ 30 moves (balanced/bidirectional search, v0.11); beam search found 42 at width 300,000 |
 | 10.10 | 107 | 107 | earlier computations proved ≥ 64; game's own best shown 108; route lowered 113 → 107 by a windowed optimizer (route windows with ≤ 5 free balls) outside the repo |
-| 15.8 | 29 | 29 | no bound recorded |
-| 30.4 | 27 | 27 | no bound recorded |
+| 15.8 | 29 | 29 | proven ≥ 18 moves (bidirectional, 100M states, 3 GB limit hit after 507 s); windowed optimizer finds no improvement (up to 8 free balls, 8M nodes per window) |
+
+**What closed 7.3 and 30.4:** `--max-score N` (N = best known score − 1) with forward BFS prunes hexagon boards drastically; 30.4 certifies score ≥ 27 in 59 s (9.6M states, 248 MB). Use it first on any hexagon board before trying other ideas.
 
 Closing the gap means either raising the lower bound (exact search with parallelism / better pruning) or lowering the route (local optimizer). Either result is welcome; the primary goal is always a shortest solution.
 
 ## 4. Next work (all optional, solver only)
 
-1. **Local optimizer** (SOLVER-020): take a stored route, free a window of consecutive moves (or a subset of balls) and search exactly for a cheaper replacement; iterate. Prototype outside the repo cut 10.10 from 113 to 107. Target: the five unproven levels.
+1. **Local optimizer** (SOLVER-020): take a stored route, free a window of consecutive moves (or a subset of balls) and search exactly for a cheaper replacement; iterate. Prototype outside the repo cut 10.10 from 113 to 107; a full-mechanics scratch copy (2026-11-22) found no improvement on 9.9, 15.8 or 30.4, so it is not yet worth adding to `solver.cpp` (port it only if a rough long route turns up that exact search cannot finish).
 2. **Parallelization** (SOLVER-021): multi-threaded layer expansion for forward/bidirectional/beam search (currently single-threaded; the WASM build stays single-threaded). Aimed at lifting lower bounds on 9.9 and 10.10.
 3. Keep this file, `RULES.md` and `ARCHITECTURE.md` current with every milestone; keep K2 imports, K3 codes and legacy replay links backward compatible unless told otherwise.
 
@@ -47,7 +47,6 @@ Closing the gap means either raising the lower bound (exact search with parallel
 - **SOLVER-003: `parseCode` skips board validation.** Overlapping floor features, a ball starting inside an active gate, too few goals for a color or duplicate IDs are accepted, whereas `Core.validateBoard` rejects them. Run the board through the JS validator first (the app already does).
 - **SOLVER-006: Forward BFS is slower and larger than needed.** `simulate()` allocates per move; each `Node` stores a full `State`. Use the stamp-array `fastEnd` for static boards and store only a packed key. Beam on switch or rotating-arrow boards also uses the slow generic `successors()`.
 - **SOLVER-008 / SOLVER-012: A\* / IDA\*** with the depth or score bound. A remaining-unlocked-balls bound is admissible; per-ball distance with other balls removed is **not** (other balls and gates act as stoppers). IDA\* needs almost no memory.
-- **SOLVER-010: Stronger score bound for large negative hexes** (7.3). Dominance pruning between states with the same positions and different consumed-hex sets (A dominates B when `score_A - score_B + (positives only A can still take) + (negatives only B can still take) <= 0`) looks more promising than a distance-based bound.
 - **SOLVER-013: Resumable depth search** (`--save-frontier` / `--resume`) so a search stopped at depth N continues at N+1.
 - **SOLVER-016: Beam search quality.** Open ideas: meet-in-the-middle with an exact reverse region, an endgame database for states with at most 3 undocked balls, automatic width/seed iteration, feeding the best length to the exact search as `--max-depth`.
 - **SOLVER-018 (done):** the WASM bundle is v0.17 and the Solver dialog accepts tunnels and rotating arrows. If `solver.cpp` changes, rebuild it (`node wasm/build.js`) and the Linux binary (`make release`; `Solver/kunsolve-linux-x86_64` currently reports v0.17).
