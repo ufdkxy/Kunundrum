@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.13-js.1';
+const PARSER_VERSION = '0.13.14-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -737,6 +737,58 @@ function robustGeometry(img, grid) {
   return extendForTunnelArms(img, best, trimmed);
 }
 
+// Tunnel openings are marked by a pair of small solid white triangles on the void side of a cell edge, side by side along the edge, one pointing
+// at the grid and one away from it (12.6, 21.1, 23.4). Anything else that is bright (outline cores, teleport squares, the game's bottom bar whose
+// three triangles are larger and all point the same way) is not a marker. Returns openings as pairs of neighbouring cells [[c, r], [c, r]].
+function findMarkerGaps(hsv, W, H, geom) {
+  const sc = W / 1440, c = geom.cell, cw = geom.width, ch = geom.height;
+  const x0 = Math.max(0, Math.floor(geom.left - .6 * c)), x1 = Math.min(W, Math.ceil(geom.left + cw * c + .6 * c));
+  const y0 = Math.max(0, Math.floor(geom.top - .6 * c)), y1 = Math.min(H, Math.ceil(geom.top + ch * c + .6 * c));
+  const seen = new Uint8Array(W * H), tris = [], stack = [];
+  const isWhite = i => hsv[i * 3 + 2] > 200 && hsv[i * 3 + 1] < 50;
+  for (let sy = y0; sy < y1; sy++) for (let sx = x0; sx < x1; sx++) {
+    const s0 = sy * W + sx;
+    if (seen[s0] || !isWhite(s0)) continue;
+    seen[s0] = 1; stack.length = 0; stack.push(s0);
+    let n = 0, sumx = 0, sumy = 0, bx0 = W, bx1 = -1, by0 = H, by1 = -1, big = false;
+    while (stack.length) {
+      const i = stack.pop(), x = i % W, y = (i - x) / W;
+      n++; sumx += x; sumy += y;
+      if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y;
+      if (bx1 - bx0 > 40 * sc || by1 - by0 > 40 * sc) big = true;
+      if (big) continue; // an outline core or other large shape: just mark it seen
+      for (const j of [i - 1, i + 1, i - W, i + W]) { const jx = j % W; if (j >= 0 && j < W * H && Math.abs(jx - x) <= 1 && !seen[j] && isWhite(j)) { seen[j] = 1; stack.push(j); } }
+    }
+    if (big) continue;
+    const bw = bx1 - bx0 + 1, bh = by1 - by0 + 1, wide = bw > bh, long = wide ? bw : bh, short = wide ? bh : bw;
+    if (long < 15 * sc || long > 28 * sc || short < 7 * sc || short > 14 * sc || long / short < 1.5 || long / short > 3.2) continue;
+    const fill = n / (bw * bh);
+    if (fill < .4 || fill > .75) continue;
+    // A triangle's centroid lies off the middle of its box towards the base; a rectangle's does not.
+    const cx = sumx / n, cy = sumy / n, bcx = (bx0 + bx1) / 2, bcy = (by0 + by1) / 2;
+    const shift = wide ? cy - bcy : cx - bcx;
+    if (Math.abs(shift) < .1 * short) continue;
+    tris.push({ wide, long, cx: bcx, cy: bcy, dir: Math.sign(shift) });
+  }
+  const gaps = [];
+  for (let a = 0; a < tris.length; a++) for (let b = a + 1; b < tris.length; b++) {
+    const A = tris[a], B = tris[b];
+    if (A.wide !== B.wide || A.dir === B.dir) continue;
+    // along = coordinate along the edge, perp = across it.
+    const al = A.wide ? [A.cx, B.cx] : [A.cy, B.cy], pe = A.wide ? [A.cy, B.cy] : [A.cx, B.cx];
+    if (Math.abs(pe[0] - pe[1]) > 3 * sc) continue;
+    const sep = Math.abs(al[0] - al[1]);
+    if (sep < 1.0 * A.long || sep > 2.0 * A.long) continue;
+    const along = (al[0] + al[1]) / 2, perp = (pe[0] + pe[1]) / 2;
+    const [aOrg, pOrg, nAlong, nPerp] = A.wide ? [geom.left, geom.top, cw, ch] : [geom.top, geom.left, ch, cw];
+    const k = Math.floor((along - aOrg) / c), e = Math.round((perp - pOrg) / c);
+    if (k < 0 || k >= nAlong || e < 0 || e > nPerp) continue;
+    if (Math.abs(perp - (pOrg + e * c)) > .2 * c || Math.abs(along - (aOrg + (k + .5) * c)) > .25 * c) continue;
+    gaps.push(A.wide ? [[k, e - 1], [k, e]] : [[e - 1, k], [e, k]]);
+  }
+  return gaps;
+}
+
 // Cells inside the neon outline, from outline topology (see parse.py inside_cells).
 function insideCells(img, geom, out) {
   const { width: W, height: H, bgr } = img;
@@ -750,12 +802,10 @@ function insideCells(img, geom, out) {
     const h = hsv[i * 3];
     return (h < 12 || h > 169) ? 'R' : (h >= 39 && h < 85) ? 'G' : (h >= 85 && h <= 135) ? 'B' : null;
   };
-  // Scan one edge segment over the offsets -R..R around the nominal grid line: best = outline fraction (neon minus white marker pixels),
-  // mark = white fraction, local = hue counts of the neon pixels.
-  const scanEdge = (x0, y0, x1, y1, vertical, R) => {
+  const wall = (x0, y0, x1, y1, vertical) => {
     let best = 0, mark = 0;
     const local = { B: 0, R: 0, G: 0 };
-    for (let off = -R; off <= R; off++) {
+    for (let off = -8; off <= 8; off++) {
       let n = 0, hit = 0, wh = 0;
       if (vertical) {
         const xs = pyRound(x0 + off);
@@ -769,35 +819,23 @@ function insideCells(img, geom, out) {
       // White marker pixels are bright too but are not outline: two triangles can cover ~70% of a cell edge (12.6), so they must not count as wall.
       if (n) { best = Math.max(best, (hit - wh) / n); mark = Math.max(mark, wh / n); }
     }
-    return { best, mark, local };
-  };
-  // The game's bottom triangle bar (centered, ~13% of the width, top border at ~95% of the height; 12.6 has a real opening just above it) is drawn over the grid and looks like markers.
-  const overBar = (x0, y0, x1, y1) => x1 > .405 * W && x0 < .54 * W && y0 > .95 * H;
-  let gapMark = false; // set by wall(): white marker pixels on an edge without a neon outline = tunnel opening candidate
-  const wall = (x0, y0, x1, y1, vertical) => {
-    const { best, mark, local } = scanEdge(x0, y0, x1, y1, vertical, 8);
     if (best > .6) for (const k in votes) votes[k] += local[k];
-    // Real tunnel markers cover >= 50% of the edge (12.6, 21.1); a teleport's bright square gives 7-15% (white teleport on 12.9), so require 30%.
-    // A marker's triangles never fill the whole edge (<= ~55% in every screenshot); a fully white line is an outline core that the game drew
-    // ~10 px off the nominal grid line, outside the search window (23.3), so it is a wall, not an opening.
-    gapMark = best <= .6 && mark > .3 && mark < .8 && !overBar(x0, y0, x1, y1);
     return best > .6 || mark > .05;
   };
   const gaps = new Map();
+  for (const g of findMarkerGaps(hsv, W, H, geom)) gaps.set(g[0] + '|' + g[1], g);
   const edgeWall = ([ac, ar], [bc, br]) => {
     if (ac !== bc) {
       const e = Math.max(ac, bc), r = ar;
       if (!(r >= 0 && r < ch)) return false;
       const x = geom.left + e * c, y0 = geom.top + r * c + .25 * c, y1 = geom.top + r * c + .75 * c;
       const res = wall(x, y0, x, y1, true);
-      if (gapMark) gaps.set(`${ac},${ar}|${bc},${br}`, [[ac, ar], [bc, br]]);
       return res;
     }
     const e = Math.max(ar, br), col = ac;
     if (!(col >= 0 && col < cw)) return false;
     const y = geom.top + e * c, x0 = geom.left + col * c + .25 * c, x1 = geom.left + col * c + .75 * c;
     const res = wall(x0, y, x1, y, false);
-    if (gapMark) gaps.set(`${ac},${ar}|${bc},${br}`, [[ac, ar], [bc, br]]);
     return res;
   };
   const INF = 1e9, key = (a, b) => a + ',' + b, dist = new Map([[key(-1, -1), 0]]);
