@@ -244,6 +244,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .level-spacer { flex: none; }
 .level-empty { grid-column: 1 / -1; padding: 40px 0; text-align: center; color: #7d96a5; font-size: 12px; }
 .level-cards { position: relative; min-height: 0; overflow-y: auto; padding-right: 8px; margin-right: -8px; }
+.chapter-heading { margin: 0; padding: 12px 2px 8px; color: #8ea6b4; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .chapter-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 22px; }
 .level-card { display: block; min-width: 0; text-align: left; padding: 6px; border: 1px solid #2e4553; border-radius: 9px; background: #13222c; }
 .level-card:hover { border-color: #6b928e; background: #1a2b35; }
