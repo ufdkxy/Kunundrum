@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.12-js.1';
+const PARSER_VERSION = '0.13.13-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -750,11 +750,12 @@ function insideCells(img, geom, out) {
     const h = hsv[i * 3];
     return (h < 12 || h > 169) ? 'R' : (h >= 39 && h < 85) ? 'G' : (h >= 85 && h <= 135) ? 'B' : null;
   };
-  let gapMark = false; // set by wall(): white marker pixels on an edge without a neon outline = tunnel opening candidate
-  const wall = (x0, y0, x1, y1, vertical) => {
+  // Scan one edge segment over the offsets -R..R around the nominal grid line: best = outline fraction (neon minus white marker pixels),
+  // mark = white fraction, local = hue counts of the neon pixels.
+  const scanEdge = (x0, y0, x1, y1, vertical, R) => {
     let best = 0, mark = 0;
     const local = { B: 0, R: 0, G: 0 };
-    for (let off = -8; off <= 8; off++) {
+    for (let off = -R; off <= R; off++) {
       let n = 0, hit = 0, wh = 0;
       if (vertical) {
         const xs = pyRound(x0 + off);
@@ -768,9 +769,18 @@ function insideCells(img, geom, out) {
       // White marker pixels are bright too but are not outline: two triangles can cover ~70% of a cell edge (12.6), so they must not count as wall.
       if (n) { best = Math.max(best, (hit - wh) / n); mark = Math.max(mark, wh / n); }
     }
+    return { best, mark, local };
+  };
+  // The game's bottom triangle bar (centered, ~13% of the width, top border at ~95% of the height; 12.6 has a real opening just above it) is drawn over the grid and looks like markers.
+  const overBar = (x0, y0, x1, y1) => x1 > .405 * W && x0 < .54 * W && y0 > .95 * H;
+  let gapMark = false; // set by wall(): white marker pixels on an edge without a neon outline = tunnel opening candidate
+  const wall = (x0, y0, x1, y1, vertical) => {
+    const { best, mark, local } = scanEdge(x0, y0, x1, y1, vertical, 8);
     if (best > .6) for (const k in votes) votes[k] += local[k];
     // Real tunnel markers cover >= 50% of the edge (12.6, 21.1); a teleport's bright square gives 7-15% (white teleport on 12.9), so require 30%.
-    gapMark = best <= .6 && mark > .3;
+    // A marker's triangles never fill the whole edge (<= ~55% in every screenshot); a fully white line is an outline core that the game drew
+    // ~10 px off the nominal grid line, outside the search window (23.3), so it is a wall, not an opening.
+    gapMark = best <= .6 && mark > .3 && mark < .8 && !overBar(x0, y0, x1, y1);
     return best > .6 || mark > .05;
   };
   const gaps = new Map();
