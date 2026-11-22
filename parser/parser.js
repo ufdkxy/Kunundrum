@@ -15,7 +15,7 @@
  */
 (function (root) {
 'use strict';
-const PARSER_VERSION = '0.13.15-js.1';
+const PARSER_VERSION = '0.13.16-js.1';
 const COLORS = ['R', 'G', 'B', 'Y'];
 const HEX_GUESS = { G: -5, R: 5 };
 const SZ = 96, NPX = SZ * SZ;
@@ -651,11 +651,12 @@ function robustGeometry(img, grid) {
   {
     const hsv2 = img.hsv || (img.hsv = bgr2hsv(bgr));
     const isW = (x, y) => { if (y >= h * .94 && x >= w * TAB_X0 && x < w * TAB_X1) return false; const i = (y * w + x) * 3; return hsv2[i + 2] > 200 && hsv2[i + 1] < 50; };
-    const flush = (vertical, at) => { // share of the outline box length that has outline pixels within the 10 outermost lines
+    const flush = (vertical, at, kHi = 10) => { // share of the outline box length that has outline pixels within the 10 outermost lines
       let n = 0;
-      // k starts a few lines outside the box: the outline's bright core can lie just beyond the first pixel the cyan mask accepted (22.2, green walls)
-      if (vertical) for (let y = y0; y <= y1; y++) { for (let k = -6; k < 10; k++) if (at + k >= 0 && at + k < w && hsv2[(y * w + at + k) * 3 + 2] > 150) { n++; break; } }
-      else for (let x = x0; x <= x1; x++) { for (let k = -6; k < 10; k++) if (at + k >= 0 && at + k < h && hsv2[((at + k) * w + x) * 3 + 2] > 150 && !(at + k >= h * .94 && x >= w * TAB_X0 && x < w * TAB_X1)) { n++; break; } } // not the bottom tab (24.1)
+      // k starts a few lines outside the box: the outline's bright core can lie just beyond the first pixel the cyan mask accepted (22.2, green walls).
+      // On the right/bottom side the window also reaches a few lines past the box (kHi): the stroke core can lie beyond the mask there too (25.7, green walls).
+      if (vertical) for (let y = y0; y <= y1; y++) { for (let k = -6; k < kHi; k++) if (at + k >= 0 && at + k < w && hsv2[(y * w + at + k) * 3 + 2] > 150) { n++; break; } }
+      else for (let x = x0; x <= x1; x++) { for (let k = -6; k < kHi; k++) if (at + k >= 0 && at + k < h && hsv2[((at + k) * w + x) * 3 + 2] > 150 && !(at + k >= h * .94 && x >= w * TAB_X0 && x < w * TAB_X1)) { n++; break; } } // not the bottom tab (24.1)
       return n / (vertical ? y1 - y0 + 1 : x1 - x0 + 1);
     };
     // Marker line: >= 4 consecutive lines whose white count exceeds the median by 15. Returns the run's centre or -1.
@@ -684,12 +685,22 @@ function robustGeometry(img, grid) {
       return -1;
     };
     const reach = 200, sx = x1 - x0 + 1, sy = y1 - y0 + 1;
-    if (flush(true, x0) < .2) { const m = markerLine(true, x0 + 25, Math.min(x0 + reach, x0 + sx * .4)); if (m > 0) { x0 = Math.round(m - 10); trimmed.l = true; } }
-    if (flush(true, x1 - 9) < .2) { const m = markerLine(true, Math.max(x1 - reach, x1 - sx * .4), x1 - 25); if (m > 0) { x1 = Math.round(m + 5); trimmed.r = true; } }
+    // Markers right at the box edge mean the arms are clipped by the drawing area exactly there (26.8): that edge is the grid edge, so it is not trimmed
+    // to a marker line further in (that line is an ordinary opening on the outline).
+    const atEdge = (vertical, lo, hi) => markerLine(vertical, lo, hi) > 0;
+    const clipped = {};
+    const sideL = flush(true, x0) < .2, sideR = flush(true, x1 - 9, 16) < .2, sideU = flush(false, y0) < .2, sideD = flush(false, y1 - 9, 16) < .2;
+    if (sideL) { if (atEdge(true, x0 - 6, x0 + 22)) clipped.l = true; else { const m = markerLine(true, x0 + 25, Math.min(x0 + reach, x0 + sx * .4)); if (m > 0) { x0 = Math.round(m - 10); trimmed.l = true; } } }
+    if (sideR) { if (atEdge(true, x1 - 22, x1 + 6)) clipped.r = true; else { const m = markerLine(true, Math.max(x1 - reach, x1 - sx * .4), x1 - 25); if (m > 0) { x1 = Math.round(m + 5); trimmed.r = true; } } }
     // y0 at the mask cut (24.1): the markers can sit right below it, so the search starts there.
     // The top search starts right below y0: the mask cut (24.1) can leave the markers just under it.
-    if (flush(false, y0) < .2) { const m = markerLine(false, y0 + 2, Math.min(y0 + reach, y0 + sy * .4)); if (m > 0) { y0 = Math.round(m - 5); trimmed.u = true; } }
-    if (flush(false, y1 - 9) < .2) { const m = markerLine(false, Math.max(y1 - reach, y1 - sy * .4), y1 - 25); if (m > 0) { y1 = Math.round(m + 5); trimmed.d = true; } }
+    if (sideU) { if (atEdge(false, y0 - 6, y0 + 2)) clipped.u = true; else { const m = markerLine(false, y0 + 2, Math.min(y0 + reach, y0 + sy * .4)); if (m > 0) { y0 = Math.round(m - 5); trimmed.u = true; } } }
+    if (sideD) { if (atEdge(false, y1 - 22, y1 + 6)) clipped.d = true; else { const m = markerLine(false, Math.max(y1 - reach, y1 - sy * .4), y1 - 25); if (m > 0) { y1 = Math.round(m + 5); trimmed.d = true; } } }
+    // A clipped side has no outline stroke outside the grid, unlike the ordinary margin the grid fit expects: widen the box by that margin.
+    if (clipped.l) x0 -= 12;
+    if (clipped.r) x1 += 12;
+    if (clipped.u) y0 -= 12;
+    if (clipped.d) y1 += 12;
   }
   const spanx = x1 - x0 + 1, spany = y1 - y0 + 1;
   // Seam profiles do not depend on the candidate cell size.
