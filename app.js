@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.18.1'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.18.2'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -316,7 +316,6 @@ function tunnelLabel(side, label, show) {
 
 function renderSvg(b, s, options = {}) {
   const mini = !!options.mini;
-  const lite = mini && !!options.lite; // thumbnails: no blur filters (glow layers are hidden, not blurred)
   const theme = WALL_THEMES[b.wallColor] || WALL_THEMES.B;
   const coordinates = !mini && settings.coordinates;
   const cell = 64;
@@ -426,9 +425,7 @@ function renderSvg(b, s, options = {}) {
     const numberSize=number.length===1?14:number.length===2?12:10;
     svg += `<g ${mini?'':`id="ball-${ball.id}" data-ball="${ball.id}" role="button" tabindex="${ball.locked?-1:0}" aria-disabled="${ball.locked}" aria-label="${COLOR_NAMES[ball.color]} ${ball.id}, ${pos(ball)}${ball.locked?', docked':', select ball'}"`} class="ball-hit${ball.locked?' locked':''}" style="outline:none;filter:none" transform="translate(${p.x},${p.y})"><circle r="31" fill="transparent"/>${active?`<circle class="selected-ring selected-glow" r="28" fill="none" stroke="${color}" stroke-width="6.5" stroke-opacity=".65" filter="url(#${prefix}-glow)"/><circle class="selected-ring selected-dash" r="27.5" fill="none" stroke="#f5ffff" stroke-width="3" stroke-opacity=".98" stroke-dasharray="5 4"/><circle class="selected-ring selected-inner" r="23.5" fill="none" stroke="${color}" stroke-width="1.5" stroke-opacity=".95" stroke-dasharray="5 4"/>`:''}<circle r="27" fill="${color}" opacity="${ball.locked?'.24':'.58'}" filter="url(#${prefix}-orb-aura)" pointer-events="none"/><circle r="20" fill="${color}" opacity="${ball.locked?'.22':'.48'}" filter="url(#${prefix}-glow)" pointer-events="none"/><circle r="19" fill="${color}" opacity=".16" pointer-events="none"/><circle r="16" fill="none" stroke="${color}" stroke-opacity=".48" stroke-width="1.5" pointer-events="none"/><circle class="orb-core" r="${ball.locked?13:15}" fill="url(#${prefix}-orb-${ball.color})" style="stroke:${color};stroke-width:1"/>${number?`<text class="ball-number" x="0" y="0" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="${numberSize}" font-weight="700" fill="#fff" aria-hidden="true" pointer-events="none" style="paint-order:stroke;stroke:#08131b;stroke-width:2.5;stroke-linejoin:round">${number}</text>`:ball.locked?'<path d="m-6 0 4 4 8-8" fill="none" stroke="#10202a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>':''}</g>`;
   }
-  svg += '</svg>';
-  if (lite) svg = svg.replace(/<filter id="[^"]*-(?:glow|orb-aura)"[^>]*>.*?<\/filter>/g, '').replace(/ filter="url\(#[^")]*-(?:glow|orb-aura)\)"/g, ' display="none"');
-  return svg;
+  return svg+'</svg>';
 }
 
 function renderBoard(trace = frames[cursor]) {
@@ -735,14 +732,14 @@ const levelParts = id => id.split('.').map(Number);
 let levelsChapter = null;
 try { const c = Number(localStorage.getItem(CHAPTER_KEY)); if (Number.isInteger(c) && c >= 1 && c <= 30) levelsChapter = c; } catch {} // survives reloads
 const savedChapter = levelsChapter;
-// Puzzle dialog: one continuous list of all levels (a section per chapter, 5x2 cards). Cards are built once;
-// previews are rendered lazily (lite mode, no blur filters) when they scroll near the viewport.
+// Puzzle dialog: one continuous list of all levels (a section per chapter, 4 cards per row). Cards are built once;
+// previews are rendered lazily when they scroll near the viewport.
 let levelCardsBuilt = false, levelObserver = null, spyFrame = 0;
 const levelById = new Map(LEVELS.map(level => [level.id, level]));
 function fillPreview(el) {
   if (el.firstChild) return;
   const level = levelById.get(el.parentElement.dataset.level);
-  if (level) el.innerHTML = renderSvg(level, createInitialState(level), {mini: true, lite: true});
+  if (level) el.innerHTML = renderSvg(level, createInitialState(level), {mini: true});
 }
 function buildLevelCards() {
   levelCardsBuilt = true;
@@ -924,6 +921,7 @@ $('toggle-trace').addEventListener('click',()=>{settings.trail=!settings.trail;i
 $('toggle-labels').addEventListener('click',()=>{settings.labels=!settings.labels;if(!busy)renderBoard();renderControls();persist();});
 $('toggle-outline').addEventListener('click',()=>{settings.outline=!settings.outline;if(!busy)renderBoard();renderControls();persist();});
 $('open-levels').addEventListener('click',()=>{if(!levelCardsBuilt)buildLevelCards();refreshLevelCards();openDialog('levels-dialog');sizeLevelSpacer();scrollToChapter(levelsChapter??levelParts(currentPresetId||LEVELS[0].id)[0]);});
+$('levels-dialog').addEventListener('keydown',event=>{if((event.key!=='Home'&&event.key!=='End')||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;event.preventDefault();const box=$('level-cards');box.scrollTop=event.key==='Home'?0:box.scrollHeight;});
 $('level-cards').addEventListener('scroll',()=>{if(!spyFrame)spyFrame=requestAnimationFrame(updateChapterSpy);});
 window.addEventListener('resize',()=>{if(levelCardsBuilt&&$('levels-dialog').open)sizeLevelSpacer();});
 $('chapter-bar').addEventListener('click',event=>{const b=event.target.closest('[data-chapter]');if(b)scrollToChapter(Number(b.dataset.chapter));});
