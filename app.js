@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.19.3'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.19.4'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -933,13 +933,13 @@ function editInvalid(draft,problems){
 }
 function clearLocation(){try{history.replaceState(null,'',location.pathname);}catch{}}
 
-// Screenshot import: parser/parser.js (port of parse.py) loads on first use, the recognised board opens
+// Screenshot import: parser.js (port of parse.py) loads on first use, the recognised board opens
 // in the editor, and the review dialog shows the annotated screenshot plus every parser warning.
 let parserLoading=null;
 function loadParser(){
   if(window.KunParser&&window.KunParserData)return Promise.resolve();
   const load=src=>new Promise((ok,fail)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>fail(new Error('Could not load the screenshot parser.'));document.head.appendChild(s);});
-  return parserLoading||(parserLoading=Promise.all([load('./parser/parser_data.js'),load('./parser/parser.js')]).catch(error=>{parserLoading=null;throw error;}));
+  return parserLoading||(parserLoading=Promise.all([load('./parser_data.js'),load('./parser.js')]).catch(error=>{parserLoading=null;throw error;}));
 }
 async function importScreenshot(file){
   if(!file||!/^image\//.test(file.type||'')){toast('Choose an image file.',true);return;}

@@ -1,4 +1,4 @@
-// Solver dialog: opened from the "Solver" button in the Replay panel. Runs the WebAssembly solver (Solver/wasm) in a worker.
+// Solver dialog: opened from the "Solver" button in the Replay panel. Runs the WebAssembly solver (kunsolve-bundle.js) in a worker.
 // The dialog is modal and the global key handler ignores input while a dialog is open, so no moves can be made while it runs;
 // closing the dialog (button or Escape) stops the search. The button is disabled while the board editor is active (editor.js).
 (() => {
@@ -13,9 +13,9 @@ function loadClient() {
   if (window.KunSolver) return Promise.resolve();
   if (!clientPromise) clientPromise = new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = './Solver/wasm/solver-client.js';
+    s.src = './solver-client.js';
     s.onload = resolve;
-    s.onerror = () => { clientPromise = null; reject(new Error('Could not load the solver files (Solver/wasm).')); };
+    s.onerror = () => { clientPromise = null; reject(new Error('Could not load the solver files.')); };
     document.head.append(s);
   });
   return clientPromise;

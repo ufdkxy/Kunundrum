@@ -5,7 +5,7 @@
 Seconds <input id="sec" value="60" size="4"> Max memory MB <input id="mem" value="1500" size="5">
 <button id="go">Solve</button> <button id="stop" disabled>Cancel</button></p>
 <pre id="out" style="background:#eee;padding:8px;min-height:6em;white-space:pre-wrap"></pre>
-<script src="../../levels.js"></script><script src="../../engine.js"></script><script src="../../codec.js"></script><script src="solver-client.js"></script>
+<script src="../../levels.js"></script><script src="../../engine.js"></script><script src="../../codec.js"></script><script src="../../solver-client.js"></script>
 <script>
 const codes={};String(window.KUNUNDRUM_LEVEL_CODES).split('\n').forEach(l=>{const m=/^(\S+) = (\S+)/.exec(l);if(m)codes[m[1]]=m[2];});
 const $=id=>document.getElementById(id);for(const id in codes)$('lvl').add(new Option(id));

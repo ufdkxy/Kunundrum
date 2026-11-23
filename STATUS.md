@@ -7,9 +7,9 @@
 ## 1. Where the project stands
 
 - **Catalog complete.** `levels.js` holds all 300 levels (1.1–30.10), each with an embedded solution. Every embedded solution replays through `engine.js` to a completed board (checked 2026-11-22).
-- **Parser development is concluded.** `parser/parser.js` (+ generated `parser_data.js`) is the definitive parser and was used to build the catalog; the Python `parse.py` is frozen and historical. The parser is kept for importing future screenshots, but no further work is planned.
+- **Parser development is concluded.** `parser.js` (+ generated `parser_data.js`) is the definitive parser and was used to build the catalog; the Python `parse.py` is frozen and historical. The parser is kept for importing future screenshots, but no further work is planned.
 - **Web app is essentially done.** All game mechanics are implemented (RULES.md), including teleport endpoints, tunnels, rotating arrows and wall colors. Only bug fixes are expected.
-- **Solver:** exact forward and bidirectional search, beam search, `--max-depth` / `--max-score` certificates, tunnels and rotating arrows (v0.17); in the browser through the WASM bundle (`Solver/wasm/kunsolve-bundle.js`, v0.17). Remaining ideas: a local optimizer and parallelization (section 3).
+- **Solver:** exact forward and bidirectional search, beam search, `--max-depth` / `--max-score` certificates, tunnels and rotating arrows (v0.17); in the browser through the WASM bundle (`kunsolve-bundle.js`, v0.17). Remaining ideas: a local optimizer and parallelization (section 3).
 
 ## 2. Catalog statistics (embedded solutions, 2026-11-22, after the 20.8 fix)
 

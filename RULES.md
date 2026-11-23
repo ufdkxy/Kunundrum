@@ -112,7 +112,7 @@ The four snippets above illustrate arrow (a rotating arrow may add `"type": "ccw
 
 ## 6b. Solver support
 
-Tunnels and rotating arrows are implemented in `solver.cpp` (v0.17) with the semantics above: the solver tries every distinct arrow clock phase per move and prints the `(->xy)` annotation. The WebAssembly bundle used by the app (`Solver/wasm/kunsolve-bundle.js`) is the v0.17 build and includes them.
+Tunnels and rotating arrows are implemented in `solver.cpp` (v0.17) with the semantics above: the solver tries every distinct arrow clock phase per move and prints the `(->xy)` annotation. The WebAssembly bundle used by the app (`kunsolve-bundle.js`) is the v0.17 build and includes them.
 
 ## 7. Invariants to preserve when editing mechanics
 

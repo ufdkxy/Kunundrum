@@ -5,7 +5,7 @@
  * image.raw is interleaved BGR bytes, exactly what cv2.imread returns. */
 'use strict';
 const fs = require('node:fs');
-const P = require('./parser.js');
+const P = require('../parser.js');
 const args = process.argv.slice(2);
 const prims = args[0] === '--prims';
 if (prims) args.shift();
