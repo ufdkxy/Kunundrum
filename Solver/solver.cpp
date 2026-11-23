@@ -168,30 +168,30 @@ struct Packer{
  }
 };
 static inline uint64_t hashBytes(const uint8_t*p,int n){uint64_t h=0x9E3779B97F4A7C15ULL;int i=0;for(;i+8<=n;i+=8){uint64_t v;memcpy(&v,p+i,8);h=(h^v)*0xff51afd7ed558ccdULL;h^=h>>32;}uint64_t v=0;if(i<n)memcpy(&v,p+i,n-i);h=(h^v^((uint64_t)n<<56))*0xc4ceb9fe1a85ec53ULL;h^=h>>29;return h;}
-// Nodes live in fixed-size chunks of one flat byte array: [packed state][parent u32][depth u16][source u16][phase*16+color*4+dir u8].
+// Nodes live in fixed-size chunks of one flat byte array and hold ONLY the packed state (v0.18: no parent, depth or move per node).
+// Layers are contiguous in insertion order, so `bounds` gives every node's depth; routes are rebuilt after a successful search (rebuildForward/rebuildReverse).
 // An open-addressing table of node indices (compared byte for byte, so there are no hash collisions to worry about) finds duplicates.
 struct Store{
  static constexpr uint32_t NONE=0xFFFFFFFFu;static constexpr int SHIFT=16;
  int K=0,stride=0;vector<unique_ptr<uint8_t[]>> chunks;vector<uint32_t> table;size_t count=0;
- void init(int k){K=k;stride=K+9;table.assign(1<<16,NONE);}
+ vector<size_t> bounds{0}; // bounds[k] = index of the first node of layer k (the last entry opens the layer being generated)
+ void init(int k){K=k;stride=K;table.assign(1<<16,NONE);bounds.assign(1,0);}
+ void closeLayer(){bounds.push_back(count);}
+ int depthOf(size_t i)const{return (int)(upper_bound(bounds.begin(),bounds.end(),i)-bounds.begin())-1;}
  uint8_t* at(size_t i)const{return chunks[i>>SHIFT].get()+(i&(((size_t)1<<SHIFT)-1))*stride;}
  size_t size()const{return count;}
  uint64_t bytes()const{return (uint64_t)chunks.size()*((uint64_t)stride<<SHIFT)+(uint64_t)table.size()*4;}
  const uint8_t* key(size_t i)const{return at(i);}
- uint32_t parent(size_t i)const{uint32_t v;memcpy(&v,at(i)+K,4);return v;}
- int depth(size_t i)const{uint8_t*r=at(i)+K+4;return r[0]|(r[1]<<8);}
- Move move(size_t i)const{Move m;uint8_t*r=at(i)+K+6;m.source=(uint16_t)(r[0]|(r[1]<<8));m.color=(r[2]>>2)&3;m.dir=r[2]&3;m.phase=r[2]>>4;return m;}
  uint32_t find(const uint8_t*k)const{size_t mask=table.size()-1,pos=hashBytes(k,K)&mask;for(;;pos=(pos+1)&mask){uint32_t e=table[pos];if(e==NONE)return NONE;if(!memcmp(at(e),k,K))return e;}}
  void place(uint32_t idx){size_t mask=table.size()-1,pos=hashBytes(at(idx),K)&mask;while(table[pos]!=NONE)pos=(pos+1)&mask;table[pos]=idx;}
  void rebuild(size_t n,size_t slots){count=n;table.assign(slots,NONE);for(size_t i=0;i<n;i++)place((uint32_t)i);}
  // Adds a state known to be absent (call find first). Returns its index.
- uint32_t add(const uint8_t*k,uint32_t parentIdx,int depthValue,const Move&m){
+ uint32_t add(const uint8_t*k){
   if((count+1)*2>table.size())rebuild(count,table.size()*2);
   size_t idx=count;if((idx>>SHIFT)>=chunks.size())chunks.emplace_back(new uint8_t[(size_t)stride<<SHIFT]);
-  uint8_t*r=at(idx);memcpy(r,k,K);memcpy(r+K,&parentIdx,4);r[K+4]=(uint8_t)(depthValue&255);r[K+5]=(uint8_t)(depthValue>>8);r[K+6]=(uint8_t)(m.source&255);r[K+7]=(uint8_t)(m.source>>8);r[K+8]=(uint8_t)(m.phase*16+m.color*4+m.dir);
+  memcpy(at(idx),k,K);
   count++;place((uint32_t)idx);return (uint32_t)idx;
  }
- void shrinkTo(size_t n){rebuild(n,table.size());}
 };
 // Performs a complete move for a ball found at source, with the shared arrow clock showing `phase` (0..3; waiting is free, so the player
 // picks it before the move). Returns 1 for success, 0 blocked/loop. `ann` receives the notation annotation letters: the orientation of the
@@ -258,18 +258,43 @@ long long scoreLowerBound(const Board&b,const State&s,int depth){long long v=sco
 // Without hexes the score equals the move count, so the first accepted state of the breadth-first search is optimal.
 // With hexes a longer route can score lower, so the search continues past the first accepted state and prunes every
 // state whose scoreLowerBound cannot beat the best score found. Equal-score routes are found in order of move count.
+// Route to node idx without stored parent pointers: the first node of the previous layer with the wanted successor is its parent
+// (the one the search recorded, apart from states a bound pruned before expansion, which give an equally long, equally scored route).
+vector<Move> rebuildForward(const Board&b,const Store&st,const Packer&pk,uint32_t idx){
+ vector<Move> path;vector<uint8_t> cur(st.K),tmp(st.K);memcpy(cur.data(),st.key(idx),st.K);Stats stats;
+ for(int d=st.depthOf(idx);d>0;d--){
+  bool ok=false;
+  for(size_t i=st.bounds[d-1];i<st.bounds[d]&&!ok;i++){
+   State ps;pk.unpack(st.key(i),ps);
+   successors(b,ps,stats,[&](Transition&& t){if(ok)return;pk.pack(t.s,tmp.data());if(!memcmp(tmp.data(),cur.data(),st.K)){ok=true;path.push_back(t.m);memcpy(cur.data(),st.key(i),st.K);}});
+  }
+  if(!ok)throw runtime_error("internal error: route reconstruction failed");
+ }
+ reverse(path.begin(),path.end());return path;
+}
+// Reverse store: node idx at depth d can reach the target in d moves, so one of its successors is stored at depth d-1. Returns the moves in play order.
+vector<Move> rebuildReverse(const Board&b,const Store&st,const Packer&pk,uint32_t idx){
+ vector<Move> path;vector<uint8_t> tmp(st.K);Stats stats;uint32_t at=idx;
+ for(int d=st.depthOf(idx);d>0;d--){
+  State s;pk.unpack(st.key(at),s);bool ok=false;uint32_t nx=0;
+  successors(b,s,stats,[&](Transition&& t){if(ok)return;pk.pack(t.s,tmp.data());uint32_t j=st.find(tmp.data());if(j!=Store::NONE&&st.depthOf(j)==d-1){ok=true;nx=j;path.push_back(t.m);}});
+  if(!ok)throw runtime_error("internal error: reverse route reconstruction failed");
+  at=nx;
+ }
+ return path;
+}
 SearchResult forwardBFS(const Board&b,const Limits&lim,ClockLimit&timer,const Packer&pk){SearchResult out;out.algorithm="forward BFS";State s0=initial(b);
- Store store;store.init(pk.K);vector<uint8_t> key(pk.K);pk.pack(s0,key.data());store.add(key.data(),0,0,Move());Stats stats;int old=-1;
+ Store store;store.init(pk.K);vector<uint8_t> key(pk.K);pk.pack(s0,key.data());store.add(key.data());store.closeLayer();Stats stats;int old=-1;
  if(complete(b,s0)){out.solved=true;out.exhaustive=true;out.states=1;out.bytes=store.bytes();return out;}
  const bool byScore=!b.hexes.empty();
  const bool prune=byScore||lim.scoreCap; // bound-based pruning: needed for the score objective with hexes, and for --max-score
  long long negAll=0;for(const auto&h:b.hexes)if(h.value<0)negAll+=h.value;
  long long best=lim.scoreCap?lim.maxScore+1:LLONG_MAX; // routes must score below best; --max-score S starts it at S+1
  auto full=[&](){return store.size()>=lim.maxStates||(lim.maxBytes&&store.bytes()>=lim.maxBytes);};
- size_t head=0;uint32_t found=0;bool success=false,limit=false,depthCut=false;
+ size_t head=0;uint32_t found=0;bool success=false,limit=false,depthCut=false;int dep=0;size_t layerEnd=1;
  for(;head<store.size()&&!(success&&!byScore);head++){
   if(full()||timer.expired()){limit=true;break;}
-  const int dep=store.depth(head);if(dep!=old){old=dep;if(lim.verbose){LOG<<"forward depth "<<old<<" visited "<<store.size()<<" elapsed "<<timer.elapsed()<<"s";if(success)LOG<<" best score "<<best;LOG<<"\n";}}
+  if(head==layerEnd){dep++;layerEnd=store.size();store.closeLayer();}if(dep!=old){old=dep;if(lim.verbose){LOG<<"forward depth "<<old<<" visited "<<store.size()<<" elapsed "<<timer.elapsed()<<"s";if(success)LOG<<" best score "<<best;LOG<<"\n";}}
   State parentState;pk.unpack(store.key(head),parentState);
   if(prune&&scoreLowerBound(b,parentState,dep)>=best)continue; // cannot beat the best route found so far or the --max-score bound
   successors(b,parentState,stats,[&](Transition&& t){if(limit||(success&&!byScore))return;pk.pack(t.s,key.data());if(store.find(key.data())!=Store::NONE)return;
@@ -277,10 +302,10 @@ SearchResult forwardBFS(const Board&b,const Limits&lim,ClockLimit&timer,const Pa
    if(prune&&acc&&scoreHex(b,t.s,dep+1)>=best)return; // a finished route that cannot beat the incumbent or the bound
    if(prune&&!acc&&scoreLowerBound(b,t.s,dep+1)>=best)return;
    if(lim.maxDepth>0&&dep+1>=lim.maxDepth){ // Last allowed layer: only test acceptance. These states are never expanded, so they are not stored unless accepted.
-    if(acc){long long sc=scoreHex(b,t.s,dep+1);if(sc<best){best=sc;found=store.add(key.data(),(uint32_t)head,dep+1,t.m);success=true;}}else depthCut=true;
+    if(acc){long long sc=scoreHex(b,t.s,dep+1);if(sc<best){best=sc;found=store.add(key.data());success=true;}}else depthCut=true;
     return;}
    if(full()){limit=true;return;}
-   uint32_t ni=store.add(key.data(),(uint32_t)head,dep+1,t.m);
+   uint32_t ni=store.add(key.data());
    if(acc){long long sc=scoreHex(b,t.s,dep+1);if(sc<best){best=sc;found=ni;success=true;}}});
   stats.expanded++;
  }
@@ -290,7 +315,7 @@ SearchResult forwardBFS(const Board&b,const Limits&lim,ClockLimit&timer,const Pa
   // Without hexes the first accepted state is shortest. With hexes the whole space must be covered; under --max-depth D a longer
   // route (more than D moves) scores at least D+1 plus every negative hex, so it can only matter if that bound is below best.
   out.exhaustive=!byScore?true:covered&&(!depthCut||(long long)lim.maxDepth+1+negAll>=best);
-  out.depth=store.depth(found);while(found){out.path.push_back(store.move(found));found=store.parent(found);}reverse(out.path.begin(),out.path.end());
+  out.depth=store.depthOf(found);out.path=rebuildForward(b,store,pk,found);
  }else{out.exhaustive=covered&&!depthCut&&!lim.scoreCap;out.boundProved=covered&&(depthCut||lim.scoreCap);} // with --max-score pruned states mean no UNSOLVABLE claim, only 'no route within the bound'
  return out;
 }
@@ -412,13 +437,14 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
   if(!valid)continue;
   pk.pack(candidate,key.data());
   if(rev.find(key.data())!=Store::NONE)continue;
-  rev.add(key.data(),0,0,Move());
+  rev.add(key.data());
  }
  if(rev.size()==0)return out;
+ rev.closeLayer();
  if(lim.verbose)LOG<<"reverse target seeds "<<rev.size()<<" ("<<variants<<" configurations)\n";
- Store fwd;fwd.init(pk.K);pk.pack(start,key.data());fwd.add(key.data(),0,0,Move());
+ Store fwd;fwd.init(pk.K);pk.pack(start,key.data());fwd.add(key.data());fwd.closeLayer();
  int best=INT32_MAX;uint32_t fMeet=0,rMeet=0;uint64_t transitions=0;
- auto record=[&](uint32_t fi,uint32_t ri){int len=fwd.depth(fi)+rev.depth(ri);if(len<best){best=len;fMeet=fi;rMeet=ri;if(lim.verbose)LOG<<"candidate "<<best<<" moves (forward "<<fwd.depth(fi)<<", reverse "<<rev.depth(ri)<<")\n";}};
+ auto record=[&](uint32_t fi,uint32_t ri){int len=fwd.depthOf(fi)+rev.depthOf(ri);if(len<best){best=len;fMeet=fi;rMeet=ri;if(lim.verbose)LOG<<"candidate "<<best<<" moves (forward "<<fwd.depthOf(fi)<<", reverse "<<rev.depthOf(ri)<<")\n";}};
  auto meetF=[&](uint32_t fi){uint32_t ri=rev.find(fwd.key(fi));if(ri!=Store::NONE)record(fi,ri);};
  auto meetR=[&](uint32_t ri){uint32_t fi=fwd.find(rev.key(ri));if(fi!=Store::NONE)record(fi,ri);};
  meetF(0);
@@ -430,7 +456,7 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
   if(fSize<=rSize){ // expand the whole forward layer of depth fd
    for(;fHead<fEnd&&!limited;fHead++){
     if(timer.expired()||full()){limited=true;break;}
-    const size_t fh=fHead;const int depth=fwd.depth(fh);
+    const size_t fh=fHead;
    State st;pk.unpack(fwd.key(fh),st);
    for(int i=0;i<b.n;i++){
     if(b.goalColor[st.p[i]]==b.balls[i].color)continue;
@@ -445,8 +471,7 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
        pk.pack(next,key.data());
        if(fwd.find(key.data())==Store::NONE){
         if(full()){limited=true;break;}
-        Move m;m.source=st.p[i];m.color=(Byte)b.balls[i].color;m.dir=(Byte)d;m.phase=(Byte)ph;
-        uint32_t idx=fwd.add(key.data(),(uint32_t)fh,depth+1,m);
+        uint32_t idx=fwd.add(key.data());
         meetF(idx);
        }
       }
@@ -457,12 +482,12 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
    }
    }
    if(limited)break;
-   fd++;fEnd=fwd.size();
+   fd++;fEnd=fwd.size();fwd.closeLayer();
   }else{ // expand the whole reverse layer of depth rd
    for(;rHead<rEnd&&!limited;rHead++){
     if(timer.expired()||full()){limited=true;break;}
     const size_t rh=rHead;
-   State targetState;pk.unpack(rev.key(rh),targetState);pk.pack(targetState,targetKey.data());const int curDepth=rev.depth(rh);
+   State targetState;pk.unpack(rev.key(rh),targetState);pk.pack(targetState,targetKey.data());
    // Predecessors of the target for each ball i: ball i made one move from p in direction d and ended at dest while every other ball stayed put.
    // The predecessor board (other balls, gates, teleports, with the preceding switch undone) does not depend on the start cell, so all valid
    // starts come from one backward ray-cast from dest over the move automaton instead of simulating every (cell, direction) pair.
@@ -478,7 +503,7 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
     for(int ph=0;ph<b.nPhases&&!limited;ph++){
     backReach(b,tmpl,i,dest,ph,starts);
     for(int sd:starts){
-     const int p=sd>>2,d=sd&3;
+     const int p=sd>>2;
      // Previously occupied target goal cannot be departed; all other balls stay fixed.
      if(b.fixed[p]||b.goalColor[p]==b.balls[i].color)continue;
      int gi=b.gateAt[p];if(gi>=0&&targetState.gate[gi])continue;
@@ -495,15 +520,14 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
      pk.pack(predecessor,key.data());
      if(rev.find(key.data())!=Store::NONE)continue;
      if(full()){limited=true;break;}
-     Move m;m.source=(uint16_t)p;m.color=(Byte)b.balls[i].color;m.dir=(Byte)d;m.phase=(Byte)ph;
-     uint32_t idx=rev.add(key.data(),(uint32_t)rh,curDepth+1,m);
+     uint32_t idx=rev.add(key.data());
      meetR(idx);
     }
     }
    }
    }
    if(limited)break;
-   rd++;rEnd=rev.size();
+   rd++;rEnd=rev.size();rev.closeLayer();
   }
   if(lim.verbose)LOG<<"forward depth "<<fd<<" reverse depth "<<rd<<" states "<<fwd.size()+rev.size()<<" best "<<(best==INT32_MAX?-1:best)<<" elapsed "<<timer.elapsed()<<"s\n";
   {int need=min(best==INT32_MAX?INT32_MAX:best-1,D);if(need!=INT32_MAX&&(long long)fd+rd>=need){certified=true;break;}}
@@ -511,8 +535,7 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
  out.states=fwd.size()+rev.size();out.bytes=fwd.bytes()+rev.bytes();out.transitions=transitions;out.provenMoves=exhausted?0:fd+rd;
  if(best!=INT32_MAX&&best<=D){
   out.solved=true;out.depth=best;out.exhaustive=certified||exhausted;vector<Move> before,after;
-  uint32_t at=fMeet;while(at){before.push_back(fwd.move(at));at=fwd.parent(at);}reverse(before.begin(),before.end());
-  at=rMeet;while(rev.depth(at)>0){after.push_back(rev.move(at));at=rev.parent(at);}
+  before=rebuildForward(b,fwd,pk,fMeet);after=rebuildReverse(b,rev,pk,rMeet);
   out.path=std::move(before);out.path.insert(out.path.end(),after.begin(),after.end());
  }else if(best==INT32_MAX){if(exhausted)out.exhaustive=true;else if(certified)out.boundProved=true;}
  else out.boundProved=certified||exhausted;
@@ -749,7 +772,7 @@ string codeWithSolution(const Board&b,const vector<LabeledMove>& path){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open levels.js: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0)return trim(line.substr(prefix.size()));}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.17"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.18"; // Solver's own version, independent of the web app's APP_VERSION.
 // ---- Core entry point (shared by the CLI and the WebAssembly build) ----
 struct Cli{Limits lim;string input,level,catalog="levels.js";bool wantK3=true,version=false,help=false,json=false;};
 static const char* HELP_TEXT="Kunundrum exact C++ solver (K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--max-states N] [--seconds N] [--max-memory MB] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nauto = bidirectional search when applicable (no hexes, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic: certifies optimality (exit 0) only on hex-free boards when no state was ever dropped by the beam width, otherwise an upper bound (exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";

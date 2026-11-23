@@ -1,4 +1,4 @@
-# Kunundrum native C++ solver — prototype 0.17 (`SOLVER_VERSION` in `solver.cpp`, `kunsolve --version`; independent of the web app)
+# Kunundrum native C++ solver — prototype 0.18 (`SOLVER_VERSION` in `solver.cpp`, `kunsolve --version`; independent of the web app)
 
 A dependency-free C++17 exact search engine for the **K3 Kunundrum board format**. The solver accepts a board code (or a file containing one), searches for the **lowest-score** solution (score = moves plus one-time hex bonuses and penalties; fewest moves among equal scores), checks the resulting path against its simulator, and exports a new K3 code with the solution embedded.
 
@@ -44,7 +44,7 @@ Options:
 
 - `--algorithm auto|forward|bidirectional|beam` — `bidirectional` is the [bidirectional search](#bidirectional-search) (needs no hexes, equal goals/balls and an affordable terminal-state enumeration); **`auto` chooses it** for applicable boards with at least 3 balls, else forward. (v0.17: the former `balanced` is now simply `bidirectional`; the old forward-heavy version was removed.)
 - `--max-states N` — maximum combined stored states (forward + reverse), default 3,000,000; `0` = unlimited.
-- `--max-memory MB` — cap on the stored state bytes (default none). With no limits the memory of the machine is the real limit: v0.7/v0.8 store roughly 20-30 bytes per state.
+- `--max-memory MB` — cap on the stored state bytes (default none). With no limits the memory of the machine is the real limit: v0.7/v0.8 stored roughly 20-30 bytes per state; since v0.18 a state costs its packed key (about 8 bytes for 8 balls) plus a 4-byte index-table slot at load 0.25-0.5, roughly 40% less. Routes are rebuilt after the search instead of being stored.
 - `--seconds S` — wall-clock search limit, default 60; `0` = unlimited.
 
 - `--beam-heuristic static|dynamic` — beam ranking (default `static`); see [Beam search](#beam-search-heuristic-upper-bound).
