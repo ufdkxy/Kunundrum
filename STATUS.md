@@ -29,7 +29,7 @@ Per the project owner, **297 of the 300 embedded solutions have been proven opti
 | --- | --- | --- | --- |
 | 9.9 | 42 | 42 | 8 balls, corridors; proven ≥ 30 moves (balanced/bidirectional search, v0.11); beam search found 42 at width 300,000 |
 | 10.10 | 107 | 107 | earlier computations proved ≥ 64; game's own best shown 108; route lowered 113 → 107 by a windowed optimizer (route windows with ≤ 5 free balls) outside the repo |
-| 15.8 | 29 | 29 | proven ≥ 18 moves (bidirectional, 100M states, 3 GB limit hit after 507 s); windowed optimizer finds no improvement (up to 8 free balls, 8M nodes per window) |
+| 15.8 | 29 | 29 | proven ≥ 21 moves (v0.19, 8 threads on the project owner's machine, 2026-11-23: complete layers to forward 11 + reverse 10 with 791M states after ~730 s, about 1.1M states/s, then stopped by hand; the previous v0.17 run reached 18 with 100M states in 507 s at the 3 GB limit). States roughly double per layer, so each further layer needs about 2x the states (about 15 GB for 800M states): at most one or two more layers fit in 24 GB, nowhere near 29; windowed optimizer finds no improvement (up to 8 free balls, 8M nodes per window) |
 
 **What closed 7.3 and 30.4:** `--max-score N` (N = best known score − 1) with forward BFS prunes hexagon boards drastically; 30.4 certifies score ≥ 27 in 59 s (9.6M states, 248 MB). Use it first on any hexagon board before trying other ideas.
 
