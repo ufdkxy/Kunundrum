@@ -411,15 +411,17 @@ body.edit-mode .board-svg .ball-hit{pointer-events:none}
 body.edit-mode .editor-hit-layer rect{pointer-events:all}
 body.edit-mode .board-bottom .view-options,body.edit-mode #board-hint{display:none}
 .editor-panel{flex-direction:column;gap:12px;padding:16px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:#dcecf3}
-.editor-topline,.editor-action-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.editor-topline strong{font-size:15px}
+.editor-action-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.editor-inline{flex-direction:row!important;align-items:center;gap:8px!important}.editor-inline input{flex:1}
 .editor-label,.editor-resize-row label,.editor-param-row label,.editor-properties label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:#91aabc}
 .editor-panel input,.editor-panel select{min-width:0;max-width:100%;border:1px solid #354b58;background:#0c1720;color:#e8f7fa;border-radius:5px;padding:7px;font-size:12px}
 .editor-label input{width:100%}
-.editor-resize-row{display:grid;grid-template-columns:1fr 1fr auto;align-items:end;gap:8px}
-.editor-resize-row input{width:100%}
-.editor-resize-row button{min-height:33px}
-.editor-tools{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}
+.editor-resize-row{display:flex;align-items:center;gap:8px}
+.editor-resize-row label{flex-direction:row!important;align-items:center;gap:6px!important}
+.editor-resize-row input{width:100%;min-width:0}
+.editor-resize-row label{flex:1;min-width:0}
+.editor-resize-row button{flex:none;min-height:33px}
+.editor-tools{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
 .editor-tools button{display:flex;min-width:0;align-items:center;flex-direction:column;justify-content:center;gap:3px;padding:7px 1px;background:#101f28;border:1px solid #304855;border-radius:6px;font-size:21px;color:#ddf3fd;cursor:pointer}
 .editor-tools button > span:last-child{font-size:9px;color:#a3b9c6}
 .editor-tools button.chosen,.editor-directions button.chosen{border-color:#48d7fa;background:#173b4b;box-shadow:inset 0 0 0 1px #2ca0ba}
@@ -440,7 +442,7 @@ body.edit-mode .board-bottom .view-options,body.edit-mode #board-hint{display:no
 .editor-action-row button{flex:1;font-size:11px;min-width:0;padding:9px 6px}
 #editor-status{font-size:11px;color:#80cdcf;min-height:14px;line-height:1.4}
 #editor-status.error{color:#ff9999}
-@media(max-width:600px){.editor-tools{grid-template-columns:repeat(5,minmax(0,1fr))}.editor-panel{padding:12px}}
+@media(max-width:600px){.editor-tools{grid-template-columns:repeat(4,minmax(0,1fr))}.editor-panel{padding:12px}}
 
 body.edit-mode .timeline-panel,body.edit-mode .scoreboard,body.edit-mode #completion-inline{display:none}
 body.edit-mode #open-levels,body.edit-mode #open-board-data,body.edit-mode #open-share{opacity:.45}

@@ -104,6 +104,7 @@ function refresh(){
  if(E.tool!=='tunnel')E.pendingTunnel=null;
  if(E.active&&document.activeElement!==$('editor-title'))$('editor-title').value=E.draft.title;
  $('edit-mode-label').textContent=E.active?'Play':'Edit';
+ if(E.active){$('level-title').textContent='Board editor';document.title='Board editor · Kunundrum';}
  $('edit-mode-icon-edit').hidden=E.active;
  $('edit-mode-icon-play').hidden=!E.active;
  $('edit-mode-button').setAttribute('aria-pressed',String(E.active));
@@ -225,7 +226,7 @@ function renderDraft(){
  const svg=host().svg(preview);
  $('board-stage').innerHTML=svg.replace('</svg>',overlay()+'</svg>');
  $('board-dimensions').textContent=`${E.draft.width} × ${E.draft.height}`;
- $('level-title').textContent=E.draft.title;
+ if(E.active)$('level-title').textContent='Board editor';
  syncJson();
 }
 function setMode(active){
@@ -244,7 +245,7 @@ function setMode(active){
    if(!unchanged)host().play(Core.validateBoard(E.draft,undefined,notes));
    E.active=false;E.selected=null;clearFloatingDrag();refresh();setStatus('');
    if(notes.length)host().toast(notes.join('; '));
-   if(unchanged)host().resume();
+   host().resume();
   }catch(err){setStatus(`Cannot test yet: ${err.message}`,true);$('editor-status').scrollIntoView({block:'nearest'});}
  }
 }
@@ -359,11 +360,11 @@ function updateDimensions(){
  if(E.draft.tunnels){E.draft.tunnels=E.draft.tunnels.filter(t=>inside(t.a)&&inside(t.b));if(!E.draft.tunnels.length)delete E.draft.tunnels;}
  prune(E.draft);remember(prev);refresh();renderDraft();setStatus('Grid resized. Out-of-bounds objects were removed.');
 }
-function newBoard(){setReview(null,false);E.draft=template();E.fromHost=false;E.history=[];E.future=[];E.selected=null;refresh();renderDraft();setStatus('New board.');}
+function newBoard(){const prev=snapshot();setReview(null,false);E.draft=template();E.fromHost=false;E.selected=null;remember(prev);refresh();renderDraft();setStatus('New board.');}
 function ensureEditing(){if(!E.active)setMode(true);}
 const panel=document.getElementById('editor-panel');
 $('edit-mode-button').addEventListener('click',()=>setMode(!E.active));
-$('editor-new').addEventListener('click',()=>{ensureEditing();if(E.dirty&&!confirm('Discard the current draft and start a blank board?'))return;newBoard();});
+$('editor-new').addEventListener('click',()=>{ensureEditing();newBoard();});
 $('editor-save').addEventListener('click',()=>{try{const valid=Core.validateBoard(E.draft);const code=Codec.encodeBoard(valid);const output=$('editor-export-code');output.value=code;output.hidden=false;output.focus();output.select();if(navigator.clipboard?.writeText){navigator.clipboard.writeText(code).then(()=>setStatus('K3 code copied.')).catch(()=>setStatus('Select and copy the K3 code shown below.'));}else setStatus('Select and copy the K3 code shown below.');}catch(err){setStatus(err.message,true);}});
 $('editor-undo').addEventListener('click',()=>editorUndo());$('editor-redo').addEventListener('click',()=>editorUndo(true));
 $('editor-resize').addEventListener('click',updateDimensions);
