@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.19.9'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.19.10'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -998,7 +998,7 @@ $('share-include-route').addEventListener('change',event=>{shareRoute=event.targ
 $('copy-link').addEventListener('click',()=>copyText($('share-link').value,'Permalink copied.'));
 $('copy-code').addEventListener('click',()=>copyText($('share-code').value,'K3 code copied.'));
 for(const id of ['share-link','share-code'])$(id).addEventListener('click',event=>event.target.select());
-$('open-board-data').addEventListener('click',()=>{resetBoardInput();openDialog('board-dialog');});
+$('open-board-data').addEventListener('click',()=>{resetBoardInput();openDialog('board-dialog');loadParser().then(()=>{$('parser-version').textContent='v'+KunParser.PARSER_VERSION;},()=>{});});
 $('load-board').addEventListener('click',importBoard);
 $('import-shot').addEventListener('click',()=>$('shot-file').click());
 $('shot-file').addEventListener('change',event=>{const file=event.target.files[0];event.target.value='';importScreenshot(file);});

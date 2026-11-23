@@ -115,6 +115,8 @@ $('open-solver').addEventListener('click', () => {
   if (!sameBoard) { $('solver-result').hidden = true; $('solver-progress').hidden = true; }
   setRunning(false);
   dialog.showModal();
+  // The bundle's own stamp, i.e. the solver that will actually run (it may be older than the native kunsolve).
+  loadClient().then(() => window.KunSolver.loadSource()).then(() => { $('solver-version').textContent = window.KUNSOLVE_VERSION ? 'v' + window.KUNSOLVE_VERSION : ''; }, () => {});
 });
 $('solver-solve').addEventListener('click', () => run(false));
 $('solver-certify').addEventListener('click', () => run(true));

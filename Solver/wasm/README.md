@@ -20,3 +20,5 @@ make                         # native kunsolve for comparison (optional)
 node wasm/spike.js           # compares WASM vs native on catalog levels
 ```
 `wasm/build/` is git-ignored for now.
+
+The bundle (`kunsolve-bundle.js`) carries `window.KUNSOLVE_VERSION`, stamped by `bundle.js` from `SOLVER_VERSION` in `solver.cpp` at build time; the Solver dialog shows it. It only changes when you rebuild, so it can lag behind the native solver. The WASM build stays single-threaded (v0.19 threading is native only).
