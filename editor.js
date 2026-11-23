@@ -56,7 +56,7 @@ const prune = b => {const ids=new Set([...b.gates,...b.teleports].map(v=>v.id));
 const list = s => clean(s).split(',').map(clean).filter(Boolean);
 const at = (p,x,y)=>p.x===x&&p.y===y;
 const nextId = (arr, prefix) => {let i=1;while(arr.some(v=>v.id===prefix+i))i++;return prefix+i;};
-const template=()=>({version:1,id:'custom',title:'Custom board',width:10,height:7,walls:[],balls:[],goals:[],arrows:[],gates:[],switches:[],teleports:[],hexes:[]});
+const template=()=>({id:'custom',title:'Custom board',width:10,height:7,walls:[],balls:[],goals:[],arrows:[],gates:[],switches:[],teleports:[],hexes:[]});
 function snapshot(){return JSON.stringify(E.draft);}
 function remember(before){if(before===snapshot())return false;E.history.push(before);if(E.history.length>150)E.history.shift();E.future=[];E.dirty=true;return true;}
 function setStatus(message='',error=false){$('editor-status').textContent=message;$('editor-status').classList.toggle('error',error);}

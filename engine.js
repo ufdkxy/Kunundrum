@@ -67,14 +67,13 @@ function uniqueIds                          (values     , label        , fail   
   }
 }
 
-/** Validate imported data and return only the supported, normalized version-1 fields. */
+/** Validate imported data and return only the supported, normalized fields. */
 const tunnelEndOrder = (a     , b     )         => a.y - b.y || a.x - b.x || DIRECTIONS.indexOf(a.side) - DIRECTIONS.indexOf(b.side);
 function validateBoard(raw         , problems         , notes         )        {
   // With a `problems` array, semantic problems (as opposed to unreadable data) are
   // collected instead of thrown, so a damaged board can still be opened for repair.
   const fail = (message        ) => { if (problems) problems.push(message); else throw new Error(message); };
   const source = object(raw, "Board");
-  if (source.version !== undefined && source.version !== 1) throw new Error("This board uses an unsupported version; expected version 1.");
   const width = integer(source.width, "Board width", 1, 32);
   const height = integer(source.height, "Board height", 1, 32);
   const point = (value         , label        )      => {
@@ -206,7 +205,6 @@ function validateBoard(raw         , problems         , notes         )        {
     }
   }
   const board        = {
-    version: 1,
     id: string(source.id, "Board ID", 80, "custom"),
     title: string(source.title, "Board title", 100, "Custom board"),
     width, height, walls, balls, goals, arrows, gates, switches, teleports, hexes,

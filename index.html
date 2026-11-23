@@ -43,7 +43,7 @@
 <div class="editor-action-row"><button id="editor-undo" type="button" class="secondary-button">Undo</button><button id="editor-redo" type="button" class="secondary-button">Redo</button><button id="editor-save" type="button" class="secondary-button">Copy board</button></div>
 <button id="editor-review-thumb" type="button" class="editor-review-thumb" title="Show the screenshot review again" aria-label="Show screenshot review" hidden><canvas id="editor-review-canvas"></canvas></button>
 <div class="editor-json-row"><button id="editor-json-toggle" type="button" class="text-button" aria-expanded="false">Edit JSON</button></div><div id="editor-json-box" hidden><textarea id="editor-json" class="editor-code-output editor-json" spellcheck="false" aria-label="Board JSON"></textarea><button id="editor-json-apply" type="button" class="secondary-button">Apply JSON</button><details class="schema-help"><summary>Board format &amp; coordinates</summary><p>Coordinates are 1-based, with (1, 1) at the bottom left. Use colors R, G, B, Y and directions u, d, l, r. The grid is rectangular; list blocked cells in <code>walls</code>. The optional <code>wallColor</code> (<code>R</code> or <code>G</code>; blue when omitted) only changes how the walls look. Optional mechanic arrays may be omitted.</p><pre>{
-  "version": 1, "id": "my-board", "title": "My board",
+  "id": "my-board", "title": "My board",
   "width": 5, "height": 4,
   "balls": [{"color":"R","x":1,"y":1}],
   "goals": [{"color":"R","x":5,"y":4}],

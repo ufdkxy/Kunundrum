@@ -227,7 +227,7 @@ function unbinaryBoard(bytes, problems) {
     if (i >= (universal ? 5 : 4)) throw new Error('Invalid K3 color.');
     return CODE_COLORS[i];
   };
-  const raw = {version:1, width, height, id:str(), title:str()};
+  const raw = {width, height, id:str(), title:str()};
   if (flags & 1) raw.description = str();
   if (flags & 4) { const c = uint(); if (c > 3) throw new Error('Invalid K3 wall color.'); raw.wallColor = CODE_COLORS[c]; }
   let solutionBytes;

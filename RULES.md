@@ -6,7 +6,7 @@
 
 - The board is a rectangular grid. Game coordinates are **1-based Cartesian** `(x, y)`: `(1, 1)` is bottom-left; `x` increases rightward and `y` increases upward. Screenshot row indices are top-down and are converted by `y = boardHeight - screenshotRow` for zero-based rows.
 - **Lexicographic order.** Cells are ordered `(1,1) < (2,1) < ... < (n,1) < (1,2) < ...`: left to right (`x` ascending), then bottom to top (`y` ascending). This is the one order used for every labelling and numbering in the project (auto-assigned ids, ternary arrow-type strings, tie-breaks, binary cell offsets); "reading order" (top to bottom) is not used.
-- Board JSON has `version: 1`, `id`, `title`, `width`, `height`, and optional `description`, `wallColor` (`R` or `G`; cosmetic, blue when omitted) and `solution`. Supported feature arrays are `walls`, `balls`, `goals`, `arrows`, `gates`, `switches`, `teleports`, `tunnels`, and `hexes`; missing arrays default to empty.
+- Board JSON has `id`, `title`, `width`, `height`, and optional `description`, `wallColor` (`R` or `G`; cosmetic, blue when omitted) and `solution`. Supported feature arrays are `walls`, `balls`, `goals`, `arrows`, `gates`, `switches`, `teleports`, `tunnels`, and `hexes`; missing arrays default to empty.
 - Ball/goal colors are `R` (red), `G` (green), `B` (blue), and `Y` (yellow). Each ball needs a goal of its own color; extra goals are allowed. A goal is not an obstacle and may be crossed by another ball; only the **stopping** cell can lock a ball.
 - A floor cell may carry **at most one** of: permanent wall, goal, arrow, gate, switch, teleport endpoint, or hexagon. A ball may coexist with a floor feature, subject to the initial-wall restrictions. Distinct balls cannot share a cell.
 - `walls` are permanently impassable. An **active** gate is impassable; an inactive gate is traversable floor. Cells outside the rectangle are impassable. Other balls, including locked balls, are obstacles.
@@ -74,7 +74,6 @@ Text parsing checks syntax and identifiers; applying the moves against successiv
 
 ```json
 {
-  "version": 1,
   "id": "example",
   "title": "Example",
   "width": 4,
