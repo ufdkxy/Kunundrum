@@ -74,6 +74,9 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .level-heading > [data-icon] { color: #8296a2; }
 .level-heading > [data-icon] svg { width: 19px; height: 19px; }
 .level-heading:hover h1, .level-heading:hover > [data-icon] { color: var(--mint); }
+.level-heading:disabled { opacity: 1; cursor: default; }
+.level-heading:disabled:hover h1 { color: inherit; }
+body.edit-mode .level-heading > [data-icon] { display: none; }
 .scoreboard { display: flex; align-items: center; flex-shrink: 0; }
 .score-stat { padding: 0 26px; border-left: 1px solid var(--border); min-width: 98px; }
 .score-stat:first-child { border: 0; padding-left: 0; min-width: 126px; }
@@ -445,14 +448,14 @@ body.edit-mode .board-bottom .view-options,body.edit-mode #board-hint{display:no
 @media(max-width:600px){.editor-tools{grid-template-columns:repeat(4,minmax(0,1fr))}.editor-panel{padding:12px}}
 
 body.edit-mode .timeline-panel,body.edit-mode .scoreboard,body.edit-mode #completion-inline{display:none}
-body.edit-mode #open-levels,body.edit-mode #open-board-data,body.edit-mode #open-share{opacity:.45}
+body.edit-mode #open-board-data,body.edit-mode #open-share{opacity:.45}
 
 .editor-code-output{width:100%;resize:vertical;min-height:48px;max-height:120px;word-break:break-all;font:11px/1.4 monospace;color:#a7f4ff;background:#08151c;border:1px solid #355465;border-radius:5px;padding:8px}
 .editor-code-output[hidden]{display:none}
 
 /* Editor refinements — fixed toolbar geometry, faithful tile icons, grab feedback */
 body.edit-mode .scoreboard {visibility:hidden !important;display:flex !important;pointer-events:none}
-body.edit-mode #open-levels,body.edit-mode #open-board-data,body.edit-mode #open-share {opacity:.45}
+body.edit-mode #open-board-data,body.edit-mode #open-share {opacity:.45}
 body.edit-mode #board-stage.editor-select-tool {cursor:default}
 body.edit-mode #board-stage.editor-grabbable {cursor:grab}
 body.edit-mode #board-stage.editor-grabbing,body.edit-mode #board-stage.editor-grabbing * {cursor:grabbing!important}
