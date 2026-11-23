@@ -56,7 +56,7 @@ const prune = b => {const ids=new Set([...b.gates,...b.teleports].map(v=>v.id));
 const list = s => clean(s).split(',').map(clean).filter(Boolean);
 const at = (p,x,y)=>p.x===x&&p.y===y;
 const nextId = (arr, prefix) => {let i=1;while(arr.some(v=>v.id===prefix+i))i++;return prefix+i;};
-const template=()=>({version:1,id:'custom',title:'Custom board',width:10,height:7,walls:[],balls:[{color:'R',x:1,y:1}],goals:[{color:'R',x:10,y:7}],arrows:[],gates:[],switches:[],teleports:[],hexes:[]});
+const template=()=>({version:1,id:'custom',title:'Custom board',width:10,height:7,walls:[],balls:[],goals:[],arrows:[],gates:[],switches:[],teleports:[],hexes:[]});
 function snapshot(){return JSON.stringify(E.draft);}
 function remember(before){if(before===snapshot())return false;E.history.push(before);if(E.history.length>150)E.history.shift();E.future=[];E.dirty=true;return true;}
 function setStatus(message='',error=false){$('editor-status').textContent=message;$('editor-status').classList.toggle('error',error);}
@@ -298,7 +298,7 @@ function moveObject(start,end,selection){
 function editAt(x,y,eraser=false){
  if(!E.active||x<1||y<1||x>E.draft.width||y>E.draft.height)return false;
  const b=E.draft,t=eraser?'erase':E.tool;
- if(t==='select') {const hit=E.hitTunnel;E.hitTunnel=null;E.selected=hit?{type:'tunnels',...hit}:find(x,y,E.preferFloor);refresh();renderDraft();setStatus(E.selected?'':'No object in this cell.');return false;}
+ if(t==='select') {const hit=E.hitTunnel;E.hitTunnel=null;E.selected=hit?{type:'tunnels',...hit}:find(x,y,E.preferFloor);refresh();renderDraft();setStatus('');return false;}
  const previous=snapshot();
  if(t!=='select')delete b.solution;
  if(t==='erase') eraseAt(x,y);
@@ -360,7 +360,7 @@ function updateDimensions(){
  if(E.draft.tunnels){E.draft.tunnels=E.draft.tunnels.filter(t=>inside(t.a)&&inside(t.b));if(!E.draft.tunnels.length)delete E.draft.tunnels;}
  prune(E.draft);remember(prev);refresh();renderDraft();setStatus('Grid resized. Out-of-bounds objects were removed.');
 }
-function newBoard(){const prev=snapshot();setReview(null,false);E.draft=template();E.fromHost=false;E.selected=null;remember(prev);refresh();renderDraft();setStatus('New board.');}
+function newBoard(){const prev=snapshot();setReview(null,false);const old=E.draft;E.draft=template();E.draft.width=old.width;E.draft.height=old.height;if(old.wallColor)E.draft.wallColor=old.wallColor;E.fromHost=false;E.selected=null;remember(prev);refresh();renderDraft();setStatus('New board.');}
 function ensureEditing(){if(!E.active)setMode(true);}
 const panel=document.getElementById('editor-panel');
 $('edit-mode-button').addEventListener('click',()=>setMode(!E.active));
