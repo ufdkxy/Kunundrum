@@ -480,7 +480,7 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
  auto meetF=[&](uint32_t fi){uint32_t ri=rev.find(fwd.key(fi));if(ri!=Store::NONE)record(fi,ri);};
  meetF(0);
  auto full=[&](){return rev.size()+fwd.size()>=lim.maxStates||(lim.maxBytes&&rev.bytes()+fwd.bytes()>=lim.maxBytes);};
- int fd=0,rd=0;size_t fHead=0,fEnd=1,rHead=0,rEnd=rev.size();bool limited=false,certified=false,exhausted=false;
+ int fd=0,rd=0;size_t fHead=0,fEnd=1,rHead=0,rEnd=rev.size();bool limited=false,certified=false,exhausted=false,early=false;
  const size_t K=pk.K,R=K+12; // candidate record: packed state, hash, index of the same state in the opposite store (or NONE)
  auto genF=[&](size_t fh,vector<uint8_t>&buf,uint64_t&tr){
   thread_local vector<uint8_t> kb;kb.resize(K);
@@ -562,6 +562,9 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
    if(full()){limited=true;return false;}
    const uint32_t idx=sd.add(k,h);
    if(other!=Store::NONE){if(forward)record(idx,other);else record(other,idx);}
+   // Early certification (v0.22): the completed layers prove that no route of at most fd+rd moves exists, so a candidate of at most fd+rd+1 moves
+   // (the first one found in the layer in progress) is optimal and the rest of the layer need not be expanded.
+   if(best!=INT32_MAX){const int need=min(best-1,D);if((long long)fd+rd>=need){early=true;return false;}}
   }
   return true;};
  auto stop=[&]{if(timer.expired()||full())limited=true;return limited;};
@@ -570,10 +573,12 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
   if(fSize==0||rSize==0){exhausted=true;break;} // one side has enumerated everything it can reach
   if(fSize<=rSize){ // expand the whole forward layer of depth fd
    expandLayer(fHead,fEnd,lim.threads,transitions,genF,[&](vector<uint8_t>&buf){return mergeInto(fwd,true,buf);},stop);
+   if(early){certified=true;break;}
    if(limited)break;
    fHead=fEnd;fd++;fEnd=fwd.size();fwd.closeLayer();
   }else{ // expand the whole reverse layer of depth rd
    expandLayer(rHead,rEnd,lim.threads,transitions,genR,[&](vector<uint8_t>&buf){return mergeInto(rev,false,buf);},stop);
+   if(early){certified=true;break;}
    if(limited)break;
    rHead=rEnd;rd++;rEnd=rev.size();rev.closeLayer();
   }
