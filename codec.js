@@ -320,6 +320,9 @@ function decodeK4(code, problems) {
     raw.balls.push({ ...spot(v >> 2), color: K4_BALL_COLORS[v & 3] });
   }
   if (pos !== s.length) fail('unexpected characters after the balls.');
+  // The switch indicator is not stored: a switch starts on exactly when every element it controls starts active.
+  const activeOf = new Map([...raw.gates, ...raw.teleports].map(e => [e.id, e.active !== false]));
+  for (const sw of raw.switches) if (sw.controls.length && sw.controls.every(id => activeOf.get(id))) sw.on = true;
   const own = [], board = validateBoard(raw, problems ?? own);
   if (!(problems ?? own).length) { // strict: only the canonical spelling is accepted
     let again;
