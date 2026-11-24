@@ -77,7 +77,7 @@ function putProps(){
  if(item.color)html+=select('Color',colors,item.color);
  if(match.type==='arrows'){html+=select('Direction',[['u','Up'],['d','Down'],['l','Left'],['r','Right']],item.direction);html+=select('Rotating',[["false","No"],["true","Yes"]],String(!!item.rotating));if(item.rotating)html+=select('Type',[['cw','Clockwise'],['ccw','Counterclockwise'],['flip','Flip']],item.type||'cw');}
  if(match.type==='gates'){html+=select('Active',[["true","On"],["false","Off"]],String(item.active));}
- if(match.type==='switches'){html+=input('Gate/Teleport IDs',item.controls.join(', '));html+=select('Active',[["true","On"],["false","Off"]],String(!!item.on));}
+ if(match.type==='switches'){html+=input('Gate/Teleport IDs',item.controls.join(', '));}
  if(match.type==='teleports'){html+=select('Active',[["true","On"],["false","Off"]],String(item.active));}
  if(match.type==='hexes')html+=select('Value',Core.HEX_VALUES.map(v=>[String(v),(v>0?'+':'')+v]),String(item.value));
  html+='<button class="secondary-button editor-delete" id="editor-delete-object" type="button">Delete object</button>';
@@ -320,7 +320,7 @@ function editAt(x,y,eraser=false){
   if(t==='wall'){b.walls.push(point);if(b.tunnels){b.tunnels=b.tunnels.filter(p=>!openingAt(p,x,y));if(!b.tunnels.length)delete b.tunnels;}}
   if(t==='goal')b.goals.push({...point,color:E.color});
   if(t==='gate')b.gates.push({...point,id:nextId(b.gates,'G'),active:E.activeTile});
-  if(t==='switch')b.switches.push({...point,id:nextId(b.switches,'S'),controls:[],on:false});
+  if(t==='switch')b.switches.push({...point,id:nextId(b.switches,'S'),controls:[]});
   if(t==='arrow')b.arrows.push({...point,direction:E.direction,...(E.rotating?{rotating:true,...(E.arrowType!=='cw'?{type:E.arrowType}:{})}:{})});
   if(t==='hex')b.hexes.push({...point,id:nextId(b.hexes,'hex'),value:E.hexValue||-5});
  }
@@ -340,7 +340,7 @@ function applyProperty(key,value){
  if(key==='Direction')data.direction=value;
  if(key==='Rotating'){data.rotating=value==='true';if(!data.rotating)delete data.type;}
  if(key==='Type'){if(value==='cw')delete data.type;else data.type=value;}
- if(key==='Active'){if(sel.type==='switches'){const on=value==='true',same=data.controls.join(',');for(const sw of E.draft.switches)if(sw===data||(same&&sw.controls.join(',')===same)){if(on)sw.on=true;else delete sw.on;}}else data.active=value==='true';}
+ if(key==='Active'&&sel.type!=='switches')data.active=value==='true';
 
  if(key==='Gate/Teleport IDs')data.controls=list(value);
  if(key==='Value')data.value=Number(value);

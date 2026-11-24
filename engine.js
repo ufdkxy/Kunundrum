@@ -129,8 +129,8 @@ function validateBoard(raw         , problems         , notes         )        {
   }).sort(rowOrder);
   const switches = entries(source, "switches").map((value, i) => {
     const item = object(value, `Switch ${i + 1}`);
-    const on = boolean(item.on, `Switch ${i + 1} on`, false);
-    return { ...point(item, `Switch ${i + 1}`), id: identifier(item.id, `Switch ${i + 1} ID`, `switch${i + 1}`), controls: ids(item.controls, `Switch ${i + 1} controls`), ...(on ? { on: true } : {}) };
+    // The indicator `on` is never input: it is derived below from the controlled elements.
+    return { ...point(item, `Switch ${i + 1}`), id: identifier(item.id, `Switch ${i + 1} ID`, `switch${i + 1}`), controls: ids(item.controls, `Switch ${i + 1} controls`) };
   }).sort(rowOrder);
   const teleports = entries(source, "teleports").map((value, i)           => {
     // One entry per endpoint: its own cell, color (R, G, B, Y or * = universal) and on/off state. Partners are derived (see teleportExit).
@@ -172,17 +172,10 @@ function validateBoard(raw         , problems         , notes         )        {
   }
   for (const t of tunnels) if (t.a.x === t.b.x && t.a.y === t.b.y && t.a.side === t.b.side) fail(`A tunnel connects the ${DIRECTION_NAMES[t.a.side]} side of (${t.a.x},${t.a.y}) to itself.`);
   uniqueIds(gates, "gate", fail); uniqueIds(switches, "switch", fail); uniqueIds(teleports, "teleport", fail); uniqueIds(hexes, "hexagon", fail);
-  // Switches with the same non-empty list always toggle together and share one indicator (display only):
-  // the set takes the value of its lowest-numbered switch.
-  const sets = new Map();
-  for (const sw of switches) if (sw.controls.length) { const key = sw.controls.join(","); sets.set(key, [...(sets.get(key) ?? []), sw]); }
-  for (const set of sets.values()) {
-    const [first, ...rest] = set.sort((a, b) => a.id.localeCompare(b.id, "en", { numeric: true }));
-    for (const sw of rest) if (!!sw.on !== !!first.on) {
-      if (first.on) sw.on = true; else delete sw.on;
-      if (notes) notes.push(`${sw.id} indicator set to match ${first.id}`);
-    }
-  }
+  // The switch indicator is derived display state: a switch starts on exactly when every gate and teleport it controls
+  // starts active (so switches with the same list always agree). A switch controlling nothing starts off.
+  const startsActive = new Map([...gates, ...teleports].map(e => [e.id, e.active]));
+  for (const sw of switches) if (sw.controls.length && sw.controls.every(id => startsActive.get(id))) sw.on = true;
   checkTeleports(teleports, fail);
   const switchable = new Set(gates.map(g => g.id));
   for (const t of teleports) { if (switchable.has(t.id)) fail(`Gate and teleport share the ID ${t.id}; a switch could not tell them apart.`); switchable.add(t.id); }

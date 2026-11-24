@@ -38,7 +38,7 @@ After a legal move finishes at its **final** cell:
 
 - If that cell is a goal matching the moving ball's color, the ball is **permanently locked/docked**; it cannot be selected again. Balls initially occupying their matching goals start locked.
 - If that cell contains a switch, the switch fires **once at the end of the move**, not merely when crossed. Its visual `on` flag toggles; the flag is not itself used to determine move legality.
-- A switch controls one list, `controls`, of gate and teleport IDs (gate IDs `G1`, …; teleport IDs `T1`, …; switch IDs `S1`, …). Switches with the same non-empty list are identical: pressing any of them toggles the whole set once, and they share one indicator, so the indicator is derived, not independent data (a set takes the `on` value of its lowest-numbered switch when input disagrees). Lists are expected to be identical or disjoint. Elements of one list may have different initial active states; they all flip together.
+- A switch controls one list, `controls`, of gate and teleport IDs (gate IDs `G1`, …; teleport IDs `T1`, …; switch IDs `S1`, …). Switches with the same non-empty list are identical: pressing any of them toggles the whole set once, and they share one indicator, so the indicator is derived, never input: a switch starts **on** exactly when every gate and teleport it controls starts active, otherwise off (this applies to every input format, K4 and JSON alike; an `on` field in JSON is ignored). Lists are expected to be identical or disjoint. Elements of one list may have different initial active states; they all flip together.
 - **Blocked closing rule:** if any currently inactive gate in the switch's list would become active under a ball, the switch **cannot change state**: none of its gates or teleports toggle, and its visual `on` flag stays as it is.
 - A move changes the score by `1 + sum(values of hexes first consumed during that move)`. Each hex may contribute its signed value (one of `-20, -15, -10, -5, 5, 10, 15, 20`) **at most once per run**, even if traversed repeatedly. Score starts at `0`; moves start at `0`.
 
@@ -121,7 +121,7 @@ Tunnels and rotating arrows are implemented in `solver.cpp` (v0.17) with the sem
 
 1. `Core.applyMove` is immutable: failed/incomplete moves do not modify the supplied state.
 2. Initial IDs and geometry are deterministic and stable across JSON, K4, replay, and the solver.
-3. The switch's `on` indicator is **display state**, distinct from actual gate/teleport active flags.
+3. The switch's `on` indicator is **display state**, distinct from actual gate/teleport active flags; it is derived on load (see §3).
 4. Locked balls remain on the board and block movement; locking only occurs at the **end** of a move (or at initialization).
 5. Teleport exits occupied by other balls block jumps, not entry; arrow, hex, teleport, then final switch/goal processing must keep the documented order.
 6. Hexes are one-use, and victory requires **all balls locked** (the score may be zero or negative).
