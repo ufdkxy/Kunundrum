@@ -1,6 +1,6 @@
 # Kunundrum native C++ solver — prototype 0.19 (`SOLVER_VERSION` in `solver.cpp`, `kunsolve --version`; independent of the web app)
 
-A dependency-free C++17 exact search engine for the **K3 Kunundrum board format**. The solver accepts a board code (or a file containing one), searches for the **lowest-score** solution (score = moves plus one-time hex bonuses and penalties; fewest moves among equal scores), checks the resulting path against its simulator, and exports a new K3 code with the solution embedded.
+A dependency-free C++17 exact search engine for the **K4 Kunundrum board code** (see ../K4.md). The solver accepts a board code (or a file containing one), searches for the **lowest-score** solution (score = moves plus one-time hex bonuses and penalties; fewest moves among equal scores), checks the resulting path against its simulator, and exports a new K3 code with the solution embedded.
 
 **This is a separate solver, not an update to the Replay Lab app.** The solver core is `solveBoard()` (board code + limits in, structured `Outcome` out, progress lines to a log stream); `main()` is a thin CLI wrapper. `make wasm` (see `wasm/README.md`) builds it with Emscripten and exports `kun_solve(code, flags)`; the worker and browser UI are **not included** yet.
 
@@ -33,7 +33,7 @@ A prebuilt **Linux x86-64** `kunsolve-linux-x86_64` is included for convenience:
 ./kunsolve --level 8.1
 ./kunsolve --level 7.6 --seconds 60 --max-states 2000000
 ./kunsolve --level 8.1 --max-depth 17          # prove there is no solution of 17 moves or fewer
-./kunsolve 'K3.YOUR_CODE' --seconds 120 --max-states 3000000
+./kunsolve 'K4.YOUR_CODE' --seconds 120 --max-states 3000000
 ./kunsolve board-code.txt --algorithm forward
 cat board-code.txt | ./kunsolve -
 ```
@@ -52,9 +52,9 @@ Options:
 - `--beam-width N` — states kept per layer by `--algorithm beam` (default 200,000); `--seed N` — its tie-break seed (default 1).
 - `--max-depth N` — only consider solutions of at most N moves (N >= 1, default unlimited); see [Depth limit](#depth-limit-certifying-a-known-solution).
 - `--max-score N` — only consider routes with score at most N (default: no bound); see [Score limit](#score-limit).
-- `--json` — print the result as one JSON object (status, score, moves, solution, K3, bounds, statistics, error) instead of text; the WebAssembly export returns the same object.
+- `--json` — print the result as one JSON object (status, score, moves, solution, k4, bounds, statistics, error) instead of text; the WebAssembly export returns the same object.
 - `--quiet` — hide per-depth progress; statistics and results still print.
-- `--no-code` — omit the long embedded K3 output.
+- `--no-code` — omit the K4 board code output.
 
 Outcomes/exit codes:
 
@@ -160,7 +160,7 @@ node tests/random-compare.js
 node tests/random-switch.js
 ```
 
-`tests/verify.js` runs several real catalog levels and simple feature fixtures, decodes the native solver's exported K3 codes with the app's JavaScript codec, and replays every solution using the *original* JS `engine.js`.
+`tests/verify.js` runs several real catalog levels and simple feature fixtures, decodes the native solver's exported K4 codes with the app's JavaScript codec, and replays every solution using the *original* JS `engine.js`.
 
 `tests/verify.js` also runs beam search on 1.7, 1.8, 2.2 (known optimal scores 3, 5, 9), 7.3 and 8.1 plus basic, rotating-arrow and switch fixtures: each route must replay in the JavaScript engine; on hexed levels and on 8.1 at width 20,000 the output must say "optimality not certified", while 6.6 at width 2,000,000 and the tiny fixtures must be certified `OPTIMAL`. `tests/mechanics.js` (called by `verify.js`) checks tunnels and rotating arrows on small hand-made boards against a brute-force BFS built on the JS engine (`Core.applyMoveAtPhase` over every phase): forward, bidirectional and beam must all return its optimum, and the routes must replay.
 
@@ -186,7 +186,7 @@ The C++17 search/state model deliberately has no external libraries. It can be c
 
 ## Known limits
 
-- The app's K3 **board codes** are supported. Legacy K1 and arbitrary JSON board files are not directly accepted; import/export JSON through Replay Lab first.
+- The app's K4 **board codes** are supported (`--catalog` reads `levels.js` lines `id = K4.code solution`). Legacy K1 and arbitrary JSON board files are not directly accepted; import/export JSON through Replay Lab first.
 
 - Memory usage is dominated by the graph of visited states. `--max-states` is a count, **not** a strict memory budget.
 - Boards with many hexes still have a large search space, since every subset of consumed hexes is a distinct state, and the score bound is weak with large negative hexes (7.3 is inconclusive at small budgets; the project owner has since proven it optimal with a tight `--max-score`).

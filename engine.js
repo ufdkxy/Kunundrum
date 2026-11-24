@@ -12,6 +12,7 @@ const DELTAS                         = {
 };
 const OPPOSITE = { u: "d", d: "u", l: "r", r: "l" };
 const ARROW_TYPES = ["cw", "ccw", "flip"];
+const HEX_VALUES = [-20, -15, -10, -5, 5, 10, 15, 20]; // the only hexagon values (K4 board code)
 const CLOCKWISE = ["u", "r", "d", "l"];
 /** Direction a rotating arrow shows at shared clock phase 0-3. The board stores each arrow as displayed at phase 0.
  * cw / ccw turn a quarter turn per tick (period 4); flip alternates between its direction and the opposite (period 2). */
@@ -74,8 +75,8 @@ function validateBoard(raw         , problems         , notes         )        {
   // collected instead of thrown, so a damaged board can still be opened for repair.
   const fail = (message        ) => { if (problems) problems.push(message); else throw new Error(message); };
   const source = object(raw, "Board");
-  const width = integer(source.width, "Board width", 1, 32);
-  const height = integer(source.height, "Board height", 1, 32);
+  const width = integer(source.width, "Board width", 1, 15);
+  const height = integer(source.height, "Board height", 1, 15);
   const point = (value         , label        )      => {
     const item = object(value, label);
     return { x: integer(item.x, `${label} x`, 1, width), y: integer(item.y, `${label} y`, 1, height) };
@@ -104,7 +105,7 @@ function validateBoard(raw         , problems         , notes         )        {
     const item = object(value, `Ball ${i + 1}`);
     return { ...point(item, `Ball ${i + 1}`), color: color(item.color, `Ball ${i + 1} color`) };
   });
-  if (!unnumbered.length || unnumbered.length > 128) throw new Error("A board needs from 1 to 128 balls.");
+  if (!unnumbered.length || unnumbered.length > 61) throw new Error("A board needs from 1 to 61 balls.");
   const balls = COLORS.flatMap(c => {
     const group = unnumbered.filter(b => b.color === c).sort(rowOrder);
     return group.map((b, i) => ({ ...b, id: group.length === 1 ? c : `${c}${i + 1}` }));
@@ -138,8 +139,8 @@ function validateBoard(raw         , problems         , notes         )        {
   }).sort((a, b) => a.id.localeCompare(b.id, "en", { numeric: true }));
   const hexes = entries(source, "hexes").map((value, i) => {
     const item = object(value, `Hexagon ${i + 1}`);
-    const valueNumber = integer(item.value, `Hexagon ${i + 1} value`, -10000, 10000);
-    if (valueNumber === 0) throw new Error(`Hexagon ${i + 1} value must not be zero.`);
+    const valueNumber = integer(item.value, `Hexagon ${i + 1} value`, -20, 20);
+    if (!HEX_VALUES.includes(valueNumber)) throw new Error(`Hexagon ${i + 1} value must be one of ${HEX_VALUES.join(", ")}.`);
     return { ...point(item, `Hexagon ${i + 1}`), id: identifier(item.id, `Hexagon ${i + 1} ID`, `hex${i + 1}`), value: valueNumber };
   }).sort(rowOrder);
 
@@ -158,6 +159,16 @@ function validateBoard(raw         , problems         , notes         )        {
     if (openings.has(key)) fail(`Two tunnel openings share the ${DIRECTION_NAMES[e.side]} side of (${e.x},${e.y}).`);
     openings.add(key);
     if (walls.some(w => samePos(w, e))) fail(`A tunnel opening at (${e.x},${e.y}) lies in a fixed wall.`);
+  }
+  if (tunnels.length > 31) fail("There can be at most 31 tunnel pairs.");
+  const gapCells = new Set        ();
+  for (const t of tunnels) for (const e of [t.a, t.b]) {
+    // An opening faces a wall cell (the gap) or the board edge, never ordinary floor; a wall cell carries at most one opening.
+    const nx = e.x + DELTAS[e.side].x, ny = e.y + DELTAS[e.side].y;
+    if (nx < 1 || nx > width || ny < 1 || ny > height) continue;
+    if (!walls.some(w => w.x === nx && w.y === ny)) fail(`The tunnel opening at (${e.x},${e.y}) must face a wall cell or the board edge.`);
+    else if (gapCells.has(`${nx},${ny}`)) fail(`The wall cell (${nx},${ny}) carries more than one tunnel opening.`);
+    gapCells.add(`${nx},${ny}`);
   }
   for (const t of tunnels) if (t.a.x === t.b.x && t.a.y === t.b.y && t.a.side === t.b.side) fail(`A tunnel connects the ${DIRECTION_NAMES[t.a.side]} side of (${t.a.x},${t.a.y}) to itself.`);
   uniqueIds(gates, "gate", fail); uniqueIds(switches, "switch", fail); uniqueIds(teleports, "teleport", fail); uniqueIds(hexes, "hexagon", fail);
@@ -178,6 +189,19 @@ function validateBoard(raw         , problems         , notes         )        {
   for (const sw of switches) {
     for (const id of sw.controls) if (!switchable.has(id)) fail(`Switch ${sw.id} controls unknown gate or teleport ${id}.`);
   }
+  // Switch control lists are identical or disjoint; every switch controls something; every gate and inactive teleport is controlled (K4 board code).
+  const controlled = new Map();
+  const lists = new Set();
+  for (const sw of switches) {
+    if (!sw.controls.length) { fail(`Switch ${sw.id} controls nothing.`); continue; }
+    const key = sw.controls.join(",");
+    if (lists.has(key)) continue;
+    lists.add(key);
+    for (const id of sw.controls) { if (controlled.has(id)) fail(`Switch control lists must be identical or disjoint (${id} is in two different lists).`); controlled.set(id, key); }
+  }
+  if (lists.size > 61) fail("There can be at most 61 different switch control lists.");
+  for (const g of gates) if (!controlled.has(g.id)) fail(`Gate ${g.id} is not controlled by any switch.`);
+  for (const t of teleports) if (!t.active && !controlled.has(t.id)) fail(`Inactive teleport ${t.id} is not controlled by any switch.`);
   const tileKinds = new Map                ();
   const occupy = (p     , name        )       => {
     const key = posKey(p), previous = tileKinds.get(key);
@@ -468,5 +492,5 @@ function formatSolution(records                                                 
   return groups.join(",");
 }
 
-return {validateBoard,arrowOrientation,applyMoveAtPhase,teleportExit,createInitialState,applyMove,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES};
+return {validateBoard,HEX_VALUES,arrowOrientation,applyMoveAtPhase,teleportExit,createInitialState,applyMove,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES};
 })();

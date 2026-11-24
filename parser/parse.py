@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline screenshot -> editable Kunundrum board JSON, visual QA, optional K3.
+"""Offline screenshot -> editable Kunundrum board JSON, visual QA (frozen; the JS parser is definitive and the board code is K4).
 
 FROZEN / HISTORICAL: parser/parser.js is the definitive parser. This Python version is no longer
 updated (it lacks wall color, tunnels, teleport endpoints and rotating-arrow orientation) and may
@@ -785,7 +785,7 @@ def inside_cells(img,geom):
     return {(col,row) for col in range(cw) for row in range(ch) if dist.get((col,row),INF)%2==1}
 
 
-def parse_one(path,out,grid,templates,overrides,write_codes):
+def parse_one(path,out,grid,templates,overrides):
     im=cv2.imread(str(path))
     if im is None:raise ValueError(f'Could not read image: {path}')
     geometry=robust_geometry(im,grid)
@@ -829,16 +829,7 @@ def parse_one(path,out,grid,templates,overrides,write_codes):
     diagnostic={'source':str(path),'grid':vars(geometry),'warnings':warnings,'cells':stats,
                 'notes':'Review every screenshot, including confident predictions. Correct cells using overrides.'}
     (prefix.with_name(prefix.name+'_diagnostics.json')).write_text(json.dumps(diagnostic,indent=2)+'\n',encoding='utf8')
-    code_path=None
-    if write_codes:
-        try:
-            from encode_k3 import encode
-            code=encode(board)
-            code_path=out/(path.stem+'.k3.txt')
-            code_path.write_text(code+'\n',encoding='utf8')
-        except Exception as exc:
-            warnings.append('K3 encoding failed: '+str(exc))
-    return geometry,board,warnings,code_path
+    return geometry,board,warnings
 
 
 def main():
@@ -849,7 +840,6 @@ def main():
     ap.add_argument('--grid',help='Override detection: LEFT,TOP,CELL,COLS,ROWS (image pixels)')
     ap.add_argument('--templates',type=Path,help='Optional reference tiles folder, e.g. ball_G.png')
     ap.add_argument('--overrides',type=Path,help='JSON file with {"cells":{"1,2":"ball_G"},...}; for batches use per-image subobjects')
-    ap.add_argument('--no-code',action='store_true',help='Skip automatic K3 encoding')
     args=ap.parse_args()
     paths=[]
     for item in args.images:
@@ -862,13 +852,13 @@ def main():
     for path in paths:
         try:
             ov=all_overrides.get(path.stem,all_overrides) if 'cells' not in all_overrides else all_overrides
-            geom,board,warnings,code_path=parse_one(path,args.output,args.grid,templates,ov,not args.no_code)
+            geom,board,warnings=parse_one(path,args.output,args.grid,templates,ov)
             recognition=[w for w in warnings if w.startswith(('Cell (','Unrecognized object','No balls detected')) or 'balls but only' in w]
             mechanics=[w for w in warnings if w not in recognition]
             print(f'{path.name}: {geom.width}x{geom.height}, cell={geom.cell:.2f}px, '
                   f'{len(board["balls"])} balls, {len(board["goals"])} goals, '
                   f'{len(board["teleports"])} teleport pairs, '
-                  f'{len(recognition)} recognition warnings, {len(mechanics)} mechanics pending'+(' [K3 generated]' if code_path else ''))
+                  f'{len(recognition)} recognition warnings, {len(mechanics)} mechanics pending')
             for w in warnings[:10]:print('  ! '+w)
             if len(warnings)>10:print(f'  ... {len(warnings)-10} more')
             if warnings:failures+=1

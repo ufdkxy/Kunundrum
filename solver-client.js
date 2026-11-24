@@ -35,6 +35,7 @@ function solve(code,options,onProgress){
  const promise=new Promise((resolve,reject)=>{rejectFn=reject;let flags;
   try{flags=buildFlags(options||{});}catch(e){settled=true;reject(e);return;}
   loadSource().then(src=>{if(settled)return;
+   const v=parseFloat(window.KUNSOLVE_VERSION||'');if(v<0.20){settled=true;reject(new Error('The solver bundle (v'+window.KUNSOLVE_VERSION+') still reads K3 boards. Rebuild it with node Solver/wasm/build.js (solver v0.20 or later).'));return;}
    url=URL.createObjectURL(new Blob([src],{type:'text/javascript'}));worker=new Worker(url);
    worker.onmessage=ev=>{const m=ev.data;
     if(m.type==='progress'){if(onProgress)onProgress(parseProgress(m.line));}
@@ -46,8 +47,13 @@ function solve(code,options,onProgress){
  const cancel=()=>{if(settled)return;settled=true;cleanup();const e=new Error('cancelled');e.cancelled=true;rejectFn(e);};
  return {promise,cancel};}
 // (`Codec` is a top-level const in codec.js: a global binding, not a window property.)
-// A returned route is only trusted after the app's own codec has decoded the K3 and replayed it through Core (Codec.decodeBoard throws if not).
+// A returned route is only trusted after the app's own codec has decoded the K4 board and the route has been replayed through Core to a finished board.
 function verifyResult(result){if(!result||!result.hasSolution)return {ok:true,checked:false};
- try{Codec.decodeBoard(result.k3);return {ok:true,checked:true};}catch(e){return {ok:false,checked:true,error:e.message};}}
+ try{
+  const board=Codec.decodeBoard(result.k4);let state=Core.createInitialState(board);
+  for(const t of Core.parseSolution(result.solution)){const m=Core.applyMove(state,board,Core.resolveBallId(state,t.identifier),t.direction,t.choices);if(m.kind!=='ok')throw new Error('The solver returned a route that does not replay: '+m.message);state=m.state;}
+  if(!Core.isComplete(state))throw new Error('The solver returned a route that does not finish the board.');
+  return {ok:true,checked:true};
+ }catch(e){return {ok:false,checked:true,error:e.message};}}
 window.KunSolver={solve,buildFlags,parseProgress,verifyResult,loadSource};
 })();

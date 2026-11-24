@@ -18,7 +18,7 @@ async function suite(browser,url,label){
   try{await job.promise;out.cancel={ok:false};}catch(e){out.cancel={ok:!!e.cancelled,ms:Math.round(performance.now()-t)};}
   let r2=await KunSolver.solve(codes['1.7'],{algorithm:'beam',beamWidth:1000}).promise;out.afterCancel={status:r2.status,score:r2.score};
   let r3=await KunSolver.solve(codes['1.8'],{maxScore:4}).promise;out.bound={status:r3.status,exit:r3.exit};
-  let r4=await KunSolver.solve('K3.zzzz',{}).promise;out.badCode={exit:r4.exit,error:r4.error};
+  let r4=await KunSolver.solve('K4.zzzz',{}).promise;out.badCode={exit:r4.exit,error:r4.error};
   try{await KunSolver.solve(codes['6.6'],{algorithm:'x --seconds 1'}).promise;out.badOpt='accepted';}catch(e){out.badOpt=e.message;}
   return out;});
  assert.strictEqual(r.solve.status,'OPTIMAL');assert.strictEqual(r.solve.score,18);assert(r.solve.verify.ok&&r.solve.verify.checked);assert(r.solve.progress>0&&r.solve.hasDepth);

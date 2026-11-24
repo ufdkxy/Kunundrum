@@ -18,11 +18,11 @@ const cases=[['6.6','--seconds 60'],['8.1','--seconds 60'],['1.8','--max-score 4
  for(const [id,flags] of cases){const code=codeOf(id);
   const {j,lines}=await wasm(code,flags);
   const p=spawnSync(native,[code,'--quiet','--json',...flags.split(' ').filter(Boolean)],{encoding:'utf8',maxBuffer:1<<26});const n=JSON.parse(p.stdout);
-  try{for(const k of ['exit','status','hasSolution','score','moves','solution','k3','lowerMoves','hasLowerScore','lowerScore','algorithm','states','transitions'])assert.deepStrictEqual(j[k],n[k],k);
-   if(j.hasSolution){const b=Codec.decodeBoard(j.k3);assert(b.solution||true);} // decodeBoard replays the embedded route and throws if it is invalid
+  try{for(const k of ['exit','status','hasSolution','score','moves','solution','k4','lowerMoves','hasLowerScore','lowerScore','algorithm','states','transitions'])assert.deepStrictEqual(j[k],n[k],k);
+   if(j.hasSolution){const b=Codec.decodeBoard(j.k4);assert(b);}
    if(id==='8.1')assert(lines.length>0,'no progress lines');
    console.log(`${id} ${flags}: OK ${j.status} score=${j.score} moves=${j.moves} states=${j.states} progressLines=${lines.length}`);}
   catch(e){bad++;console.log(`${id} ${flags}: FAIL ${e.message}`);}}
- const e=(await wasm('K3.zzzz','')).j;try{assert.strictEqual(e.exit,1);assert(e.error);console.log('bad code: OK error="'+e.error+'"');}catch(x){bad++;console.log('bad code: FAIL',JSON.stringify(e));}
+ const e=(await wasm('K4.zzzz','')).j;try{assert.strictEqual(e.exit,1);assert(e.error);console.log('bad code: OK error="'+e.error+'"');}catch(x){bad++;console.log('bad code: FAIL',JSON.stringify(e));}
  const f=(await wasm(codeOf('6.6'),'--bogus-flag')).j;try{assert.strictEqual(f.exit,1);assert(f.error);console.log('bad flag: OK error="'+f.error+'"');}catch(x){bad++;console.log('bad flag: FAIL',JSON.stringify(f));}
  console.log(bad?bad+' failure(s)':'all API checks pass');process.exit(bad?1:0);})();

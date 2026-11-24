@@ -1,4 +1,4 @@
-// Kunundrum native exact solver. C++17; no dependencies. K3 codes.
+// Kunundrum native exact solver. C++17; no dependencies. K4 board codes.
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -36,10 +36,6 @@ static const string DIR="udlr", COLORS="RGBY*";
 int colorIndex(char c){auto n=COLORS.find(c);if(n==string::npos)throw runtime_error("invalid color");return (int)n;}
 int dx[4]={0,0,-1,1},dy[4]={1,-1,0,0};
 string trim(string s){auto a=s.find_first_not_of(" \t\r\n"),b=s.find_last_not_of(" \t\r\n");return a==string::npos?"":s.substr(a,b-a+1);}
-vector<Byte> b64decode(string s){vector<Byte> out;int acc=0,bits=0;for(char c:s){int v= c>='A'&&c<='Z'?c-'A':c>='a'&&c<='z'?c-'a'+26:c>='0'&&c<='9'?c-'0'+52:c=='-'?62:c=='_'?63:-1;if(v<0)throw runtime_error("invalid base64url character");acc=(acc<<6)|v;bits+=6;if(bits>=8){bits-=8;out.push_back((Byte)(acc>>bits));acc&=(1<<bits)-1;}}if(bits>=6||acc)throw runtime_error("invalid base64url padding");return out;}
-string b64encode(const vector<Byte>& b){static const char* abc="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";string o;int v=0,n=0;for(Byte x:b){v=(v<<8)|x;n+=8;while(n>=6){n-=6;o.push_back(abc[(v>>n)&63]);}}if(n)o.push_back(abc[(v<<(6-n))&63]);return o;}
-void putuint(vector<Byte>& b,uint64_t v){do{Byte c=v&127;v>>=7;b.push_back(c|(v?128:0));}while(v);}
-struct Reader{const vector<Byte>& b;size_t i=0;vector<string> dictionary; Reader(const vector<Byte>&b):b(b){} Byte byte(){if(i>=b.size())throw runtime_error("truncated board");return b[i++];} uint64_t u(){uint64_t x=0;for(int z=0;z<8;z++){Byte k=byte();x|=(uint64_t)(k&127)<<(7*z);if(!(k&128))return x;}throw runtime_error("invalid varint");}string str(){uint64_t t=u();if(t&1){size_t j=(t-1)/2;if(j>=dictionary.size())throw runtime_error("invalid string reference");return dictionary[j];}size_t n=t/2;if(n>20000||i+n>b.size())throw runtime_error("invalid string length");string s(b.begin()+i,b.begin()+i+n);i+=n;dictionary.push_back(s);return s;}int count(){auto n=u();if(n>4096)throw runtime_error("unreasonably large feature list");return (int)n;}};
 struct Ball{int p,color,ordinal;string name;};
 struct Gate{int p;string id;bool active;};
 struct Switch{int p;string id;bool on;vector<string> controls;};
@@ -48,7 +44,7 @@ struct Hex{int p,value;string id;};
 struct Arrow{int p,dir;bool rotating;int type=0;}; // type: 0 clockwise, 1 counterclockwise, 2 flip (rotating arrows only)
 struct Tunnel{int pa,sa,pb,sb;}; // two openings: cell and side (0..3 = u,d,l,r)
 struct Board{
- int w=0,h=0;string id,title,description; bool hasDescription=false;int wallColor=-1;vector<Ball> balls;vector<int> wall,goals;vector<Gate> gates;vector<Switch> switches;vector<Teleport> teleports;vector<Hex> hexes;vector<Arrow> arrows;vector<Tunnel> tunnels;vector<Byte> prefix,tail;
+ int w=0,h=0;int wallColor=-1;vector<Ball> balls;vector<int> wall,goals;vector<Gate> gates;vector<Switch> switches;vector<Teleport> teleports;vector<Hex> hexes;vector<Arrow> arrows;vector<Tunnel> tunnels;
  array<int,MAX_CELLS> fixed,arrowAt,gateAt,switchAt,teleAt,hexAt,goalColor;vector<vector<int>> groupGates,switchGroups,switchTele;vector<array<int,4>> teleExit; // teleExit[endpoint][ball color]: endpoint index the ball is sent to, -1 = none (the ball stops on the entrance)
   // groupGates: gates controlled by exactly the same switches (they always toggle together)
  template<class S> void fireSwitch(int sw,S&s)const{ // all-or-nothing: one blocked closing gate freezes the whole switch
@@ -114,27 +110,6 @@ struct Board{
   staticReverse=hexes.empty();
  }
 };
-Board parseCode(string code){code=trim(code);if(code.rfind("K3.",0)!=0)throw runtime_error("expected K3. board code");auto raw=b64decode(code.substr(3));Reader r(raw);int magic=r.byte();if(magic!=0xB3)throw runtime_error("invalid board magic");Board b;b.w=r.byte();b.h=r.byte();int flags=r.u();if((flags&~31)||b.w<1||b.h<1||b.w>32||b.h>32)throw runtime_error("invalid board header");b.id=r.str();b.title=r.str();if(flags&1){b.hasDescription=true;b.description=r.str();}if(flags&4){int c=r.u();if(c>3)throw runtime_error("invalid wall color");if(c!=2)b.wallColor=c;}
- size_t solutionStart=r.i;if(flags&2){size_t len=r.u();if(r.i+len>raw.size())throw runtime_error("truncated solution");r.i+=len;}size_t bodyStart=r.i;
- b.prefix.assign(raw.begin()+4,raw.begin()+solutionStart);
- auto at=[&](){int p=r.u();if(p>=b.w*b.h)throw runtime_error("position out of bounds");return p;};
- for(int i=r.count();i>0;i--)b.wall.push_back(at());
- for(int i=r.count();i>0;i--){int p=at(),c=r.u();if(c>=4)throw runtime_error("invalid ball color");b.balls.push_back({p,c,0,""});}
- for(int i=r.count();i>0;i--){int p=at(),c=r.u();if(c>=4)throw runtime_error("invalid goal color");b.goals.push_back((int)c*MAX_CELLS+p);}
- for(int i=r.count();i>0;i--){int p=at(),v=r.u();if(v>7)throw runtime_error("invalid arrow");b.arrows.push_back({p,(int)v/2,(bool)(v%2),0});}
- for(int i=r.count();i>0;i--){int p=at();string id=r.str();bool act=r.u();b.gates.push_back({p,id,act});}
- for(int i=r.count();i>0;i--){int p=at();string id=r.str();bool on=r.u();vector<string> cs;for(int k=r.count();k>0;k--)cs.push_back(r.str());b.switches.push_back({p,id,on,cs});}
- for(int i=r.count();i>0;i--){int p=at();string id=r.str();int c=r.u(),act=r.u();if(c>=5)throw runtime_error("invalid teleport color");b.teleports.push_back({p,c,id,(bool)act});}
- for(int i=r.count();i>0;i--){int p=at();string id=r.str();uint64_t value=r.u();int signedValue=value&1?-(int)((value+1)/2):(int)(value/2);b.hexes.push_back({p,signedValue,id});}
- if(flags&8)for(int i=r.count();i>0;i--){int pa=at(),sa=r.u(),pb=at(),sb=r.u();if(sa>3||sb>3)throw runtime_error("invalid tunnel side");b.tunnels.push_back({pa,sa,pb,sb});}
- if(flags&16){string digits=r.str();size_t k=0;for(auto&a:b.arrows)if(a.rotating){if(k>=digits.size()||digits[k]<'0'||digits[k]>'2')throw runtime_error("invalid rotating arrow types");a.type=digits[k]=='0'?2:digits[k]=='1'?0:1;k++;}if(k!=digits.size())throw runtime_error("invalid rotating arrow types");}
- if(r.i!=raw.size())throw runtime_error("trailing board data");
- b.tail.assign(raw.begin()+bodyStart,raw.end());
- // Core.validateBoard sorts balls by color, then (y,x).
- stable_sort(b.balls.begin(),b.balls.end(),[](const Ball&a,const Ball&z){return a.color!=z.color?a.color<z.color:a.p<z.p;});
- for(int i=0;i<(int)b.balls.size();i++){int count=0,k=0;for(int j=0;j<(int)b.balls.size();j++)if(b.balls[j].color==b.balls[i].color){count++;if(j<=i)k++;}b.balls[i].ordinal=k;b.balls[i].name=string(1,COLORS[b.balls[i].color])+(count==1?"":to_string(k));}
- b.initialize();return b;
-}
 struct State{vector<uint16_t> p;vector<Byte> gate,tele,sw,hex;};
 State initial(const Board&b){State s;for(const auto& x:b.balls)s.p.push_back(x.p);s.gate=b.gateInit;s.tele=b.teleInit;s.sw=b.switchInit;s.hex.assign(b.hexes.size(),0);return s;}
 struct Move{uint16_t source=0;uint8_t color=0,dir=0,phase=0;}; // phase: arrow clock phase 0..3 chosen before the move
@@ -795,56 +770,149 @@ vector<LabeledMove> labelAndVerify(const Board&b,const vector<Move>& path,int& f
  return result;
 }
 string formatMoves(const Board&b,const vector<LabeledMove>& path){string out;int last=-1;for(const auto& m:path){if(last!=m.ball){if(!out.empty())out+=',';out+=b.balls[m.ball].name;last=m.ball;}out+=DIR[m.dir];if(!m.choices.empty())out+="(->"+m.choices+")";}return out;}
-vector<Byte> packedSolution(const Board&b,const vector<LabeledMove>& path){
- vector<Byte> bytes;putuint(bytes,path.size());bool hasChoices=false;for(auto&m:path)if(!m.choices.empty())hasChoices=true;bytes.push_back(hasChoices?1:0);
- int width=0;while((1ULL<<width)<(uint64_t)b.n*4)width++;
- auto pack=[&](const vector<int>&v,int bits){int cur=0,count=0;for(int x:v){for(int j=bits-1;j>=0;j--){cur=cur*2+((x>>j)&1);if(++count==8){bytes.push_back(cur);cur=0;count=0;}}}if(count)bytes.push_back(cur<<(8-count));};
- vector<int> vals;for(auto m:path)vals.push_back(m.ball*4+m.dir);pack(vals,width);
- if(hasChoices){vector<int> opts;for(auto&m:path){putuint(bytes,m.choices.size());for(char c:m.choices)opts.push_back(DIR.find(c));}pack(opts,2);}
- return bytes;
+// ---- K4 board code (see K4.md): canonical alphanumeric text; board data only (no id, title or solution) ----
+static const string K4_N62="0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",K4_LETTERS="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+static const int K4_HEX[8]={-20,-15,-10,-5,5,10,15,20};
+static int k4Perimeter(int w,int h,int x,int y,int side){return side==1?x-1:side==3?w+(y-1):side==0?w+h+(w-x):2*w+h+(h-y);} // x,y 1-based; sides 0..3 = u,d,l,r
+static void k4FromPerimeter(int w,int h,int i,int&x,int&y,int&side){if(i<w){x=i+1;y=1;side=1;}else if(i<w+h){x=w;y=i-w+1;side=3;}else if(i<2*w+h){x=w-(i-w-h);y=h;side=0;}else{x=1;y=h-(i-2*w-h);side=2;}}
+string codeK4(const Board&b){
+ const int w=b.w,h=b.h,total=w*h;
+ if(w>15||h>15)throw runtime_error("K4: boards are limited to 15 x 15 cells");
+ if(b.balls.size()>61)throw runtime_error("K4: at most 61 balls");
+ vector<int> sym(total,-1),gapDir(total,-1);vector<char> isWall(total,0);
+ for(int p:b.wall){isWall[p]=1;sym[p]=0;}
+ for(int g:b.goals)sym[g%MAX_CELLS]=14+g/MAX_CELLS;
+ for(auto&a:b.arrows)sym[a.p]=a.rotating?31+a.type*4+a.dir:10+a.dir;
+ for(auto&g:b.gates)sym[g.p]=18+(g.active?1:0);
+ for(auto&s:b.switches)sym[s.p]=20;
+ for(auto&t:b.teleports)sym[t.p]=21+t.color*2+(t.active?0:1);
+ for(auto&x:b.hexes){int k=-1;for(int i=0;i<8;i++)if(K4_HEX[i]==x.value)k=i;if(k<0)throw runtime_error("K4: hexagon value not in +-5/10/15/20");sym[x.p]=43+k;}
+ if(b.tunnels.size()>31)throw runtime_error("K4: at most 31 tunnel pairs");
+ struct E{bool edge;int order,pair;};vector<E> ends;
+ for(int t=0;t<(int)b.tunnels.size();t++){const Tunnel&tn=b.tunnels[t];int cells[2]={tn.pa,tn.pb},sides[2]={tn.sa,tn.sb};
+  for(int k=0;k<2;k++){int x=cells[k]%w,y=cells[k]/w,nx=x+dx[sides[k]],ny=y+dy[sides[k]];
+   if(nx<0||nx>=w||ny<0||ny>=h){ends.push_back({true,k4Perimeter(w,h,x+1,y+1,sides[k]),t});continue;}
+   int c=ny*w+nx;if(!isWall[c])throw runtime_error("K4: a tunnel opening must face a wall cell or the board edge");
+   if(gapDir[c]>=0)throw runtime_error("K4: a wall cell carries more than one tunnel opening");
+   gapDir[c]=sides[k];ends.push_back({false,c,t});}}
+ sort(ends.begin(),ends.end(),[](const E&a,const E&z){return a.edge!=z.edge?a.edge<z.edge:a.order<z.order;});
+ vector<int> firstOf(b.tunnels.size(),-1),partner(ends.size(),-1);
+ for(int i=0;i<(int)ends.size();i++){int&f=firstOf[ends[i].pair];if(f>=0){partner[i]=f;partner[f]=i;}else f=i;}
+ string grid;int floorRun=0,wallRun=0;
+ auto flushFloor=[&]{if(floorRun)grid+=to_string(floorRun);floorRun=0;};
+ auto flushWall=[&]{if(wallRun){grid+=string(wallRun/6,K4_LETTERS[5]);if(wallRun%6)grid+=K4_LETTERS[wallRun%6-1];}wallRun=0;};
+ for(int i=0;i<total;i++){
+  if(isWall[i]&&gapDir[i]<0){flushFloor();wallRun++;continue;}
+  flushWall();
+  if(isWall[i]){flushFloor();grid+=K4_LETTERS[6+gapDir[i]];}
+  else if(sym[i]<0)floorRun++;else{flushFloor();grid+=K4_LETTERS[sym[i]];}
+ }
+ flushFloor();flushWall();
+ string out="K4.";out+=K4_N62[w];out+=K4_N62[h];out+=K4_N62[b.wallColor<0?0:b.wallColor==0?1:b.wallColor==1?2:throw runtime_error("K4: wall color must be blue, red or green")];out+=grid;
+ vector<int> edges;for(auto&e:ends)if(e.edge)edges.push_back(e.order);
+ out+=K4_N62[edges.size()];for(int i:edges)out+=K4_N62[i];
+ vector<int> un(ends.size());for(int i=0;i<(int)un.size();i++)un[i]=i;
+ while(un.size()>2){vector<int> rest(un.begin()+1,un.end());int j=(int)(find(rest.begin(),rest.end(),partner[un[0]])-rest.begin());out+=K4_N62[j];rest.erase(rest.begin()+j);un=rest;}
+ if(!b.switches.empty()){
+  unordered_map<string,int> gateIdx,teleIdx;for(int i=0;i<(int)b.gates.size();i++)gateIdx[b.gates[i].id]=i;for(int i=0;i<(int)b.teleports.size();i++)teleIdx[b.teleports[i].id]=i;
+  map<vector<string>,int> groupOf;vector<int> swGroup;unordered_map<string,int> member;
+  for(auto&s:b.switches){if(s.controls.empty())throw runtime_error("K4: a switch controls nothing");vector<string> key=s.controls;sort(key.begin(),key.end());
+   if(!groupOf.count(key)){if(groupOf.size()>=61)throw runtime_error("K4: at most 61 switch groups");int g=(int)groupOf.size()+1;groupOf[key]=g;for(auto&id:key){if(member.count(id))throw runtime_error("K4: switch control lists must be identical or disjoint");member[id]=g;}}
+   swGroup.push_back(groupOf[key]);}
+  vector<int> gateGroup,teleGroup;
+  for(auto&g:b.gates){auto it=member.find(g.id);if(it==member.end())throw runtime_error("K4: a gate is not controlled by any switch");gateGroup.push_back(it->second);}
+  for(auto&t:b.teleports){auto it=member.find(t.id);if(it==member.end()){if(!t.active)throw runtime_error("K4: an inactive teleport is not controlled by any switch");teleGroup.push_back(0);}else teleGroup.push_back(it->second);}
+  int groups=(int)groupOf.size();out+=K4_N62[groups];
+  if(groups>1){for(int g:swGroup)out+=K4_N62[g];for(int g:gateGroup)out+=K4_N62[g];}
+  for(int g:teleGroup)out+=K4_N62[g];
+ }else if(!b.gates.empty())throw runtime_error("K4: gates need at least one switch");
+ else for(auto&t:b.teleports)if(!t.active)throw runtime_error("K4: inactive teleports need a switch");
+ vector<int> vals;for(auto&x:b.balls)vals.push_back(4*x.p+x.color);sort(vals.begin(),vals.end());
+ out+=K4_N62[vals.size()];for(int v:vals){out+=K4_N62[v/62];out+=K4_N62[v%62];}
+ return out;
 }
-string codeWithSolution(const Board&b,const vector<LabeledMove>& path){
- bool hasTypes=false;for(auto&a:b.arrows)if(a.rotating&&a.type!=0)hasTypes=true;
- vector<Byte> raw={0xB3,(Byte)b.w,(Byte)b.h,(Byte)((b.hasDescription?1:0)|2|(b.wallColor>=0?4:0)|(b.tunnels.empty()?0:8)|(hasTypes?16:0))};
- unordered_map<string,int> dict;
- auto str=[&](const string& s){auto it=dict.find(s);if(it!=dict.end()){putuint(raw,it->second*2+1);return;}putuint(raw,s.size()*2);raw.insert(raw.end(),s.begin(),s.end());int index=dict.size();dict.emplace(s,index);};
- auto pos=[&](int p){putuint(raw,p);};
- str(b.id);str(b.title);if(b.hasDescription)str(b.description);if(b.wallColor>=0)putuint(raw,b.wallColor);
- vector<Byte> sol=packedSolution(b,path);putuint(raw,sol.size());raw.insert(raw.end(),sol.begin(),sol.end());
- putuint(raw,b.wall.size());for(int p:b.wall)pos(p);
- putuint(raw,b.balls.size());for(auto ball:b.balls){pos(ball.p);putuint(raw,ball.color);}
- putuint(raw,b.goals.size());for(int g:b.goals){pos(g%MAX_CELLS);putuint(raw,g/MAX_CELLS);}
- putuint(raw,b.arrows.size());for(auto a:b.arrows){pos(a.p);putuint(raw,2*a.dir+(a.rotating?1:0));}
- putuint(raw,b.gates.size());for(auto g:b.gates){pos(g.p);str(g.id);putuint(raw,g.active);}
- putuint(raw,b.switches.size());for(auto t:b.switches){pos(t.p);str(t.id);putuint(raw,t.on);putuint(raw,t.controls.size());for(auto&id:t.controls)str(id);}
- putuint(raw,b.teleports.size());for(auto t:b.teleports){pos(t.p);str(t.id);putuint(raw,t.color);putuint(raw,t.active);}
- putuint(raw,b.hexes.size());for(auto h:b.hexes){pos(h.p);str(h.id);putuint(raw,h.value<0?(uint64_t)(-2LL*h.value-1):(uint64_t)(2LL*h.value));}
- if(!b.tunnels.empty()){putuint(raw,b.tunnels.size());for(auto&t:b.tunnels){pos(t.pa);putuint(raw,t.sa);pos(t.pb);putuint(raw,t.sb);}}
- if(hasTypes){string digits;for(auto&a:b.arrows)if(a.rotating)digits+=a.type==2?'0':a.type==0?'1':'2';str(digits);}
- return "K3."+b64encode(raw);
+Board parseCode(string code){
+ code=trim(code);if(code.rfind("K4.",0)!=0)throw runtime_error("expected K4. board code");
+ string s=code.substr(3);for(char c:s)if(!isalnum((unsigned char)c))throw runtime_error("invalid K4 board code: only letters and digits may follow K4.");
+ size_t pos=0;
+ auto next=[&]()->char{if(pos>=s.size())throw runtime_error("invalid K4 board code: truncated");return s[pos++];};
+ auto n62=[&]()->int{return (int)K4_N62.find(next());};
+ auto num=[&](int mx){int v=n62();if(v>mx)throw runtime_error("invalid K4 board code: value out of range");return v;};
+ Board b;b.w=n62();b.h=n62();int wc=num(2);
+ if(b.w<1||b.w>15||b.h<1||b.h>15)throw runtime_error("invalid K4 board code: board size must be 1 to 15");
+ if(wc==1)b.wallColor=0;else if(wc==2)b.wallColor=1;
+ int w=b.w,total=b.w*b.h,cell=0;vector<pair<int,int>> gaps;
+ while(cell<total){int rem=total-cell;char c=next();
+  if(c>='0'&&c<='9'){if(c=='0')throw runtime_error("invalid K4 board code: floor run starts with 0");int v=c-'0';while(v<rem&&pos<s.size()&&isdigit((unsigned char)s[pos]))v=v*10+(s[pos++]-'0');if(v>rem)throw runtime_error("invalid K4 board code: grid too long");cell+=v;continue;}
+  int li=(int)K4_LETTERS.find(c);if(li==51)throw runtime_error("invalid K4 board code: Z is reserved");
+  if(li<6){int n=li+1;if(n>rem)throw runtime_error("invalid K4 board code: grid too long");for(int k=0;k<n;k++)b.wall.push_back(cell+k);cell+=n;continue;}
+  int p=cell++;
+  if(li<10){b.wall.push_back(p);gaps.push_back({p,li-6});}
+  else if(li<14)b.arrows.push_back({p,li-10,false,0});
+  else if(li<18)b.goals.push_back((li-14)*MAX_CELLS+p);
+  else if(li<20)b.gates.push_back({p,"",li==19});
+  else if(li==20)b.switches.push_back({p,"",false,{}});
+  else if(li<31){int k=li-21;b.teleports.push_back({p,k>>1,"",!(k&1)});}
+  else if(li<43){int k=li-31;b.arrows.push_back({p,k&3,true,k>>2});}
+  else b.hexes.push_back({p,K4_HEX[li-43],""});
+ }
+ struct O{int p,side;};vector<O> opens;
+ for(auto&g:gaps){int x=g.first%w-dx[g.second],y=g.first/w-dy[g.second];if(x<0||x>=w||y<0||y>=b.h)throw runtime_error("invalid K4 board code: tunnel gap without floor cell");opens.push_back({y*w+x,g.second});}
+ int edgeCount=num(61);for(int k=0;k<edgeCount;k++){int i=n62();if(i>=2*(w+b.h))throw runtime_error("invalid K4 board code: edge opening out of range");int x,y,side;k4FromPerimeter(w,b.h,i,x,y,side);opens.push_back({(y-1)*w+x-1,side});}
+ if(opens.size()%2)throw runtime_error("invalid K4 board code: odd number of tunnel openings");
+ if(!opens.empty()){vector<int> un(opens.size());for(int i=0;i<(int)un.size();i++)un[i]=i;
+  auto push=[&](int a,int z){O A=opens[a],Z=opens[z];if(A.p*4+A.side>Z.p*4+Z.side)swap(A,Z);b.tunnels.push_back({A.p,A.side,Z.p,Z.side});};
+  while(un.size()>2){vector<int> rest(un.begin()+1,un.end());int j=n62();if(j>=(int)rest.size())throw runtime_error("invalid K4 board code: tunnel pairing out of range");push(un[0],rest[j]);rest.erase(rest.begin()+j);un=rest;}
+  push(un[0],un[1]);
+  sort(b.tunnels.begin(),b.tunnels.end(),[](const Tunnel&a,const Tunnel&z){return a.pa*4+a.sa<z.pa*4+z.sa;});}
+ for(int i=0;i<(int)b.gates.size();i++)b.gates[i].id="G"+to_string(i+1);
+ for(int i=0;i<(int)b.teleports.size();i++)b.teleports[i].id="T"+to_string(i+1);
+ for(int i=0;i<(int)b.switches.size();i++)b.switches[i].id="S"+to_string(i+1);
+ if(!b.switches.empty()){
+  int groups=num(61);if(!groups)throw runtime_error("invalid K4 board code: no switch groups");
+  vector<int> swGroup,gateGroup,teleGroup;
+  if(groups==1){swGroup.assign(b.switches.size(),1);gateGroup.assign(b.gates.size(),1);}
+  else{for(size_t i=0;i<b.switches.size();i++){int g=n62();if(g<1||g>groups)throw runtime_error("invalid K4 board code: group out of range");swGroup.push_back(g);}
+   for(size_t i=0;i<b.gates.size();i++){int g=n62();if(g<1||g>groups)throw runtime_error("invalid K4 board code: group out of range");gateGroup.push_back(g);}}
+  for(size_t i=0;i<b.teleports.size();i++)teleGroup.push_back(num(groups));
+  for(size_t i=0;i<b.switches.size();i++){auto&sw=b.switches[i];
+   for(size_t k=0;k<b.gates.size();k++)if(gateGroup[k]==swGroup[i])sw.controls.push_back(b.gates[k].id);
+   for(size_t k=0;k<b.teleports.size();k++)if(teleGroup[k]==swGroup[i])sw.controls.push_back(b.teleports[k].id);
+   if(sw.controls.empty())throw runtime_error("invalid K4 board code: a switch group controls nothing");}
+ }
+ int ballCount=num(61);if(!ballCount)throw runtime_error("invalid K4 board code: no balls");
+ for(int k=0;k<ballCount;k++){int v=n62()*62;v+=n62();if(v>=4*total)throw runtime_error("invalid K4 board code: ball out of range");b.balls.push_back({v>>2,v&3,0,""});}
+ if(pos!=s.size())throw runtime_error("invalid K4 board code: trailing characters");
+ // Core.validateBoard sorts balls by color, then (y,x).
+ stable_sort(b.balls.begin(),b.balls.end(),[](const Ball&a,const Ball&z){return a.color!=z.color?a.color<z.color:a.p<z.p;});
+ for(int i=0;i<(int)b.balls.size();i++){int count=0,k=0;for(int j=0;j<(int)b.balls.size();j++)if(b.balls[j].color==b.balls[i].color){count++;if(j<=i)k++;}b.balls[i].ordinal=k;b.balls[i].name=string(1,COLORS[b.balls[i].color])+(count==1?"":to_string(k));}
+ b.initialize();
+ string again;try{again=codeK4(b);}catch(const exception&e){throw runtime_error(string("invalid K4 board code: ")+e.what());}
+ if(again!=code)throw runtime_error("invalid K4 board code: not in canonical form");
+ return b;
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
-string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open levels.js: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0)return trim(line.substr(prefix.size()));}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.19"; // Solver's own version, independent of the web app's APP_VERSION.
+string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open catalog: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0){string rest=trim(line.substr(prefix.size()));return rest.substr(0,rest.find_first_of(" \t"));}}throw runtime_error("level not found: "+id);}
+static const char* SOLVER_VERSION="0.20"; // Solver's own version, independent of the web app's APP_VERSION.
 // ---- Core entry point (shared by the CLI and the WebAssembly build) ----
-struct Cli{Limits lim;string input,level,catalog="levels.js";bool wantK3=true,version=false,help=false,json=false;};
-static const char* HELP_TEXT="Kunundrum exact C++ solver (K3)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--threads N] [--max-states N] [--seconds N] [--max-memory MB] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and K3 code including solution.\nauto = bidirectional search when applicable (no hexes, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic: certifies optimality (exit 0) only on hex-free boards when no state was ever dropped by the beam width, otherwise an upper bound (exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";
+struct Cli{Limits lim;string input,level,catalog="levels.js";bool wantCode=true,version=false,help=false,json=false;};
+static const char* HELP_TEXT="Kunundrum exact C++ solver (K4)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--threads N] [--max-states N] [--seconds N] [--max-memory MB] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and its K4 board code.\nauto = bidirectional search when applicable (no hexes, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic: certifies optimality (exit 0) only on hex-free boards when no state was ever dropped by the beam width, otherwise an upper bound (exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";
 // Same flags as the command line; the WebAssembly export passes its options as a flag string.
 static Cli parseArgs(const vector<string>&args){
- Cli c;Limits&lim=c.lim;string&input=c.input,&level=c.level,&catalog=c.catalog;bool&wantK3=c.wantK3;
+ Cli c;Limits&lim=c.lim;string&input=c.input,&level=c.level,&catalog=c.catalog;bool&wantCode=c.wantCode;
  for(size_t i=0;i<args.size();i++){const string&a=args[i];auto value=[&](){if(++i>=args.size())throw runtime_error("missing argument for "+a);return args[i];};
   if(a=="--version"){c.version=true;return c;}
   if(a=="--help"||a=="-h"){c.help=true;return c;}
   if(a=="--json"){c.json=true;continue;}
-   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states"){lim.maxStates=stoull(value());if(lim.maxStates==0)lim.maxStates=UINT64_MAX;}else if(a=="--threads"){lim.threads=stoi(value());if(lim.threads<0)throw runtime_error("--threads must be >= 0");}else if(a=="--max-memory"){lim.maxBytes=stoull(value())<<20;}else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--beam-width"){lim.beamWidth=stoull(value());if(lim.beamWidth<1)throw runtime_error("--beam-width must be at least 1");}else if(a=="--beam-heuristic"){string v=value();if(v!="static"&&v!="dynamic")throw runtime_error("--beam-heuristic must be static or dynamic");lim.beamDynamic=v=="dynamic";}else if(a=="--seed")lim.seed=stoull(value());else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantK3=false;else if(a.rfind("--",0)==0)throw runtime_error("unknown option: "+a);else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
+   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states"){lim.maxStates=stoull(value());if(lim.maxStates==0)lim.maxStates=UINT64_MAX;}else if(a=="--threads"){lim.threads=stoi(value());if(lim.threads<0)throw runtime_error("--threads must be >= 0");}else if(a=="--max-memory"){lim.maxBytes=stoull(value())<<20;}else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--beam-width"){lim.beamWidth=stoull(value());if(lim.beamWidth<1)throw runtime_error("--beam-width must be at least 1");}else if(a=="--beam-heuristic"){string v=value();if(v!="static"&&v!="dynamic")throw runtime_error("--beam-heuristic must be static or dynamic");lim.beamDynamic=v=="dynamic";}else if(a=="--seed")lim.seed=stoull(value());else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantCode=false;else if(a.rfind("--",0)==0)throw runtime_error("unknown option: "+a);else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
  }
  return c;
 }
-struct Outcome{int exit=1;string status,algorithm,solution,k3,error,text;bool hasSolution=false,hasLowerScore=false;long long score=0,lowerScore=0;int moves=0,lowerMoves=0;uint64_t states=0,transitions=0,memMB=0;double elapsed=0;};
+struct Outcome{int exit=1;string status,algorithm,solution,k4,error,text;bool hasSolution=false,hasLowerScore=false;long long score=0,lowerScore=0;int moves=0,lowerMoves=0;uint64_t states=0,transitions=0,memMB=0;double elapsed=0;};
 static string jstr(const string&s){string r="\"";for(unsigned char ch:s){if(ch=='"'||ch=='\\'){r+='\\';r+=(char)ch;}else if(ch<0x20){char b[8];snprintf(b,sizeof b,"\\u%04x",ch);r+=b;}else r+=(char)ch;}return r+"\"";}
-static string toJson(const Outcome&o){ostringstream j;j<<"{\"exit\":"<<o.exit<<",\"status\":"<<jstr(o.status)<<",\"hasSolution\":"<<(o.hasSolution?"true":"false")<<",\"score\":"<<o.score<<",\"moves\":"<<o.moves<<",\"solution\":"<<jstr(o.solution)<<",\"k3\":"<<jstr(o.k3)<<",\"lowerMoves\":"<<o.lowerMoves<<",\"hasLowerScore\":"<<(o.hasLowerScore?"true":"false")<<",\"lowerScore\":"<<o.lowerScore<<",\"algorithm\":"<<jstr(o.algorithm)<<",\"states\":"<<o.states<<",\"transitions\":"<<o.transitions<<",\"memoryMB\":"<<o.memMB<<",\"elapsed\":"<<o.elapsed<<",\"error\":"<<jstr(o.error)<<"}";return j.str();}
+static string toJson(const Outcome&o){ostringstream j;j<<"{\"exit\":"<<o.exit<<",\"status\":"<<jstr(o.status)<<",\"hasSolution\":"<<(o.hasSolution?"true":"false")<<",\"score\":"<<o.score<<",\"moves\":"<<o.moves<<",\"solution\":"<<jstr(o.solution)<<",\"k4\":"<<jstr(o.k4)<<",\"lowerMoves\":"<<o.lowerMoves<<",\"hasLowerScore\":"<<(o.hasLowerScore?"true":"false")<<",\"lowerScore\":"<<o.lowerScore<<",\"algorithm\":"<<jstr(o.algorithm)<<",\"states\":"<<o.states<<",\"transitions\":"<<o.transitions<<",\"memoryMB\":"<<o.memMB<<",\"elapsed\":"<<o.elapsed<<",\"error\":"<<jstr(o.error)<<"}";return j.str();}
 // Solves one board code. Writes progress lines to LOG; never throws (errors go to Outcome::error, exit 1).
-static Outcome solveBoard(const string&input,Limits lim,bool wantK3){
+static Outcome solveBoard(const string&input,Limits lim,bool wantCode){
  Outcome o;ostringstream os;
  try{
   o.exit=[&]()->int{
@@ -857,7 +925,7 @@ static Outcome solveBoard(const string&input,Limits lim,bool wantK3){
    t=1;
 #endif
    lim.threads=t;}
-  Board b=parseCode(input);LOG<<"board "<<b.id<<" ("<<b.w<<"x"<<b.h<<") "<<b.n<<" balls, "<<b.hexes.size()<<" hexes, "<<b.switches.size()<<" switches\n";
+  Board b=parseCode(input);LOG<<"board ("<<b.w<<"x"<<b.h<<") "<<b.n<<" balls, "<<b.hexes.size()<<" hexes, "<<b.switches.size()<<" switches\n";
   const int userDepth=lim.maxDepth;
   if(lim.scoreCap&&b.hexes.empty()&&lim.maxScore>=1){ // without hexes the score is the move count, so the score bound is a depth bound (also usable by the bidirectional search)
    lim.maxDepth=lim.maxDepth>0?(int)min<long long>(lim.maxDepth,lim.maxScore):(int)min<long long>(lim.maxScore,1000000);
@@ -876,8 +944,8 @@ static Outcome solveBoard(const string&input,Limits lim,bool wantK3){
   o.algorithm=res.algorithm;o.states=res.states;o.transitions=res.transitions;o.memMB=res.bytes>>20;o.elapsed=timer.elapsed();
   os<<"Algorithm: "<<res.algorithm<<"\n"<<(userDepth>0?"Depth limit: "+to_string(userDepth)+"\n":string())+(lim.scoreCap?"Score limit: "+to_string(lim.maxScore)+"\n":string())<<"States: "<<res.states<<"\nTransitions: "<<res.transitions<<"\nMemory: "<<(res.bytes>>20)<<" MB\nElapsed: "<<timer.elapsed()<<" s\n";
   if(res.solved){int score;auto route=labelAndVerify(b,res.path,score);bool optimal=res.exhaustive;
-   o.status=optimal?"OPTIMAL":"SOLUTION FOUND (optimality not certified)";o.hasSolution=true;o.score=score;o.moves=(int)route.size();o.solution=formatMoves(b,route);if(wantK3&&!route.empty())o.k3=codeWithSolution(b,route);
-   os<<o.status<<"\nScore: "<<score<<"\nMoves: "<<o.moves<<"\nSolution: "<<o.solution<<"\n";if(!o.k3.empty())os<<"K3: "<<o.k3<<"\n";
+   o.status=optimal?"OPTIMAL":"SOLUTION FOUND (optimality not certified)";o.hasSolution=true;o.score=score;o.moves=(int)route.size();o.solution=formatMoves(b,route);if(wantCode)o.k4=codeK4(b);
+   os<<o.status<<"\nScore: "<<score<<"\nMoves: "<<o.moves<<"\nSolution: "<<o.solution<<"\n";if(!o.k4.empty())os<<"K4: "<<o.k4<<"\n";
    if(!optimal&&res.provenMoves>0&&res.provenMoves<(int)route.size()){o.lowerMoves=res.provenMoves+1;os<<"Lower bound: at least "<<o.lowerMoves<<" moves\n";}
    if(!optimal)LOG<<"WARNING: search did not complete the layers needed to certify optimality\n";
    return optimal?0:2;
@@ -901,7 +969,7 @@ int main(int argc,char**argv){
   string input=c.input;
   if(input.empty()&&c.level.empty())throw runtime_error("missing board code/file or --level");
   if(!c.level.empty())input=catalogCode(c.level,c.catalog);else if(input=="-"){input=string((istreambuf_iterator<char>(cin)),{});}else input=readInput(input);
-  Outcome o=solveBoard(input,c.lim,c.wantK3);
+  Outcome o=solveBoard(input,c.lim,c.wantCode);
   if(c.json)cout<<toJson(o)<<"\n";else cout<<o.text;
   return o.exit;
  }catch(const exception&e){cerr<<"Error: "<<e.what()<<"\n";return 1;}
@@ -914,7 +982,7 @@ EM_JS_DEPS(kun_progress_deps,"$UTF8ToString");
 namespace{struct LineBuf:streambuf{string cur;int overflow(int ch)override{if(ch=='\n'){kun_progress(cur.c_str());cur.clear();}else if(ch!=EOF)cur+=(char)ch;return ch==EOF?0:ch;}};}
 extern "C" EMSCRIPTEN_KEEPALIVE const char* kun_solve(const char*code,const char*flags){
  static string out;LineBuf lb;ostream ls(&lb);g_log=&ls;Outcome o;
- try{vector<string> args;istringstream is(flags?flags:"");string w;while(is>>w)args.push_back(w);Cli c=parseArgs(args);o=solveBoard(code?code:"",c.lim,c.wantK3);}
+ try{vector<string> args;istringstream is(flags?flags:"");string w;while(is>>w)args.push_back(w);Cli c=parseArgs(args);o=solveBoard(code?code:"",c.lim,c.wantCode);}
  catch(const exception&e){o.error=e.what();o.exit=1;}
  g_log=&cerr;out=toJson(o);return out.c_str();
 }

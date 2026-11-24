@@ -1,6 +1,6 @@
 # Kunundrum Screenshot Parser v0.7
 
-Offline Python/OpenCV screenshot-to-K3 converter. **Node.js is not required for `parse.py`.**
+Offline Python/OpenCV screenshot converter (frozen; `parser.js` is the definitive parser and boards are encoded as K4 by the app). **Node.js is not required for `parse.py`.**
 
 **Parser development is concluded (2026-11-22; the full 300-level catalog was built with it).** **`parser.js` is the definitive parser** (with generated `parser_data.js`; dependency-free, used by the web app via Board data → Import screenshot). `parse.py` is frozen and historical: it is no longer updated (no wall color, tunnels, teleport endpoints or rotating-arrow orientation) and on any difference `parser.js` wins. Its helpers remain for comparing the OpenCV primitives: `python3 test_primitives.py` checks the re-implemented OpenCV primitives, `python3 compare_js.py Screenshots/` diffs both parsers' labels, measurements, boards and warnings. Re-run `python3 build_data.py` after changing `arrow_shapes/` or `arrow_templates/`.
 
@@ -24,7 +24,6 @@ For each screenshot, writes:
 - `NAME.json` — editable board description
 - `NAME_review.png` — original with classification overlays
 - `NAME_diagnostics.json` — detected grid, warnings, per-cell measurements
-- `NAME.k3.txt` — always generated (unless `--no-code`), even when warnings remain; guessed values are reported as warnings
 
 The command's batch summary separates **recognition warnings** (incorrect or
 ambiguous visual objects) from **mechanics pending** (e.g. switch mapping and
@@ -74,21 +73,6 @@ and `switches`. Other accepted labels include `outside`, `floor`, `wall`,
 `teleport_B`, `gate_W1_on`, `gate_W1_off`, `switch_S1`, and
 `ball_G+goal_R` (ball occupying a differently colored goal).
 
-## K3 encoding without Node.js
-
-The new `encode_k3.py` implements the K3 binary board serializer in Python:
-
-    python3 encode_k3.py parsed/8-2.json
-
-`parse.py` invokes it automatically after all warnings have been cleared. The
-Python serializer has been compared byte-for-byte with Replay Lab's official
-JavaScript K3 encoder, including a board with an embedded solution. Unlike the
-app's JavaScript encoder, the Python serializer **does not simulate a saved
-solution**: replay/check it in Replay Lab before relying on it.
-
-`encode_k3.js` loads the repository's shared `engine.js` and `codec.js` (repo root) for optional independent
-cross-checking; it is not part of the required execution path.
-
 ## Improvements since v0.2
 
 - Grid detection now considers *all* cyan-outline components, fixing boards
@@ -98,7 +82,6 @@ cross-checking; it is not part of the required execution path.
 - Recognizes a ball already occupying a goal of a different color.
 - Better distinguishes cyan-outlined holes from ordinary floor.
 - Separates visually ambiguous cells from screenshot-underdetermined mechanics.
-- Emits K3 directly in Python without requiring `node` or `nodejs`.
 
 ## Regression testing
 
@@ -115,7 +98,7 @@ new sprites, and nonstandard scaling.
 - Plain grey metal = inactive gate (`gate_inactive`); metal with a yellow/brown striped frame = active gate (`gate_detected`). Inactive teleports (grey concentric circles on metal) are `teleport_*_inactive` (detected by the swirl in the tile's corners, `metalSwirl`; a ball on one is `ball_X+teleport_*_inactive`): colour is unknown, so `*` is guessed.
 - Red chevrons are detected as rotating arrows (direction not determined; blue fixed arrows as before).
 - Floor vs exterior now also uses outline topology (crossing a neon edge toggles inside/outside, enclosed holes stay outside), because dark themes have floors as black as the exterior.
-- A K3 code is always written (unless `--no-code`). Switches without an override get a mapping guessed by proximity: each switchable element goes to the nearest switch (Manhattan distance, ties to the first switch in lexicographic order), then empty switches take the nearest element from a switch holding several. The guess is reported as a warning; `--overrides` still wins.
+- Switches without an override get a mapping guessed by proximity: each switchable element goes to the nearest switch (Manhattan distance, ties to the first switch in lexicographic order), then empty switches take the nearest element from a switch holding several. The guess is reported as a warning; `--overrides` still wins.
 - Known gaps: a ball sitting on a goal of a similar hue (e.g. green ball on a cyan ring in 11.9) is misread; rotating-arrow direction; tunnel openings (white markers on an outline gap) are detected and paired by a guess; K3 of a board the engine rejects (e.g. missing goals) is written but will not open in the app.
 
 ## Changes in v0.6

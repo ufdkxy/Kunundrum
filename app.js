@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.20.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '4.0.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -876,7 +876,7 @@ function levelsKey(event) {
   event.preventDefault();
   selectCard(next);
 }
-// Export dialog: a full permalink and a K3 board code, both optionally carrying the current route.
+// Export dialog: a full permalink and a K4 board code (board only); the link optionally carries the current route.
 let shareRoute = false;
 function shareLink(withRoute) {
   const hasRoute = withRoute && frames.length > 1;
@@ -887,8 +887,7 @@ function shareLink(withRoute) {
   return OFFLINE?location.href.split(/[?#]/)[0]+new URL(makeShareUrl('https://kunundrum.invalid/',input)).hash:makeShareUrl(location.href,input);
 }
 function shareCode(withRoute) {
-  const {solution:_saved,...bareBoard} = board;
-  return encodeBoard(withRoute&&frames.length>1?{...bareBoard,solution:getNotation()}:bareBoard);
+  return encodeBoard(board); // K4 holds the board only; the route travels in the link
 }
 function renderShare() {
   const canRoute=frames.length>1, withRoute=shareRoute&&canRoute, n=frames.length-1;
@@ -898,7 +897,7 @@ function renderShare() {
   let link='',code='',error='';
   try{link=shareLink(withRoute);code=shareCode(withRoute);}catch(e){error=e.message;}
   $('share-link').value=link;$('share-code').value=code;
-  $('share-code-help').textContent=error||('Paste in Import'+(withRoute?'. The route is stored as the saved solution of the board.':'.'));
+  $('share-code-help').textContent=error||'Board only; paste it in Import.';
   $('share-link-help').textContent=error||(withRoute?`Opens at move ${cursor}.`:'');
 }
 async function copyText(text,success) {
@@ -998,7 +997,7 @@ $('open-help').addEventListener('click',()=>openDialog('help-dialog'));
 $('open-share').addEventListener('click',()=>{shareRoute=true;$('share-include-route').checked=true;renderShare();openDialog('share-dialog');});
 $('share-include-route').addEventListener('change',event=>{shareRoute=event.target.checked;renderShare();});
 $('copy-link').addEventListener('click',()=>copyText($('share-link').value,'Permalink copied.'));
-$('copy-code').addEventListener('click',()=>copyText($('share-code').value,'K3 code copied.'));
+$('copy-code').addEventListener('click',()=>copyText($('share-code').value,'K4 code copied.'));
 for(const id of ['share-link','share-code'])$(id).addEventListener('click',event=>event.target.select());
 $('open-board-data').addEventListener('click',()=>{resetBoardInput();openDialog('board-dialog');loadParser().then(()=>{$('parser-version').textContent='v'+KunParser.PARSER_VERSION;},()=>{});});
 $('load-board').addEventListener('click',importBoard);
@@ -1108,7 +1107,7 @@ window.KunundrumHost = {
   play:draft=>{adoptEdited(draft);},
   resume:()=>{render();},
   toast:message=>toast(message),
-  // Solver dialog (solver-ui.js): the current board as a K3 code without a route, plus the score and move count of the CURRENT route (the full move history, `frames`, not just the moves up to the cursor and independent of the Replay text box) when it finishes the board. Stops any playback.
+  // Solver dialog (solver-ui.js): the current board as a K4 code, plus the score and move count of the CURRENT route (the full move history, `frames`, not just the moves up to the cursor and independent of the Replay text box) when it finishes the board. Stops any playback.
   prepareSolver:()=>{
     stopPlayback();
     const {solution,...bare}=board,info={code:encodeBoard(bare),title:board.title,id:currentPresetId,route:null};

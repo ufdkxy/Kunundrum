@@ -1,11 +1,10 @@
-/* K3 adaptive binary board and solution codec, plus the K4 text board code (K4.md). */
+/* K4 text board code (K4.md), compact binary routes, and share links. */
 'use strict';
 const Codec = (() => {
 const { validateBoard,parseSolution,resolveBallId,createInitialState,applyMove,formatSolution } = Core;
 
 /** A code identifies a board, independent of any later moves made on it. */
-const BOARD_CODE_PREFIX = "K3.";
-const MAX_BOARD_CODE_LENGTH = 32_768;
+const MAX_BOARD_CODE_LENGTH = 1_000;
 const MAX_MOVES_LENGTH = 10_000;
 const MAX_URL_LENGTH = 131_072;
 const MAX_REPLAY_POSITION = 10_000;
@@ -33,7 +32,7 @@ function fromBase64Url(payload        )             {
   return bytes;
 }
 
-/** K3 move stream: varint number of moves; one byte choice mode; packed move
+/** Compact route (binary move stream): varint number of moves; one byte choice mode; packed move
  * indices (ball index * 4 + direction, ceil(log2(ballCount*4)) bits each).
  * Choice mode 0: no rotating-arrow annotations. Choice mode 1: uint choice
  * count for each move, followed by 2-bit packed choices. All pads are zero.
@@ -41,7 +40,7 @@ function fromBase64Url(payload        )             {
  */
 function compactSolution(board, notation) {
   const tokens = parseSolution(notation);
-  if (!tokens.length || tokens.length > 10000) throw new Error('Invalid K3 solution move count.');
+  if (!tokens.length || tokens.length > 10000) throw new Error('Invalid compact route solution move count.');
   const directionIndex = 'udlr';
   const bitsPerMove = Math.ceil(Math.log2(board.balls.length * 4));
   const out = [];
@@ -49,7 +48,7 @@ function compactSolution(board, notation) {
   const pushBits = (values, width) => {
     let current=0,used=0;
     for(const value of values) {
-      if(value >= 2 ** width) throw new Error('Invalid K3 packed move.');
+      if(value >= 2 ** width) throw new Error('Invalid compact route packed move.');
       for(let k=width-1;k>=0;k--) {
         current=(current<<1)|((value>>>k)&1); used++;
         if(used===8) {out.push(current);current=0;used=0;}
@@ -64,7 +63,7 @@ function compactSolution(board, notation) {
   for(const token of tokens) {
     const id=resolveBallId(state,token.identifier);
     const bi=board.balls.findIndex(b=>b.id===id);
-    if(bi<0) throw new Error('Unknown K3 ball.');
+    if(bi<0) throw new Error('Unknown ball.');
     moves.push(bi*4+directionIndex.indexOf(token.direction));
     choices.push(token.choices.map(c=>directionIndex.indexOf(c)));
     const result=applyMove(state,board,id,token.direction,token.choices);
@@ -83,11 +82,11 @@ function compactSolution(board, notation) {
 }
 function expandSolution(board, bytes) {
   let offset=0;
-  const readByte=()=>{if(offset>=bytes.length)throw new Error('Truncated K3 solution.');return bytes[offset++];};
-  const readUint=()=>{let value=0,m=1;for(let i=0;i<8;i++){const b=readByte();value+=(b&127)*m;if(!Number.isSafeInteger(value))throw new Error('Invalid K3 move count.');if(!(b&128))return value;m*=128;}throw new Error('Invalid K3 integer.');};
+  const readByte=()=>{if(offset>=bytes.length)throw new Error('Truncated compact route solution.');return bytes[offset++];};
+  const readUint=()=>{let value=0,m=1;for(let i=0;i<8;i++){const b=readByte();value+=(b&127)*m;if(!Number.isSafeInteger(value))throw new Error('Invalid compact route move count.');if(!(b&128))return value;m*=128;}throw new Error('Invalid compact route integer.');};
   const readBits=(count,width)=>{
     const size=Math.ceil(count*width/8);
-    if(offset+size>bytes.length)throw new Error('Truncated K3 bitstream.');
+    if(offset+size>bytes.length)throw new Error('Truncated compact route bitstream.');
     const result=[];
     for(let i=0;i<count;i++){
       let v=0;
@@ -99,174 +98,35 @@ function expandSolution(board, bytes) {
     }
     if(size && count*width%8) {
       const padding=8-count*width%8;
-      if(bytes[offset+size-1]&((1<<padding)-1))throw new Error('Nonzero K3 padding.');
+      if(bytes[offset+size-1]&((1<<padding)-1))throw new Error('Nonzero compact route padding.');
     }
     offset+=size;
     return result;
   };
   const count=readUint();
-  if(!count||count>10000)throw new Error('Invalid K3 move count.');
-  const mode=readByte();if(mode>1)throw new Error('Unsupported K3 choice mode.');
+  if(!count||count>10000)throw new Error('Invalid compact route move count.');
+  const mode=readByte();if(mode>1)throw new Error('Unsupported compact route choice mode.');
   const values=readBits(count,Math.ceil(Math.log2(board.balls.length*4)));
   const counts=mode?Array.from({length:count},readUint):Array(count).fill(0);
   const total=counts.reduce((a,b)=>a+b,0);
   if(total>10000)throw new Error('Too many rotating-arrow choices.');
   const allChoices=mode?readBits(total,2):[];
-  if(offset!==bytes.length)throw new Error('Unexpected K3 solution bytes.');
+  if(offset!==bytes.length)throw new Error('Unexpected compact route solution bytes.');
   let ci=0,state=createInitialState(board);
   const records=[];
   for(let i=0;i<count;i++) {
     const value=values[i],bi=Math.floor(value/4),direction='udlr'[value%4];
-    if(bi>=board.balls.length)throw new Error('Invalid K3 ball index.');
+    if(bi>=board.balls.length)throw new Error('Invalid compact route ball index.');
     const choices=allChoices.slice(ci,ci+counts[i]).map(v=>'udlr'[v]);ci+=counts[i];
     const result=applyMove(state,board,board.balls[bi].id,direction,choices);
-    if(result.kind!=='ok')throw new Error(`Invalid K3 saved solution at move ${i+1}: ${result.message}`);
+    if(result.kind!=='ok')throw new Error(`Invalid compact route saved solution at move ${i+1}: ${result.message}`);
     records.push(result.record);state=result.state;
   }
   return formatSolution(records);
 }
 
-/** K3 is a compact, lossless binary encoding of the validated board.
- * Positions are zero-based cell offsets; integers are unsigned LEB128.
- * Strings use a small back-reference dictionary, including feature IDs.
- * The format is self-contained; no server, compression library or catalog required.
- */
 const CODE_COLORS = 'RGBY*';
 const CODE_DIRECTIONS = 'udlr';
-const KNOWN_FLAGS = 31; // bit 0 description, bit 1 solution, bit 2 wall color, bit 3 tunnels, bit 4 arrow types
-const ARROW_TYPE_DIGITS = { flip: '0', cw: '1', ccw: '2' }; // ternary digit per rotating arrow, in arrow-list order
-function binaryBoard(board) {
-  const bytes = [0xB3, board.width, board.height];
-  const strings = new Map();
-  const encoder = new TextEncoder();
-  const uint = value => {
-    if (!Number.isSafeInteger(value) || value < 0) throw new Error('Invalid binary board integer.');
-    do { const piece = value % 128; value = Math.floor(value / 128); bytes.push(piece | (value ? 128 : 0)); } while (value);
-  };
-  const str = value => {
-    if (strings.has(value)) { uint(strings.get(value) * 2 + 1); return; }
-    const encoded = encoder.encode(value);
-    uint(encoded.length * 2); bytes.push(...encoded); strings.set(value, strings.size);
-  };
-  const at = point => uint((point.y - 1) * board.width + point.x - 1);
-  const list = (items, fn) => { uint(items.length); items.forEach(fn); };
-  const color = value => uint(CODE_COLORS.indexOf(value));
-  const tunnels = board.tunnels ?? [];
-  // Arrow types are stored only when some rotating arrow is not clockwise (all-clockwise boards keep their old codes byte for byte).
-  const rotatingArrows = board.arrows.filter(a => a.rotating), hasTypes = rotatingArrows.some(a => a.type);
-  uint((board.description !== undefined ? 1 : 0) | (board.solution !== undefined ? 2 : 0) | (board.wallColor !== undefined ? 4 : 0) | (tunnels.length ? 8 : 0) | (hasTypes ? 16 : 0));
-  str(board.id); str(board.title);
-  if (board.description !== undefined) str(board.description);
-  if (board.wallColor !== undefined) color(board.wallColor); // flag bit 4: cosmetic wall color index (RGBY); omitted for blue
-  if (board.solution !== undefined) {
-    const packed=compactSolution(board,board.solution);uint(packed.length);bytes.push(...packed);
-  }
-  list(board.walls, at);
-  list(board.balls, p => { at(p); color(p.color); });
-  list(board.goals, p => { at(p); color(p.color); });
-  list(board.arrows, p => { at(p); uint(CODE_DIRECTIONS.indexOf(p.direction) * 2 + (p.rotating ? 1 : 0)); });
-  list(board.gates, p => { at(p); str(p.id); uint(p.active ? 1 : 0); });
-  list(board.switches, p => {
-    at(p); str(p.id); uint(p.on ? 1 : 0);
-    list(p.controls, str);
-  });
-  list(board.teleports, p => { at(p); str(p.id); color(p.color); uint(p.active ? 1 : 0); });
-  list(board.hexes, p => { at(p); str(p.id); uint(p.value < 0 ? -2 * p.value - 1 : 2 * p.value); });
-  if (tunnels.length) list(tunnels, t => { for (const e of [t.a, t.b]) { at(e); uint(CODE_DIRECTIONS.indexOf(e.side)); } }); // flag bit 3: one record per pair (two openings: cell, side)
-  if (hasTypes) str(rotatingArrows.map(a => ARROW_TYPE_DIGITS[a.type ?? 'cw']).join('')); // flag bit 4: one ternary digit per rotating arrow
-  return new Uint8Array(bytes);
-}
-function unbinaryBoard(bytes, problems) {
-  let offset = 0;
-  const strings = [];
-  const decoder = new TextDecoder('utf-8', { fatal: true });
-  const byte = () => {
-    if (offset >= bytes.length) throw new Error('Truncated K3 board code.');
-    return bytes[offset++];
-  };
-  const uint = () => {
-    let value = 0, multiplier = 1;
-    for (let i = 0; i < 8; i++) {
-      const b = byte();
-      value += (b & 127) * multiplier;
-      if (!Number.isSafeInteger(value)) throw new Error('Invalid K3 integer.');
-      if (!(b & 128)) return value;
-      multiplier *= 128;
-    }
-    throw new Error('Invalid K3 variable-length integer.');
-  };
-  const str = () => {
-    const tag = uint();
-    if (tag & 1) {
-      const value = strings[(tag - 1) / 2];
-      if (value === undefined) throw new Error('Invalid K3 string reference.');
-      return value;
-    }
-    const length = tag / 2;
-    if (length > 20000 || offset + length > bytes.length) throw new Error('Invalid K3 string length.');
-    const value = decoder.decode(bytes.subarray(offset, offset + length));
-    offset += length;
-    strings.push(value);
-    return value;
-  };
-  const magic=byte();if (magic!==0xB3) throw new Error('Invalid K3 board header.');
-  const width = byte(), height = byte(), flags = uint();
-  if (!(width >= 1 && width <= 32 && height >= 1 && height <= 32) || (flags & ~KNOWN_FLAGS)) throw new Error('Invalid K3 board dimensions or flags.');
-  const at = () => {
-    const index = uint();
-    if (index >= width * height) throw new Error('Invalid K3 board position.');
-    return { x: index % width + 1, y: Math.floor(index / width) + 1 };
-  };
-  const list = fn => {
-    const count = uint();
-    if (count > 4096) throw new Error('K3 board feature count exceeds limit.');
-    return Array.from({length:count}, fn);
-  };
-  const color = (universal = false) => {
-    const i = uint();
-    if (i >= (universal ? 5 : 4)) throw new Error('Invalid K3 color.');
-    return CODE_COLORS[i];
-  };
-  const raw = {width, height, id:str(), title:str()};
-  if (flags & 1) raw.description = str();
-  if (flags & 4) { const c = uint(); if (c > 3) throw new Error('Invalid K3 wall color.'); raw.wallColor = CODE_COLORS[c]; }
-  let solutionBytes;
-  if (flags & 2) {
-    const size=uint();if(size>20000||offset+size>bytes.length)throw new Error('Invalid K3 solution length.');solutionBytes=bytes.subarray(offset,offset+size);offset+=size;
-  }
-  raw.walls = list(at);
-  raw.balls = list(() => ({...at(), color:color()}));
-  raw.goals = list(() => ({...at(), color:color()}));
-  raw.arrows = list(() => {
-    const p = at(), option = uint();
-    if (option > 7) throw new Error('Invalid K3 arrow.');
-    return {...p, direction:CODE_DIRECTIONS[Math.floor(option / 2)], ...(option % 2 ? {rotating:true} : {})};
-  });
-  raw.gates = list(() => ({...at(), id:str(), active:bool()}));
-  function bool() { const v=uint(); if (v > 1) throw new Error('Invalid K3 boolean.'); return !!v; }
-  raw.switches = list(() => {
-    const p = at(), id = str(), on = bool(), controls = list(str);
-    return {...p,id,controls,...(on ? {on:true} : {})};
-  });
-  raw.teleports = list(() => ({...at(),id:str(),color:color(true),active:bool()}));
-  raw.hexes = list(() => { const p=at(),id=str(),value=uint();return {...p,id,value:value % 2 ? -(value+1)/2 : value/2}; });
-  if (flags & 8) {
-    const end = () => { const p = at(), s = uint(); if (s > 3) throw new Error('Invalid K3 tunnel side.'); return {...p, side:CODE_DIRECTIONS[s]}; };
-    raw.tunnels = list(() => ({a:end(), b:end()}));
-  }
-  if (flags & 16) {
-    const digits = str(), rotating = raw.arrows.filter(a => a.rotating);
-    if (!/^[012]+$/.test(digits) || digits.length !== rotating.length) throw new Error('Invalid K3 rotating arrow types.');
-    rotating.forEach((a, i) => { const type = Object.keys(ARROW_TYPE_DIGITS).find(k => ARROW_TYPE_DIGITS[k] === digits[i]); if (type !== 'cw') a.type = type; });
-  }
-  if (offset !== bytes.length) throw new Error('Unexpected data after K3 board.');
-  if(solutionBytes){
-    const own=[];const checked=validateBoard(raw,own);
-    if(own.length){if(!problems)validateBoard(raw);problems.push('The embedded solution was dropped because the board is invalid.');}
-    else raw.solution=expandSolution(checked,solutionBytes);
-  }
-  return validateBoard(raw,problems);
-}
 /* ---- K4: short, canonical, alphanumeric board code (board data only; see K4.md for the specification) ---- */
 const N62 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const K4_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'; // grid symbols in K4.md §3.2 order (offsets below)
@@ -469,9 +329,10 @@ function decodeK4(code, problems) {
   return board;
 }
 
-function encodeBoard(board       )         {
-  const code = BOARD_CODE_PREFIX + toBase64Url(binaryBoard(validateBoard(board)));
-  if (code.length > MAX_BOARD_CODE_LENGTH) throw new Error('This board is too large for a shareable code (maximum 32 KB).');
+/** The K4 code identifies the board only (no id, title, description or solution). */
+function encodeBoard(board)         {
+  const code = encodeK4(board);
+  if (code.length > MAX_BOARD_CODE_LENGTH) throw new Error('This board is too large for a shareable code.');
   return code;
 }
 
@@ -501,17 +362,12 @@ function decodeBoard(input        , problems         )        {
   }
 
   if (code.length > MAX_BOARD_CODE_LENGTH) {
-    throw new Error("The board data is too large (maximum 32 KB).");
+    throw new Error("The board data is too large (maximum 1,000 characters).");
   }
   if (code.startsWith("{")) return parseJsonBoard(code, problems);
   if (code.startsWith(K4_PREFIX)) return decodeK4(code, problems);
-  if (code.startsWith('K3.')) {
-    const bytes=fromBase64Url(code.slice(3));
-    if(bytes[0] !== 0xB3)throw new Error('Invalid K3 board header.');
-    return unbinaryBoard(bytes, problems);
-  }
-  if (/^K\d+\./.test(code)) throw new Error('Unsupported board-code version; this player supports K3 and K4.');
-  throw new Error('A board code must start with K3. or K4.');
+  if (/^K\d+\./.test(code)) throw new Error('Unsupported board-code version; this player supports K4.');
+  throw new Error('A board code must start with K4.');
 }
 
 function parseUrl(input        )      {
@@ -568,7 +424,7 @@ function readShareUrl(input        )             {
 
   if (boardCode !== undefined) {
     if (!boardCode || boardCode.length > MAX_BOARD_CODE_LENGTH) {
-      throw new Error("The shared board code is empty or too large (maximum 32 KB).");
+      throw new Error("The shared board code is empty or too large (maximum 1,000 characters).");
     }
     result.boardCode = boardCode;
   }
@@ -579,7 +435,7 @@ function readShareUrl(input        )             {
   if (moves !== undefined && route !== undefined) throw new Error('Supply either moves or compact route, not both.');
   if (moves !== undefined) result.moves = checkMoves(moves);
   if (route !== undefined) {
-    if (route.length > MAX_MOVES_LENGTH || !/^[A-Za-z0-9_-]+$/.test(route)) throw new Error('Invalid compact K3 route.');
+    if (route.length > MAX_MOVES_LENGTH || !/^[A-Za-z0-9_-]+$/.test(route)) throw new Error('Invalid compact route.');
     result.route=route;
   }
   if (atText !== undefined) {
@@ -617,9 +473,9 @@ function makeShareUrl(baseUrl        , input            )         {
 }
 
 function decodeRoute(board, code) {
-  if(typeof code!=='string'||code.length>MAX_MOVES_LENGTH)throw new Error('Invalid K3 route.');
+  if(typeof code!=='string'||code.length>MAX_MOVES_LENGTH)throw new Error('Invalid compact route route.');
   return expandSolution(validateBoard(board),fromBase64Url(code));
 }
-return {encodeBoard,encodeBoardK4:encodeK4,decodeBoard,decodeRoute,readShareUrl,makeShareUrl};
+return {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl};
 })();
 

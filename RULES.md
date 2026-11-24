@@ -40,7 +40,7 @@ After a legal move finishes at its **final** cell:
 - If that cell contains a switch, the switch fires **once at the end of the move**, not merely when crossed. Its visual `on` flag toggles; the flag is not itself used to determine move legality.
 - A switch controls one list, `controls`, of gate and teleport IDs (gate IDs `G1`, …; teleport IDs `T1`, …; switch IDs `S1`, …). Switches with the same non-empty list are identical: pressing any of them toggles the whole set once, and they share one indicator, so the indicator is derived, not independent data (a set takes the `on` value of its lowest-numbered switch when input disagrees). Lists are expected to be identical or disjoint. Elements of one list may have different initial active states; they all flip together.
 - **Blocked closing rule:** if any currently inactive gate in the switch's list would become active under a ball, the switch **cannot change state**: none of its gates or teleports toggle, and its visual `on` flag stays as it is.
-- A move changes the score by `1 + sum(values of hexes first consumed during that move)`. Each hex may contribute its signed value (`-10000` through `10000`, excluding zero) **at most once per run**, even if traversed repeatedly. Score starts at `0`; moves start at `0`.
+- A move changes the score by `1 + sum(values of hexes first consumed during that move)`. Each hex may contribute its signed value (one of `-20, -15, -10, -5, 5, 10, 15, 20`) **at most once per run**, even if traversed repeatedly. Score starts at `0`; moves start at `0`.
 
 `Core.isComplete(state)` means every ball is locked, and the puzzle is solved exactly then. There is no score threshold: the score may be zero or negative. **Objective:** each puzzle is solved for the **lowest possible score**: the number of moves plus the one-time hex bonuses and penalties collected along the route (lower is better, so a negative hex is a bonus and a positive hex a penalty). The solver minimizes the score, and among equal scores the number of moves. On boards without hexes the score equals the move count.
 
@@ -100,6 +100,10 @@ Additional feature shapes:
 
 The four snippets above illustrate arrow (a rotating arrow may add `"type": "ccw"` or `"flip"`; clockwise is the default and is omitted), teleport, hexagon and tunnel (pair of openings) entries respectively; insert them into the appropriate arrays, **not all on top of existing features**. Validation limits include 1–32 cells per dimension, 1–128 balls, up to 4,096 entries per feature array, and valid references from switches to gate and teleport IDs (a gate and a teleport may not share an ID). Duplicate feature IDs, overlapping floor features, insufficient goals by color, and initial balls inside fixed/active walls are rejected.
 
+### Board limits (K4)
+
+At most 15 x 15 cells, 61 balls, 31 tunnel pairs and 61 distinct switch control lists; hexagon values are limited to the eight values above; a tunnel opening faces a wall cell (at most one opening per wall cell) or the board edge; every gate and every inactive teleport is controlled by a switch, each switch controls at least one element, and control lists are identical or disjoint. See [K4.md](K4.md).
+
 ## 6a. How features look in the game (for screenshot parsing)
 
 - **Arrows:** red chevrons are **rotating** arrows (their type, clockwise / counterclockwise / flip, cannot be told from one screenshot, so the parser guesses clockwise and the type is supplied by hand); blue chevrons are **fixed** arrows. There are no green arrows. Chevron colours do not follow the level theme.
@@ -116,7 +120,7 @@ Tunnels and rotating arrows are implemented in `solver.cpp` (v0.17) with the sem
 ## 7. Invariants to preserve when editing mechanics
 
 1. `Core.applyMove` is immutable: failed/incomplete moves do not modify the supplied state.
-2. Initial IDs and geometry are deterministic and stable across JSON, K3, replay, and the solver.
+2. Initial IDs and geometry are deterministic and stable across JSON, K4, replay, and the solver.
 3. The switch's `on` indicator is **display state**, distinct from actual gate/teleport active flags.
 4. Locked balls remain on the board and block movement; locking only occurs at the **end** of a move (or at initialization).
 5. Teleport exits occupied by other balls block jumps, not entry; arrow, hex, teleport, then final switch/goal processing must keep the documented order.

@@ -79,7 +79,7 @@ function putProps(){
  if(match.type==='gates'){html+=select('Active',[["true","On"],["false","Off"]],String(item.active));}
  if(match.type==='switches'){html+=input('Gate/Teleport IDs',item.controls.join(', '));html+=select('Active',[["true","On"],["false","Off"]],String(!!item.on));}
  if(match.type==='teleports'){html+=select('Active',[["true","On"],["false","Off"]],String(item.active));}
- if(match.type==='hexes')html+=input('Value',item.value,'number');
+ if(match.type==='hexes')html+=select('Value',Core.HEX_VALUES.map(v=>[String(v),(v>0?'+':'')+v]),String(item.value));
  html+='<button class="secondary-button editor-delete" id="editor-delete-object" type="button">Delete object</button>';
  panel.innerHTML=html;
 }
@@ -353,7 +353,7 @@ function editorUndo(redo=false){
 }
 function updateDimensions(){
  const w=Number($('editor-width').value),h=Number($('editor-height').value);
- if(!Number.isInteger(w)||!Number.isInteger(h)||w<1||w>32||h<1||h>32){setStatus('Grid dimensions must be from 1 to 32.',true);return;}
+ if(!Number.isInteger(w)||!Number.isInteger(h)||w<1||w>15||h<1||h>15){setStatus('Grid dimensions must be from 1 to 15.',true);return;}
  const prev=snapshot();E.draft.width=w;E.draft.height=h;
  const inside=p=>p.x<=w&&p.y<=h;
  for(const type of keys)E.draft[type]=E.draft[type].filter(inside);
@@ -365,7 +365,7 @@ function ensureEditing(){if(!E.active)setMode(true);}
 const panel=document.getElementById('editor-panel');
 $('edit-mode-button').addEventListener('click',()=>setMode(!E.active));
 $('editor-new').addEventListener('click',()=>{ensureEditing();newBoard();});
-$('editor-save').addEventListener('click',()=>{try{const valid=Core.validateBoard(E.draft);const code=Codec.encodeBoard(valid);const output=$('editor-export-code');output.value=code;output.hidden=false;output.focus();output.select();if(navigator.clipboard?.writeText){navigator.clipboard.writeText(code).then(()=>setStatus('K3 code copied.')).catch(()=>setStatus('Select and copy the K3 code shown below.'));}else setStatus('Select and copy the K3 code shown below.');}catch(err){setStatus(err.message,true);}});
+$('editor-save').addEventListener('click',()=>{try{const valid=Core.validateBoard(E.draft);const code=Codec.encodeBoard(valid);const output=$('editor-export-code');output.value=code;output.hidden=false;output.focus();output.select();if(navigator.clipboard?.writeText){navigator.clipboard.writeText(code).then(()=>setStatus('K4 code copied.')).catch(()=>setStatus('Select and copy the K4 code shown below.'));}else setStatus('Select and copy the K4 code shown below.');}catch(err){setStatus(err.message,true);}});
 $('editor-undo').addEventListener('click',()=>editorUndo());$('editor-redo').addEventListener('click',()=>editorUndo(true));
 $('editor-resize').addEventListener('click',updateDimensions);
 $('editor-title').addEventListener('change',event=>{const prev=snapshot();E.draft.title=clean(event.target.value)||'Custom board';E.draft.id=E.draft.title.toLowerCase().replace(/[^a-z0-9_.-]/g,'-').replace(/^-+/,'').slice(0,80)||'custom';remember(prev);renderDraft();refresh();});
