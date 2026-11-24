@@ -38,7 +38,7 @@ No server or framework is required by the JavaScript sources. The native solver 
 | --- | --- | --- |
 | `engine.js` | Board normalization, validation, immutable state and move simulation, notation parsing | global `Core` |
 | `codec.js` | K3 board binary encoding/decoding; compact K3 routes; replay URLs | global `Codec` |
-| `levels.js` | Editable newline catalog data, held as a template-string assignment | `window.KUNUNDRUM_LEVEL_CODES` |
+| `levels.js` | Editable newline catalog data (`id = K4.<board code> <solution>`), held as a template-string assignment | `window.KUNUNDRUM_LEVEL_CODES` |
 | `catalog.js` | Parse and validate catalog entries and IDs | global `Collection.entries` |
 | `app.js` | Render SVG board, play/move controls, replay history, import/export, URL and localStorage state | `window.KunundrumHost` for editor integration |
 | `editor.js` | In-place board editing, object properties, drag/drop, undo/redo, validation, K3 export | `window.KunEditor` |

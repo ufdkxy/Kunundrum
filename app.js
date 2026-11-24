@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '3.19.10'; // Single source of truth; the footer reads it.
+const APP_VERSION = '3.20.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -155,8 +155,10 @@ function initHelpIcons() {
   });
 }
 
-const LEVELS = CATALOG_ENTRIES.map(({id,code}) => {
+const LEVELS = CATALOG_ENTRIES.map(({id,code,solution}) => {
   const level = decodeBoard(code);
+  // K4 stores the board only: the catalog line supplies the id, the title is derived and the solution follows the code.
+  if (code.startsWith('K4.')) return validateBoard({...level, id, title: `Level ${id}`, ...(solution ? {solution} : {})});
   if (level.id !== id) throw new Error(`Level ${id} in levels.js contains board ${level.id}; update the ID or code.`);
   return level;
 });

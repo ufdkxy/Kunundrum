@@ -11,9 +11,9 @@ const Collection = (() => {
   for (const [index, raw] of text.split(/\r?\n/).entries()) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
-    const match = /^(\d{1,2}\.(?:10|[1-9]))\s*=\s*(K3\.[A-Za-z0-9_-]+)$/.exec(line);
+    const match = /^(\d{1,2}\.(?:10|[1-9]))\s*=\s*(K3\.[A-Za-z0-9_-]+|K4\.[A-Za-z0-9]+(?:\s+\S+)?)$/.exec(line);
     if (!match) {
-      throw new Error(`Invalid levels.js line ${index + 1}. Use: 10.2 = K3.your_code`);
+      throw new Error(`Invalid levels.js line ${index + 1}. Use: 10.2 = K4.your_code solution`);
     }
     const id = match[1];
     const [chapter, level] = id.split('.').map(Number);
@@ -22,8 +22,9 @@ const Collection = (() => {
     }
     if (used.has(id)) throw new Error(`Duplicate level ${id} in levels.js.`);
     used.add(id);
-    entries.push({id, code: match[2]});
+    const [code, solution] = match[2].split(/\s+/);
+    entries.push({id, code, solution});
   }
-  if (!entries.length) throw new Error('levels.js has no levels; add a line such as 10.2 = K3.your_code.');
+  if (!entries.length) throw new Error('levels.js has no levels; add a line such as 10.2 = K4.your_code solution.');
   return {entries};
 })();
