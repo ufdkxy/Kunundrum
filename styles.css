@@ -520,6 +520,9 @@ body.edit-mode .selected-info { display:none; }
 
 .share-options { align-items: center; }
 .share-hint { color: #6c8797; font-size: 11px; }
+/* Stable export dialog height: reserve the lines whose text comes and goes with the Include route checkbox. */
+.share-options { min-height: 22px; }
+#share-code-help, #share-link-help { min-height: 1.8em; }
 .share-row { display: flex; gap: 8px; align-items: stretch; }
 .share-row .code-input { min-height: 0; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 8px 12px; line-height: 1.6; resize: none; }
 .share-row .secondary-button { flex: 0 0 auto; }
