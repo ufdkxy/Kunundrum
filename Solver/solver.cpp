@@ -893,26 +893,26 @@ Board parseCode(string code){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open catalog: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0){string rest=trim(line.substr(prefix.size()));return rest.substr(0,rest.find_first_of(" \t"));}}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.20"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.21"; // Solver's own version, independent of the web app's APP_VERSION.
 // ---- Core entry point (shared by the CLI and the WebAssembly build) ----
-struct Cli{Limits lim;string input,level,catalog="levels.js";bool wantCode=true,version=false,help=false,json=false;};
+struct Cli{Limits lim;string input,level,catalog="levels.js";bool version=false,help=false,json=false;};
 static const char* HELP_TEXT="Kunundrum exact C++ solver (K4)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--threads N] [--max-states N] [--seconds N] [--max-memory MB] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and its K4 board code.\nauto = bidirectional search when applicable (no hexes, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic: certifies optimality (exit 0) only on hex-free boards when no state was ever dropped by the beam width, otherwise an upper bound (exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";
 // Same flags as the command line; the WebAssembly export passes its options as a flag string.
 static Cli parseArgs(const vector<string>&args){
- Cli c;Limits&lim=c.lim;string&input=c.input,&level=c.level,&catalog=c.catalog;bool&wantCode=c.wantCode;
+ Cli c;Limits&lim=c.lim;string&input=c.input,&level=c.level,&catalog=c.catalog;
  for(size_t i=0;i<args.size();i++){const string&a=args[i];auto value=[&](){if(++i>=args.size())throw runtime_error("missing argument for "+a);return args[i];};
   if(a=="--version"){c.version=true;return c;}
   if(a=="--help"||a=="-h"){c.help=true;return c;}
   if(a=="--json"){c.json=true;continue;}
-   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states"){lim.maxStates=stoull(value());if(lim.maxStates==0)lim.maxStates=UINT64_MAX;}else if(a=="--threads"){lim.threads=stoi(value());if(lim.threads<0)throw runtime_error("--threads must be >= 0");}else if(a=="--max-memory"){lim.maxBytes=stoull(value())<<20;}else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--beam-width"){lim.beamWidth=stoull(value());if(lim.beamWidth<1)throw runtime_error("--beam-width must be at least 1");}else if(a=="--beam-heuristic"){string v=value();if(v!="static"&&v!="dynamic")throw runtime_error("--beam-heuristic must be static or dynamic");lim.beamDynamic=v=="dynamic";}else if(a=="--seed")lim.seed=stoull(value());else if(a=="--quiet")lim.verbose=false;else if(a=="--no-code")wantCode=false;else if(a.rfind("--",0)==0)throw runtime_error("unknown option: "+a);else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
+   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states"){lim.maxStates=stoull(value());if(lim.maxStates==0)lim.maxStates=UINT64_MAX;}else if(a=="--threads"){lim.threads=stoi(value());if(lim.threads<0)throw runtime_error("--threads must be >= 0");}else if(a=="--max-memory"){lim.maxBytes=stoull(value())<<20;}else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--beam-width"){lim.beamWidth=stoull(value());if(lim.beamWidth<1)throw runtime_error("--beam-width must be at least 1");}else if(a=="--beam-heuristic"){string v=value();if(v!="static"&&v!="dynamic")throw runtime_error("--beam-heuristic must be static or dynamic");lim.beamDynamic=v=="dynamic";}else if(a=="--seed")lim.seed=stoull(value());else if(a=="--quiet")lim.verbose=false;else if(a.rfind("--",0)==0)throw runtime_error("unknown option: "+a);else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
  }
  return c;
 }
-struct Outcome{int exit=1;string status,algorithm,solution,k4,error,text;bool hasSolution=false,hasLowerScore=false;long long score=0,lowerScore=0;int moves=0,lowerMoves=0;uint64_t states=0,transitions=0,memMB=0;double elapsed=0;};
+struct Outcome{int exit=1;string status,algorithm,solution,error,text;bool hasSolution=false,hasLowerScore=false;long long score=0,lowerScore=0;int moves=0,lowerMoves=0;uint64_t states=0,transitions=0,memMB=0;double elapsed=0;};
 static string jstr(const string&s){string r="\"";for(unsigned char ch:s){if(ch=='"'||ch=='\\'){r+='\\';r+=(char)ch;}else if(ch<0x20){char b[8];snprintf(b,sizeof b,"\\u%04x",ch);r+=b;}else r+=(char)ch;}return r+"\"";}
-static string toJson(const Outcome&o){ostringstream j;j<<"{\"exit\":"<<o.exit<<",\"status\":"<<jstr(o.status)<<",\"hasSolution\":"<<(o.hasSolution?"true":"false")<<",\"score\":"<<o.score<<",\"moves\":"<<o.moves<<",\"solution\":"<<jstr(o.solution)<<",\"k4\":"<<jstr(o.k4)<<",\"lowerMoves\":"<<o.lowerMoves<<",\"hasLowerScore\":"<<(o.hasLowerScore?"true":"false")<<",\"lowerScore\":"<<o.lowerScore<<",\"algorithm\":"<<jstr(o.algorithm)<<",\"states\":"<<o.states<<",\"transitions\":"<<o.transitions<<",\"memoryMB\":"<<o.memMB<<",\"elapsed\":"<<o.elapsed<<",\"error\":"<<jstr(o.error)<<"}";return j.str();}
+static string toJson(const Outcome&o){ostringstream j;j<<"{\"exit\":"<<o.exit<<",\"status\":"<<jstr(o.status)<<",\"hasSolution\":"<<(o.hasSolution?"true":"false")<<",\"score\":"<<o.score<<",\"moves\":"<<o.moves<<",\"solution\":"<<jstr(o.solution)<<",\"lowerMoves\":"<<o.lowerMoves<<",\"hasLowerScore\":"<<(o.hasLowerScore?"true":"false")<<",\"lowerScore\":"<<o.lowerScore<<",\"algorithm\":"<<jstr(o.algorithm)<<",\"states\":"<<o.states<<",\"transitions\":"<<o.transitions<<",\"memoryMB\":"<<o.memMB<<",\"elapsed\":"<<o.elapsed<<",\"error\":"<<jstr(o.error)<<"}";return j.str();}
 // Solves one board code. Writes progress lines to LOG; never throws (errors go to Outcome::error, exit 1).
-static Outcome solveBoard(const string&input,Limits lim,bool wantCode){
+static Outcome solveBoard(const string&input,Limits lim){
  Outcome o;ostringstream os;
  try{
   o.exit=[&]()->int{
@@ -944,8 +944,8 @@ static Outcome solveBoard(const string&input,Limits lim,bool wantCode){
   o.algorithm=res.algorithm;o.states=res.states;o.transitions=res.transitions;o.memMB=res.bytes>>20;o.elapsed=timer.elapsed();
   os<<"Algorithm: "<<res.algorithm<<"\n"<<(userDepth>0?"Depth limit: "+to_string(userDepth)+"\n":string())+(lim.scoreCap?"Score limit: "+to_string(lim.maxScore)+"\n":string())<<"States: "<<res.states<<"\nTransitions: "<<res.transitions<<"\nMemory: "<<(res.bytes>>20)<<" MB\nElapsed: "<<timer.elapsed()<<" s\n";
   if(res.solved){int score;auto route=labelAndVerify(b,res.path,score);bool optimal=res.exhaustive;
-   o.status=optimal?"OPTIMAL":"SOLUTION FOUND (optimality not certified)";o.hasSolution=true;o.score=score;o.moves=(int)route.size();o.solution=formatMoves(b,route);if(wantCode)o.k4=codeK4(b);
-   os<<o.status<<"\nScore: "<<score<<"\nMoves: "<<o.moves<<"\nSolution: "<<o.solution<<"\n";if(!o.k4.empty())os<<"K4: "<<o.k4<<"\n";
+   o.status=optimal?"OPTIMAL":"SOLUTION FOUND (optimality not certified)";o.hasSolution=true;o.score=score;o.moves=(int)route.size();o.solution=formatMoves(b,route);
+   os<<o.status<<"\nScore: "<<score<<"\nMoves: "<<o.moves<<"\nSolution: "<<o.solution<<"\n";
    if(!optimal&&res.provenMoves>0&&res.provenMoves<(int)route.size()){o.lowerMoves=res.provenMoves+1;os<<"Lower bound: at least "<<o.lowerMoves<<" moves\n";}
    if(!optimal)LOG<<"WARNING: search did not complete the layers needed to certify optimality\n";
    return optimal?0:2;
@@ -969,7 +969,7 @@ int main(int argc,char**argv){
   string input=c.input;
   if(input.empty()&&c.level.empty())throw runtime_error("missing board code/file or --level");
   if(!c.level.empty())input=catalogCode(c.level,c.catalog);else if(input=="-"){input=string((istreambuf_iterator<char>(cin)),{});}else input=readInput(input);
-  Outcome o=solveBoard(input,c.lim,c.wantCode);
+  Outcome o=solveBoard(input,c.lim);
   if(c.json)cout<<toJson(o)<<"\n";else cout<<o.text;
   return o.exit;
  }catch(const exception&e){cerr<<"Error: "<<e.what()<<"\n";return 1;}
@@ -982,7 +982,7 @@ EM_JS_DEPS(kun_progress_deps,"$UTF8ToString");
 namespace{struct LineBuf:streambuf{string cur;int overflow(int ch)override{if(ch=='\n'){kun_progress(cur.c_str());cur.clear();}else if(ch!=EOF)cur+=(char)ch;return ch==EOF?0:ch;}};}
 extern "C" EMSCRIPTEN_KEEPALIVE const char* kun_solve(const char*code,const char*flags){
  static string out;LineBuf lb;ostream ls(&lb);g_log=&ls;Outcome o;
- try{vector<string> args;istringstream is(flags?flags:"");string w;while(is>>w)args.push_back(w);Cli c=parseArgs(args);o=solveBoard(code?code:"",c.lim,c.wantCode);}
+ try{vector<string> args;istringstream is(flags?flags:"");string w;while(is>>w)args.push_back(w);Cli c=parseArgs(args);o=solveBoard(code?code:"",c.lim);}
  catch(const exception&e){o.error=e.what();o.exit=1;}
  g_log=&cerr;out=toJson(o);return out.c_str();
 }

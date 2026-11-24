@@ -58,11 +58,12 @@ function interpret(r, certifying) {
   return { kind: 'info', title: st || 'Finished', note: '' };
 }
 
+let lastCode = null; // the board code the running solve was started with (the route is replayed against it)
 function showResult(r, certifying) {
   const v = interpret(r, certifying);
   let box = false;
   if (r.hasSolution) {
-    const check = window.KunSolver.verifyResult(r);
+    const check = window.KunSolver.verifyResult(r, lastCode);
     if (!check.ok) { v.kind = 'bad'; v.title = 'The solver returned a route that does not replay'; v.note = 'Do not use it. ' + (check.error || ''); }
     else { box = true; v.note += (v.note ? ' ' : '') + 'Verified by replaying the route in the game.'; }
   }
@@ -88,6 +89,7 @@ async function run(certifying) {
     const options = readOptions(certifying);
     await loadClient();
     if (token !== runToken) return;
+    lastCode = info.code;
     job = window.KunSolver.solve(info.code, options, p => {
       if (token !== runToken) return;
       const parts = [p.revDepth != null ? `forward depth ${p.fwdDepth ?? '?'} · reverse depth ${p.revDepth}` : p.depth != null ? `depth ${p.depth}` : '', p.states != null ? `${fmt(p.states)} states` : '', p.elapsed != null ? `${p.elapsed.toFixed(1)} s` : ''].filter(Boolean);

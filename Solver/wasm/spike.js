@@ -9,7 +9,7 @@ const ids=process.argv.slice(2).length?process.argv.slice(2):['6.6','7.4','7.6',
 const createKunsolve=require('./build/kunsolve.js');
 const nativeCandidates=[path.join(__dirname,'..','kunsolve'),path.join(__dirname,'..','kunsolve.exe'),path.join(__dirname,'..','kunsolve-linux-x86_64')];
 const native=nativeCandidates.find(p=>fs.existsSync(p)&&(process.platform!=='linux'?!p.includes('linux'):true));
-const ARGS=['--quiet','--no-code','--seconds','150','--max-states','10000000'];
+const ARGS=['--quiet','--seconds','150','--max-states','10000000'];
 function parse(text){const g=re=>{const m=text.match(re);return m?m[1].trim():null;};
  return {status:g(/^(OPTIMAL|SOLUTION FOUND[^\n]*|UNSOLVABLE|INCONCLUSIVE|NO SOLUTION[^\n]*)$/m),score:g(/^Score: (.*)$/m),moves:g(/^Moves: (.*)$/m),states:g(/^States: (.*)$/m),nativeMem:g(/^Memory: (.*)$/m)};}
 async function runWasm(code){const out=[];let exit=null;const t=Date.now();

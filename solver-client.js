@@ -47,10 +47,10 @@ function solve(code,options,onProgress){
  const cancel=()=>{if(settled)return;settled=true;cleanup();const e=new Error('cancelled');e.cancelled=true;rejectFn(e);};
  return {promise,cancel};}
 // (`Codec` is a top-level const in codec.js: a global binding, not a window property.)
-// A returned route is only trusted after the app's own codec has decoded the K4 board and the route has been replayed through Core to a finished board.
-function verifyResult(result){if(!result||!result.hasSolution)return {ok:true,checked:false};
+// A returned route is only trusted after the app's own codec has decoded the board it was given and the route has been replayed through Core to a finished board.
+function verifyResult(result,code){if(!result||!result.hasSolution)return {ok:true,checked:false};
  try{
-  const board=Codec.decodeBoard(result.k4);let state=Core.createInitialState(board);
+  const board=Codec.decodeBoard(code);let state=Core.createInitialState(board);
   for(const t of Core.parseSolution(result.solution)){const m=Core.applyMove(state,board,Core.resolveBallId(state,t.identifier),t.direction,t.choices);if(m.kind!=='ok')throw new Error('The solver returned a route that does not replay: '+m.message);state=m.state;}
   if(!Core.isComplete(state))throw new Error('The solver returned a route that does not finish the board.');
   return {ok:true,checked:true};

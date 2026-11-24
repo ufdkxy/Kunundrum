@@ -52,9 +52,8 @@ Options:
 - `--beam-width N` — states kept per layer by `--algorithm beam` (default 200,000); `--seed N` — its tie-break seed (default 1).
 - `--max-depth N` — only consider solutions of at most N moves (N >= 1, default unlimited); see [Depth limit](#depth-limit-certifying-a-known-solution).
 - `--max-score N` — only consider routes with score at most N (default: no bound); see [Score limit](#score-limit).
-- `--json` — print the result as one JSON object (status, score, moves, solution, k4, bounds, statistics, error) instead of text; the WebAssembly export returns the same object.
+- `--json` — print the result as one JSON object (status, score, moves, solution, bounds, statistics, error) instead of text; the WebAssembly export returns the same object.
 - `--quiet` — hide per-depth progress; statistics and results still print.
-- `--no-code` — omit the K4 board code output.
 
 Outcomes/exit codes:
 
@@ -72,7 +71,7 @@ Outcomes/exit codes:
 `--max-depth N` restricts the search to solutions of at most N moves. Its main use is to certify a solution you already have. **This certifies the move count, which equals the score only on boards without hexes.** On a board with hexes the objective is the score, which a longer route can lower, so certify by running without `--max-depth` and comparing the printed `Score:`. If a hex-free level has a replay-verified solution of L moves:
 
 ```sh
-./kunsolve --level 8.1 --catalog ../levels.js --max-depth 17 --no-code     # L = 18
+./kunsolve --level 8.1 --catalog ../levels.js --max-depth 17     # L = 18
 ```
 
 - **exit 4** (`NO SOLUTION WITHIN 17 MOVES`): nothing shorter exists, so the known L-move solution is optimal.
@@ -86,8 +85,8 @@ With hexes, `--max-depth N` returns the lowest score among routes of at most N m
 `--max-score N` starts the search with the bound "score at most N": every state whose lower bound (`score so far + unlocked balls + unconsumed negative hex values`) exceeds N is discarded from the start, instead of only after a route has been found. To certify a saved route that scores S, run with `--max-score S-1` and expect exit 4; with `--max-score S` the solver returns the optimal route (score S, `OPTIMAL`). It works on hex boards, where `--max-depth` does not certify the score. Without hexes the score is the move count, so `--max-score N` is turned into `--max-depth N` and the bidirectional search can be used.
 
 ```
-./kunsolve --level 1.8 --catalog ../levels.js --max-score 4 --no-code   # exit 4: no route scores 4 or less
-./kunsolve --level 1.8 --catalog ../levels.js --max-score 5 --no-code   # OPTIMAL, score 5 (10 moves)
+./kunsolve --level 1.8 --catalog ../levels.js --max-score 4   # exit 4: no route scores 4 or less
+./kunsolve --level 1.8 --catalog ../levels.js --max-score 5   # OPTIMAL, score 5 (10 moves)
 ```
 
 The bound is weak when a board has many large negative hexes: level 7.3 (16 hexes) is still inconclusive with `--max-score 0` at 2,000,000 states (10 s) and at 8,000,000 states (54 s).

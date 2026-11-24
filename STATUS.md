@@ -2,7 +2,7 @@
 
 *Living document: keep it current, delete resolved items instead of appending history (Git has the history). See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-**Last updated:** 2026-11-24 · **App** `APP_VERSION = '4.0.0'` in `app.js` (single source; bump it with every app change) · **Solver** v0.20 (`SOLVER_VERSION` in `Solver/solver.cpp`) · **Parser** `parser.js` v0.13.17-js.1. Parser and solver versions change only when that component changes, never with the app.
+**Last updated:** 2026-11-24 · **App** `APP_VERSION = '4.0.1'` in `app.js` (single source; bump it with every app change) · **Solver** v0.21 (`SOLVER_VERSION` in `Solver/solver.cpp`) · **Parser** `parser.js` v0.13.17-js.1. Parser and solver versions change only when that component changes, never with the app.
 
 ## 1. Where the project stands
 
@@ -37,7 +37,7 @@ Closing the gap means either raising the lower bound (exact search with parallel
 
 ## 4. Next work (all optional)
 
-0. **K4 board code** ([K4.md](K4.md)): **done, K3 removed** (app 4.0.0, solver v0.20, 2026-11-24). **The WASM bundle (`kunsolve-bundle.js`, still v0.17) must be rebuilt with `node Solver/wasm/build.js`** (then the in-app Solver works again; until then it reports a stale-bundle error), and the Linux binary with `make release`.
+0. **K4 board code** ([K4.md](K4.md)): **done, K3 removed** (app 4.0.1, solver v0.21, 2026-11-24). **The WASM bundle (`kunsolve-bundle.js`, still v0.17) must be rebuilt with `node Solver/wasm/build.js`** (then the in-app Solver works again; until then it reports a stale-bundle error), and the Linux binary with `make release`.
 1. **Local optimizer** (SOLVER-020): take a stored route, free a window of consecutive moves (or a subset of balls) and search exactly for a cheaper replacement; iterate. Prototype outside the repo cut 10.10 from 113 to 107; a full-mechanics scratch copy (2026-11-22) found no improvement on 9.9, 15.8 or 30.4, so it is not yet worth adding to `solver.cpp` (port it only if a rough long route turns up that exact search cannot finish).
 2. **Parallelization** (SOLVER-021, planned, see section 5): multi-threaded layer expansion for forward/bidirectional/beam search in the native solver (currently single-threaded; the WASM build stays single-threaded). Mainly a speedup; it will not by itself close 9.9, 10.10 or 15.8.
 3. Keep this file, `RULES.md` and `ARCHITECTURE.md` current with every milestone; old `K3.` codes and K3 replay links are no longer supported (K4 replaced them in 4.0.0).
@@ -74,8 +74,8 @@ node tests/verify.js
 node tests/random-compare.js
 node tests/random-switch.js
 node tests/mechanics.js
-./kunsolve --level 8.1 --catalog ../levels.js --max-depth 17 --no-code   # exit 4 = nothing of 17 moves or fewer, so a known 18 is optimal
-./kunsolve --level 8.1 --catalog ../levels.js --max-score 17 --no-code   # same for boards with hexes (score bound)
+./kunsolve --level 8.1 --catalog ../levels.js --max-depth 17 # exit 4 = nothing of 17 moves or fewer, so a known 18 is optimal
+./kunsolve --level 8.1 --catalog ../levels.js --max-score 17 # same for boards with hexes (score bound)
 
 # Parser (historical Python, from parser/, needs numpy and OpenCV; the app uses parser.js)
 python3 parse.py --help

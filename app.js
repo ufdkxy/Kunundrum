@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '4.0.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '4.0.1'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -239,10 +239,11 @@ function adoptBoard(nextBoard, replayFrames, at = 0, resetInput = true) {
   // Validate the whole candidate before replacing the user's current run.
   const normalized = validateBoard(nextBoard);
   const code = encodeBoard(normalized);
-  const preset = LEVELS.find(level => encodeBoard(level) === code)?.id || null;
+  const presetLevel = LEVELS.find(level => encodeBoard(level) === code) || null;
+  const preset = presetLevel?.id || null;
   const nextFrames = replayFrames || [initialFrame(normalized)];
   cancelMotion();
-  board = normalized;
+  board = presetLevel || normalized; // a K4 code carries no id, title or solution: a catalog board gets them back
   frames = nextFrames;
   cursor = Math.min(Math.max(0, at), frames.length - 1);
   if (cursor > 0) syncClock(frames[cursor].phases);
@@ -259,7 +260,7 @@ function adoptBoard(nextBoard, replayFrames, at = 0, resetInput = true) {
 function persist() {
   try {
     const records = getNotation();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ board: encodeBoard(board), moves: records, at: cursor, selected, mode, settings, draft: $('solution-input').value }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ board: encodeBoard(board), title: currentPresetId ? undefined : board.title, moves: records, at: cursor, selected, mode, settings, draft: $('solution-input').value }));
     if (isComplete(state()) && currentPresetId) {
       const previous = bestScores[currentPresetId];
       if (!previous || state().score < previous.score || state().score === previous.score && state().moves < previous.moves) {
@@ -887,7 +888,8 @@ function shareLink(withRoute) {
   return OFFLINE?location.href.split(/[?#]/)[0]+new URL(makeShareUrl('https://kunundrum.invalid/',input)).hash:makeShareUrl(location.href,input);
 }
 function shareCode(withRoute) {
-  return encodeBoard(board); // K4 holds the board only; the route travels in the link
+  const code=encodeBoard(board); // K4 holds the board only; a route follows it after a space (the catalog line format)
+  return withRoute&&frames.length>1?`${code} ${getNotation()}`:code;
 }
 function renderShare() {
   const canRoute=frames.length>1, withRoute=shareRoute&&canRoute, n=frames.length-1;
@@ -897,7 +899,7 @@ function renderShare() {
   let link='',code='',error='';
   try{link=shareLink(withRoute);code=shareCode(withRoute);}catch(e){error=e.message;}
   $('share-link').value=link;$('share-code').value=code;
-  $('share-code-help').textContent=error||'Board only; paste it in Import.';
+  $('share-code-help').textContent=error||withRoute?'Board code and route; paste it in Import.':'Board code; paste it in Import.';
   $('share-link-help').textContent=error||(withRoute?`Opens at move ${cursor}.`:'');
 }
 async function copyText(text,success) {
@@ -912,17 +914,22 @@ function resetBoardInput() {$('board-input').value='';showError('board-error');}
 function importBoard() {
   const input=$('board-input').value.trim();
   try {
-    if(!input)throw new Error('Paste a board code or a JSON board first.');
-    let nextBoard,share;const problems=[];
-    if(/^(?:https?:\/\/|[?#])/i.test(input)) {
-      share=readShareUrl(input);
+    if(!input)throw new Error('Paste a board code, a link or a JSON board first.');
+    let nextBoard,share,route;const problems=[];
+    if(/^(?:[a-z][a-z0-9+.-]*:\/\/|[?#])/i.test(input)) {
+      const cut=input.search(/[?#]/); // only the query and hash matter, so links from file:// and any host work
+      share=readShareUrl('https://kunundrum.invalid/'+(cut<0?'':input.slice(cut)));
       nextBoard=share.boardCode?decodeBoard(share.boardCode,problems):LEVELS.find(level=>level.id===share.levelId);
       if(!nextBoard)throw new Error('This link does not contain a recognized puzzle.');
+    } else if(/^K\d+\./.test(input)) {
+      const space=input.search(/\s/); // `K4.code route` (the catalog line format)
+      nextBoard=decodeBoard(space<0?input:input.slice(0,space),problems);
+      if(space>=0)route=input.slice(space).trim();
     } else nextBoard=decodeBoard(input,problems);
     if(problems.length){editInvalid(nextBoard,problems);clearLocation();$('board-dialog').close();return;}
-    const prepared=(share?.route||share?.moves)?buildReplay(nextBoard,share.route?decodeRoute(nextBoard,share.route):share.moves):undefined;
+    const prepared=route?buildReplay(nextBoard,route):(share?.route||share?.moves)?buildReplay(nextBoard,share.route?decodeRoute(nextBoard,share.route):share.moves):undefined;
     adoptBoard(nextBoard,prepared,share?.at||0);
-    clearLocation();$('board-dialog').close();toast(`Loaded ${nextBoard.title}.`);
+    clearLocation();$('board-dialog').close();toast(`Loaded ${board.title}.`);
   }catch(error){showError('board-error',error.message);}
 }
 // A well-formed but invalid board opens in the editor (Play is gated by validation there);
@@ -1158,7 +1165,8 @@ function boot() {
       const prepared=(shared.route||shared.moves)?buildReplay(next,shared.route?decodeRoute(next,shared.route):shared.moves):undefined;
       adoptBoard(next,prepared,shared.at||0);
     }else if(saved?.board){
-      const next=decodeBoard(saved.board);const prepared=saved.moves?buildReplay(next,saved.moves):undefined;
+      const next=decodeBoard(saved.board);if(typeof saved.title==='string'&&saved.title&&saved.title.length<=80)next.title=saved.title; // custom boards keep their title (the K4 code has none)
+      const prepared=saved.moves?buildReplay(next,saved.moves):undefined;
       adoptBoard(next,prepared,Number.isInteger(saved.at)?saved.at:0);
       if(cursor===0&&state().balls.some(ball=>ball.id===saved.selected&&!ball.locked))selected=saved.selected;
       mode=saved.mode==='replay'?'replay':'manual';
