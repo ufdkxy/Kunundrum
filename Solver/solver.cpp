@@ -501,9 +501,10 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
    }
   }
  };
- auto genR=[&](size_t rh,vector<uint8_t>&buf,uint64_t&tr){
+ // Calls emit(key,hash) for the packed key of every predecessor of the state `targetKey` (each state with one move leading to it).
+ auto forEachPred=[&](const uint8_t*tk,uint64_t&tr,auto&&emit){
   thread_local vector<uint8_t> kb,targetKey,checkKey;thread_local vector<int> starts;kb.resize(K);targetKey.resize(K);checkKey.resize(K);
-  State targetState;pk.unpack(rev.key(rh),targetState);pk.pack(targetState,targetKey.data());
+  State targetState;pk.unpack(tk,targetState);pk.pack(targetState,targetKey.data());
   // Predecessors of the target for each ball i: ball i made one move from p in direction d and ended at dest while every other ball stayed put.
   // The predecessor board (other balls, gates, teleports, with the preceding switch undone) does not depend on the start cell, so all valid
   // starts come from one backward ray-cast from dest over the move automaton instead of simulating every (cell, direction) pair.
@@ -528,11 +529,30 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
      State check=predecessor;check.p[i]=dest;
      if(swi>=0)b.fireSwitch(swi,check);
      pk.pack(check,checkKey.data());if(memcmp(checkKey.data(),targetKey.data(),K))continue;
-     pk.pack(predecessor,kb.data());const uint64_t h=hashBytes(kb.data(),K);
-     if(rev.find(kb.data(),h)==Store::NONE){const uint32_t o=fwd.find(kb.data(),h);const size_t at=buf.size();buf.resize(at+R);memcpy(&buf[at],kb.data(),K);memcpy(&buf[at+K],&h,8);memcpy(&buf[at+K+8],&o,4);}
+     pk.pack(predecessor,kb.data());emit(kb.data(),hashBytes(kb.data(),K));
     }
    }
   }
+ };
+ auto genR=[&](size_t rh,vector<uint8_t>&buf,uint64_t&tr){
+  forEachPred(rev.key(rh),tr,[&](const uint8_t*kb,uint64_t h){
+   if(rev.find(kb,h)==Store::NONE){const uint32_t o=fwd.find(kb,h);const size_t at=buf.size();buf.resize(at+R);memcpy(&buf[at],kb,K);memcpy(&buf[at+K],&h,8);memcpy(&buf[at+K+8],&o,4);}
+  });
+ };
+ // Route to a forward node without scanning layers (v0.22): at each depth the stored predecessor one layer lower is found by looking up the
+ // state's predecessors (the same enumeration the reverse search uses) instead of expanding the previous layer until a parent turns up.
+ auto rebuildForwardFast=[&](uint32_t idx){
+  vector<Move> path;vector<uint8_t> cur(K),tmp(K);memcpy(cur.data(),fwd.key(idx),K);Stats stats;uint64_t tr=0;
+  for(int d=fwd.depthOf(idx);d>0;d--){
+   uint32_t parent=Store::NONE;
+   forEachPred(cur.data(),tr,[&](const uint8_t*kb,uint64_t h){if(parent!=Store::NONE)return;const uint32_t j=fwd.find(kb,h);if(j!=Store::NONE&&fwd.depthOf(j)==d-1)parent=j;});
+   if(parent==Store::NONE)throw runtime_error("internal error: route reconstruction failed");
+   State ps;pk.unpack(fwd.key(parent),ps);bool ok=false;
+   successors(b,ps,stats,[&](Transition&& t){if(ok)return;pk.pack(t.s,tmp.data());if(!memcmp(tmp.data(),cur.data(),K)){ok=true;path.push_back(t.m);}});
+   if(!ok)throw runtime_error("internal error: route reconstruction failed");
+   memcpy(cur.data(),fwd.key(parent),K);
+  }
+  reverse(path.begin(),path.end());return path;
  };
  auto mergeInto=[&](Store&sd,bool forward,vector<uint8_t>&buf){
   for(size_t o=0;o<buf.size();o+=R){
@@ -563,7 +583,9 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
  out.states=fwd.size()+rev.size();out.bytes=fwd.bytes()+rev.bytes();out.transitions=transitions;out.provenMoves=exhausted?0:fd+rd;
  if(best!=INT32_MAX&&best<=D){
   out.solved=true;out.depth=best;out.exhaustive=certified||exhausted;vector<Move> before,after;
-  before=rebuildForward(b,fwd,pk,fMeet);after=rebuildReverse(b,rev,pk,rMeet);
+  if(lim.verbose)LOG<<"rebuilding route elapsed "<<timer.elapsed()<<"s\n";
+  before=rebuildForwardFast(fMeet);after=rebuildReverse(b,rev,pk,rMeet);
+  if(lim.verbose)LOG<<"route rebuilt elapsed "<<timer.elapsed()<<"s\n";
   out.path=std::move(before);out.path.insert(out.path.end(),after.begin(),after.end());
  }else if(best==INT32_MAX){if(exhausted)out.exhaustive=true;else if(certified)out.boundProved=true;}
  else out.boundProved=certified||exhausted;
@@ -893,7 +915,7 @@ Board parseCode(string code){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open catalog: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0){string rest=trim(line.substr(prefix.size()));return rest.substr(0,rest.find_first_of(" \t"));}}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.21"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.22"; // Solver's own version, independent of the web app's APP_VERSION.
 // ---- Core entry point (shared by the CLI and the WebAssembly build) ----
 struct Cli{Limits lim;string input,level,catalog="levels.js";bool version=false,help=false,json=false;};
 static const char* HELP_TEXT="Kunundrum exact C++ solver (K4)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--threads N] [--max-states N] [--seconds N] [--max-memory MB] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and its K4 board code.\nauto = bidirectional search when applicable (no hexes, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic: certifies optimality (exit 0) only on hex-free boards when no state was ever dropped by the beam width, otherwise an upper bound (exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";
