@@ -35,11 +35,12 @@ Per the project owner, **297 of the 300 embedded solutions have been proven opti
 
 Closing the gap means either raising the lower bound (exact search with parallelism / better pruning) or lowering the route (local optimizer). Either result is welcome; the primary goal is always a shortest solution.
 
-## 4. Next work (all optional, solver only)
+## 4. Next work (all optional)
 
+0. **K4 board code** (designed 2026-11-23, not implemented; full brief in [K4.md](K4.md)): a short canonical alphanumeric text code that **replaces K3** after a one-time migration of `levels.js`. It comes with tighter validation (boards at most 15×15, hex values only ±5/±10/±15/±20, at most 61 balls, one tunnel opening per wall cell, switch lists identical or disjoint). To be requested in a fresh conversation; until then K3 stays authoritative.
 1. **Local optimizer** (SOLVER-020): take a stored route, free a window of consecutive moves (or a subset of balls) and search exactly for a cheaper replacement; iterate. Prototype outside the repo cut 10.10 from 113 to 107; a full-mechanics scratch copy (2026-11-22) found no improvement on 9.9, 15.8 or 30.4, so it is not yet worth adding to `solver.cpp` (port it only if a rough long route turns up that exact search cannot finish).
 2. **Parallelization** (SOLVER-021, planned, see section 5): multi-threaded layer expansion for forward/bidirectional/beam search in the native solver (currently single-threaded; the WASM build stays single-threaded). Mainly a speedup; it will not by itself close 9.9, 10.10 or 15.8.
-3. Keep this file, `RULES.md` and `ARCHITECTURE.md` current with every milestone; keep K3 codes and legacy replay links backward compatible unless told otherwise.
+3. Keep this file, `RULES.md` and `ARCHITECTURE.md` current with every milestone; keep K3 codes and legacy replay links backward compatible until K4 (item 0) replaces K3.
 
 ## 5. Open solver backlog (P2)
 
