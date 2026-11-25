@@ -6,11 +6,12 @@ const ctx={TextEncoder,TextDecoder,Uint8Array,URL,URLSearchParams,atob,btoa,wind
 for(const f of ['engine.js','codec.js','levels.js','catalog.js'])vm.runInContext(fs.readFileSync(path.join(repo,f),'utf8'),ctx,{filename:f});
 const {Core,Codec,Collection}=vm.runInContext('({Core,Codec,Collection})',ctx);
 let n=0;const ok=(name)=>{n++;console.log('ok',name);};
-// 1. Catalog: every line decodes, re-encodes to itself and its solution completes the board.
-for(const {id,code,solution} of Collection.entries){assert(code.startsWith('K4.'),id);const b=Codec.decodeBoard(code);assert.equal(Codec.encodeBoard(b),code,id);
+// 1. Catalog: every line decodes, re-encodes to itself (board + route) and its route completes the board.
+for(const {id,code} of Collection.entries){assert(code.startsWith('K4.'),id);const extra={},b=Codec.decodeBoard(code,undefined,extra);assert(extra.route,id);
+ const solution=Codec.decodeRouteCode(b,extra.route);assert(!/[,\s]/.test(solution),id);assert.equal(Codec.encodeBoard(b)+Codec.encodeRoute(b,solution),code,id);
  const full=Core.validateBoard({...b,id,title:'Level '+id,solution});let st=Core.createInitialState(full);
  for(const t of Core.parseSolution(solution)){const m=Core.applyMove(st,full,Core.resolveBallId(st,t.identifier),t.direction,t.choices);assert.equal(m.kind,'ok',id);st=m.state;}assert(Core.isComplete(st),id);}
-ok(`catalog: ${Collection.entries.length} levels canonical and solved`);
+ok(`catalog: ${Collection.entries.length} levels canonical (board + route) and solved`);
 // 2. Fixtures.
 const round=(name,board)=>{const code=Codec.encodeBoard(board),back=Codec.decodeBoard(code);assert.equal(Codec.encodeBoard(back),code,name);return {code,back};};
 const walls15=[];for(let x=1;x<=15;x++)walls15.push({x,y:8});walls15.splice(3,1);
@@ -22,11 +23,10 @@ assert.equal(corner.back.tunnels.length,2);ok('corner cell with two edge opening
 const wallColor=round('green',{width:2,height:1,walls:[],balls:[{x:1,y:1,color:'R'}],goals:[{x:2,y:1,color:'R'}],wallColor:'G'});assert.equal(wallColor.back.wallColor,'G');ok('wall color');
 const rot=round('rot',{width:4,height:1,walls:[],balls:[{x:1,y:1,color:'R'}],goals:[{x:4,y:1,color:'R'}],arrows:[{x:2,y:1,direction:'u',rotating:true,type:'flip'},{x:3,y:1,direction:'l',rotating:true},{x:4,y:1,direction:'d',rotating:true,type:'ccw'}].slice(0,2)});
 assert.equal(rot.back.arrows[0].type,'flip');ok('rotating arrow types');
-// 2b. Routes embedded in the code: `K4.<board>Z<route>` (alphanumeric), whole catalog.
-{let text=0,code=0;for(const {id,code:c,solution} of Collection.entries){const b=Core.validateBoard({...Codec.decodeBoard(c),id,title:'Level '+id});
- const z=Codec.encodeRoute(b,solution),extra={},back=Codec.decodeBoard(c+z,undefined,extra);assert.equal(Codec.encodeBoard(back),c,id);assert(/^Z[0-9A-Za-z]+$/.test(z),id);
- assert.equal(Core.formatSolution?Core.formatSolution(Core.parseSolution(Codec.decodeRouteCode(back,extra.route))):Codec.decodeRouteCode(back,extra.route),Core.formatSolution?Core.formatSolution(Core.parseSolution(solution)):solution,id);text+=solution.length;code+=z.length;}
- ok(`routes: 300 round-trip through Z suffix (${text} text chars -> ${code})`);}
+// 2b. Notation: no commas in output; commas and spaces are still ignored on input; groups are read back to back.
+assert.equal(Core.formatSolution([{ballId:'R',direction:'u',choices:[]},{ballId:'R',direction:'l',choices:[]},{ballId:'G2',direction:'d',choices:[]},{ballId:'B',direction:'r',choices:['u']}]),'RulG2dBr(->u)');
+assert.deepEqual(Core.parseSolution('RulG2dBr(->u)'),Core.parseSolution('Rul, G2d,B r(->u)'));
+assert.deepEqual(Core.parseSolution('1l2u').map(t=>t.identifier+t.direction),['1l','2u']);ok('notation without commas');
 // 3. Rejections.
 const base='K4.'+Codec.encodeBoard({width:2,height:1,walls:[],balls:[{x:1,y:1,color:'R'}],goals:[{x:2,y:1,color:'R'}]}).slice(3);
 const bad=(name,fn)=>{assert.throws(fn);ok('rejects '+name);};
@@ -42,8 +42,8 @@ bad('hex value 7',()=>Codec.encodeBoard({width:3,height:1,walls:[],balls:[{x:1,y
 bad('opening facing floor',()=>Codec.encodeBoard({width:3,height:1,walls:[],balls:[{x:1,y:1,color:'R'}],goals:[{x:2,y:1,color:'R'}],tunnels:[{a:{x:1,y:1,side:'r'},b:{x:3,y:1,side:'r'}}]}));
 bad('uncontrolled gate',()=>Codec.encodeBoard({width:3,height:1,walls:[],balls:[{x:1,y:1,color:'R'}],goals:[{x:2,y:1,color:'R'}],gates:[{x:3,y:1,id:'g',active:true}]}));
 {const c='K4.3401pa6a2010F',b=Codec.decodeBoard(c),z=Codec.encodeRoute(Core.validateBoard({...b,id:'1.1',title:'x'}),'Gd');
- bad('Z without a route',()=>Codec.decodeBoard(c+'Z',undefined,{}));
- bad('Z route without an extra receiver',()=>Codec.decodeBoard(c+z));
+ bad('route without an extra receiver',()=>Codec.decodeBoard(c+z));
+ bad('route that is not alphanumeric',()=>Codec.decodeBoard(c+'-',undefined,{}));
  bad('non-canonical route (leading 0)',()=>Codec.decodeRouteCode(b,'0'+z.slice(1)));
  bad('garbage route',()=>Codec.decodeRouteCode(b,'!!'));}
 console.log(n+' checks passed');

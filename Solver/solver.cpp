@@ -796,7 +796,7 @@ vector<LabeledMove> labelAndVerify(const Board&b,const vector<Move>& path,int& f
  if(!complete(b,st))throw runtime_error("internal route error: unfinished");
  return result;
 }
-string formatMoves(const Board&b,const vector<LabeledMove>& path){string out;int last=-1;for(const auto& m:path){if(last!=m.ball){if(!out.empty())out+=',';out+=b.balls[m.ball].name;last=m.ball;}out+=DIR[m.dir];if(!m.choices.empty())out+="(->"+m.choices+")";}return out;}
+string formatMoves(const Board&b,const vector<LabeledMove>& path){string out;int last=-1;for(const auto& m:path){if(last!=m.ball){out+=b.balls[m.ball].name;last=m.ball;}out+=DIR[m.dir];if(!m.choices.empty())out+="(->"+m.choices+")";}return out;}
 // ---- K4 board code (see K4.md): canonical alphanumeric text; board data only (no id, title or solution) ----
 static const string K4_N62="0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",K4_LETTERS="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 static const int K4_HEX[8]={-20,-15,-10,-5,5,10,15,20};
@@ -909,7 +909,7 @@ Board parseCode(string code){
  }
  int ballCount=num(61);if(!ballCount)throw runtime_error("invalid K4 board code: no balls");
  for(int k=0;k<ballCount;k++){int v=n62()*62;v+=n62();if(v>=4*total)throw runtime_error("invalid K4 board code: ball out of range");b.balls.push_back({v>>2,v&3,0,""});}
- if(pos!=s.size())throw runtime_error("invalid K4 board code: trailing characters");
+ if(pos!=s.size())code=code.substr(0,3+pos); // anything after the balls is an embedded route (not needed by the solver)
  // Core.validateBoard sorts balls by color, then (y,x).
  stable_sort(b.balls.begin(),b.balls.end(),[](const Ball&a,const Ball&z){return a.color!=z.color?a.color<z.color:a.p<z.p;});
  for(int i=0;i<(int)b.balls.size();i++){int count=0,k=0;for(int j=0;j<(int)b.balls.size();j++)if(b.balls[j].color==b.balls[i].color){count++;if(j<=i)k++;}b.balls[i].ordinal=k;b.balls[i].name=string(1,COLORS[b.balls[i].color])+(count==1?"":to_string(k));}
@@ -920,7 +920,7 @@ Board parseCode(string code){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open catalog: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0){string rest=trim(line.substr(prefix.size()));return rest.substr(0,rest.find_first_of(" \t"));}}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.22"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.23"; // Solver's own version, independent of the web app's APP_VERSION.
 // ---- Core entry point (shared by the CLI and the WebAssembly build) ----
 struct Cli{Limits lim;string input,level,catalog="levels.js";bool version=false,help=false,json=false;};
 static const char* HELP_TEXT="Kunundrum exact C++ solver (K4)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--threads N] [--max-states N] [--seconds N] [--max-memory MB] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and its K4 board code.\nauto = bidirectional search when applicable (no hexes, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic: certifies optimality (exit 0) only on hex-free boards when no state was ever dropped by the beam width, otherwise an upper bound (exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";

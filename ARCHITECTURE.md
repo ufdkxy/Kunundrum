@@ -38,7 +38,7 @@ No server or framework is required by the JavaScript sources. The native solver 
 | --- | --- | --- |
 | `engine.js` | Board normalization, validation, immutable state and move simulation, notation parsing | global `Core` |
 | `codec.js` | K4 board encoding/decoding; compact routes; replay URLs | global `Codec` |
-| `levels.js` | Editable newline catalog data (`id = K4.<board code> <solution>`), held as a template-string assignment | `window.KUNUNDRUM_LEVEL_CODES` |
+| `levels.js` | Editable newline catalog data (`id = K4.<board code><route>`: the saved solution follows the board code directly as a compact base-62 route), held as a template-string assignment | `window.KUNUNDRUM_LEVEL_CODES` |
 | `catalog.js` | Parse and validate catalog entries and IDs | global `Collection.entries` |
 | `app.js` | Render SVG board, play/move controls, replay history, import/export, URL and localStorage state | `window.KunundrumHost` for editor integration |
 | `generator.js` | Random board generator (`Generator.generate({width,height})`): clumpy walls, goals on stopping cells, balls placed by a reverse walk from the solved state that uses `Core.applyMove` for every step; `generate()` is async and, given a `solve` function (the editor passes `KunSolver.solve`), keeps only candidates with a verified OPTIMAL route of at least 12 moves within a 10 s budget and stores that route as `solution`; plain mechanics only so far | `Generator` |
@@ -117,9 +117,8 @@ Browser size limits: board code at most 1,000 characters, full URL at most 131,0
 ### Replay URL conventions
 
 - Preset board: `?level=8.1` (example; in URL query).
-- Custom board: `#board=K4...` (in URL hash).
-- Compact replay: `#route=BASE64URL` with optional `&at=moveIndex`; old `#moves=Rur,...` links remain readable.
-- The URL parser also accepts supported parameters from query or hash, forbids duplicates, and rejects simultaneous board and level or simultaneous moves and route.
+- Custom board: `#board=K4...` (in URL hash). A replay link appends the compact route directly to the board code (`#board=K4.<board><route>`) with optional `&at=moveIndex`; there are no separate route or moves parameters.
+- The URL parser also accepts supported parameters from query or hash, forbids duplicates, and rejects simultaneous board and level.
 
 `Codec` exports `encodeBoard`, `decodeBoard`, `decodeRoute`, `readShareUrl`, and `makeShareUrl`. `makeShareUrl` creates a compact `route` when supplied `routeBoard` plus `moves`; otherwise it uses legacy `moves` text. See [STATUS.md](STATUS.md) for an import-path issue affecting pasted compact routes.
 

@@ -6,7 +6,7 @@ const ctx={TextEncoder,TextDecoder,Uint8Array,URL,URLSearchParams,atob,btoa,wind
 for(let f of ['engine.js','codec.js','levels.js'])vm.runInContext(fs.readFileSync(path.join(repo,f),'utf8'),ctx,{filename:f});
 const {Core,Codec}=vm.runInContext('({Core,Codec})',ctx);
 function solutionCheck(code,sol){const board=Codec.decodeBoard(code);let st=Core.createInitialState(board);const tokens=Core.parseSolution(sol);for(let i=0;i<tokens.length;i++){const t=tokens[i];let id=Core.resolveBallId(st,t.identifier);let m=Core.applyMove(st,board,id,t.direction,t.choices);assert.equal(m.kind,'ok',`move ${i+1} ${id}${t.direction} ${m.kind}: ${m.message}`);st=m.state;}assert(Core.isComplete(st),`not complete, score=${st.score}`);return {board,score:st.score,count:tokens.length};}
-const catalogCode=id=>fs.readFileSync(path.join(repo,'levels.js'),'utf8').match(new RegExp('^'+id.replace('.','\\.')+' = (K4\\.\\S+)','m'))[1];
+const catalogCode=id=>Codec.encodeBoard(Codec.decodeBoard(fs.readFileSync(path.join(repo,'levels.js'),'utf8').match(new RegExp('^'+id.replace('.','\\.')+' = (K4\\.\\S+)','m'))[1],undefined,{})); // board only (the catalog line may carry a route)
 let n=0;// 1.7, 1.8 and 2.2 contain hexagons: the objective is the lowest SCORE, not the fewest moves (saved routes: 13 moves/score 3, 10/5, 14/9).
 const expectedScore={'1.7':3,'1.8':5,'2.2':9};
 for(let id of ['6.6','7.4','7.1','7.6','7.10','8.1','1.7','1.8','2.2']){
@@ -76,7 +76,7 @@ console.log('PASS beam search (replay-verified routes; certified only when hex-f
  assert.equal(Core.applyMove(Core.createInitialState(lb),lb,'R','l').kind,'loop');
  console.log('PASS tunnels (engine, K4)');}
 // Level 21.1 (real level: 4 tunnel arms): parsed from the screenshot, saved route replays to a win in 12 moves; pairing guess top-bottom, left-right.
-{const line=fs.readFileSync(path.join(repo,'levels.js'),'utf8').match(/^21\.1 = (K4\.\S+) (\S+)$/m);assert(line,'21.1 in levels.js');const [,code211,sol211]=line;
+{const line=fs.readFileSync(path.join(repo,'levels.js'),'utf8').match(/^21\.1 = (K4\.\S+)$/m);assert(line,'21.1 in levels.js');const extra211={},b211=Codec.decodeBoard(line[1],undefined,extra211),code211=Codec.encodeBoard(b211),sol211=Codec.decodeRouteCode(b211,extra211.route);
  const b=Codec.decodeBoard(code211);assert.deepEqual(b.tunnels.map(t=>[t.a,t.b].map(e=>e.side).sort().join('')),['du','lr']);assert.equal(solutionCheck(code211,sol211).count,12);
  console.log('PASS level 21.1 (tunnels, catalog code)');}
 require('./mechanics.js');

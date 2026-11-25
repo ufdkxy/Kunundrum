@@ -58,15 +58,15 @@ The serializer's zero-based binary **ball index** is a different concept: it use
 
 ## 5. Solution notation
 
-A solution is a comma-separated sequence of **ball groups**. A group starts with a ball identifier followed by one or more direction letters; consecutive moves of the same ball can be concatenated. Spaces/newlines are ignored by the parser.
+A solution is a sequence of **ball groups** written back to back, with no separators. A group starts with a ball identifier (a capital letter, optionally with digits, or an unambiguous number) followed by one or more direction letters; consecutive moves of the same ball are concatenated, so the next group always starts at a capital letter or digit. The parser ignores spaces, newlines and commas on input; the app, the solver and the catalog never write them.
 
 ```text
-Rur,G3ld,Bu
-G2l,G3d,G1r,G3ru,G5d,G4l,G5ur,G3l,G6dl,G2u,G3rdld,G1l
-Rr(->u),Gd
+RurG3ldBu
+G2lG3dG1rG3ruG5dG4lG5urG3lG6dlG2uG3rdldG1l
+Rr(->u)Gd
 ```
 
-The second example is the bundled 18-move route for level 8.1. Each `u/d/l/r` is **one whole move**, not a single-cell step. For a rotating arrow encountered during a move, immediately follow that move's initial direction with **one** annotation `(->x)`, where `x` is the orientation (`u`, `d`, `l`, or `r`) of the first rotating arrow met (Unicode `→` is accepted in place of `->`). If that arrow is a `flip` arrow and the path later reaches a period-4 arrow, add that arrow's orientation as a second letter: `(->xy)`, e.g. `Rr(->ur)` = move red right, the first (period-2) arrow points up, the first period-4 arrow points right, regardless of any further period-2 arrows in between. Two separate annotations on one move are invalid, and no comma separates the annotation from its move.
+The second example is the bundled 18-move route for level 8.1. Each `u/d/l/r` is **one whole move**, not a single-cell step. For a rotating arrow encountered during a move, immediately follow that move's initial direction with **one** annotation `(->x)`, where `x` is the orientation (`u`, `d`, `l`, or `r`) of the first rotating arrow met (Unicode `→` is accepted in place of `->`). If that arrow is a `flip` arrow and the path later reaches a period-4 arrow, add that arrow's orientation as a second letter: `(->xy)`, e.g. `Rr(->ur)` = move red right, the first (period-2) arrow points up, the first period-4 arrow points right, regardless of any further period-2 arrows in between. Two separate annotations on one move are invalid, and nothing separates the annotation from its move.
 
 Text parsing checks syntax and identifiers; applying the moves against successive states checks their legality. `Core.formatSolution` coalesces adjacent moves of the same ball into one group. A saved `solution` field need not be winning merely because its notation parses: validate by replaying it and checking `Core.isComplete`.
 

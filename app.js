@@ -3,12 +3,12 @@
 (() => {
 const {validateBoard,createInitialState,applyMove,applyMoveAtPhase,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES}=Core;
 const {entries:CATALOG_ENTRIES}=Collection;
-const {encodeBoard,decodeBoard,decodeRoute,encodeRoute,decodeRouteCode,readShareUrl,makeShareUrl}=Codec;
+const {encodeBoard,decodeBoard,encodeRoute,decodeRouteCode,readShareUrl,makeShareUrl}=Codec;
 
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '4.4.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '4.5.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -157,12 +157,10 @@ function initHelpIcons() {
   });
 }
 
-const LEVELS = CATALOG_ENTRIES.map(({id,code,solution}) => {
-  const level = decodeBoard(code);
-  // K4 stores the board only: the catalog line supplies the id, the title is derived and the solution follows the code.
-  if (code.startsWith('K4.')) return validateBoard({...level, id, title: `Level ${id}`, ...(solution ? {solution} : {})});
-  if (level.id !== id) throw new Error(`Level ${id} in levels.js contains board ${level.id}; update the ID or code.`);
-  return level;
+const LEVELS = CATALOG_ENTRIES.map(({id,code}) => {
+  // K4 stores the board only: the catalog line supplies the id, the title is derived and the route follows the board code.
+  const extra = {}, level = decodeBoard(code, undefined, extra);
+  return validateBoard({...level, id, title: `Level ${id}`, ...(extra.route ? {solution: decodeRouteCode(level, extra.route)} : {})});
 });
 const OFFLINE = location.protocol === 'file:';
 const STORAGE_KEY = 'kunundrum.replay.v1';
@@ -716,12 +714,11 @@ function deleteLastMove() {
 function clearReplayLocation() {
   try {
     const url=new URL(location.href);
-    url.searchParams.delete('moves');url.searchParams.delete('at');
+    url.searchParams.delete('at');
     const hash=new URLSearchParams(url.hash.slice(1));
-    if(hash.has('moves')||hash.has('at')) {
-      hash.delete('moves');hash.delete('at');
-      url.hash=hash.toString();
-    }
+    const code=hash.get('board'),extra={};
+    if(code){try{decodeBoard(code,[],extra);if(extra.route)hash.set('board',code.slice(0,code.length-extra.route.length));}catch{}} // a manual move makes the embedded route stale
+    hash.delete('at');url.hash=hash.toString();
     history.replaceState(history.state,'',url.href);
   }catch{}
 }
@@ -921,13 +918,13 @@ let shareRoute = false;
 function shareLink(withRoute) {
   const hasRoute = withRoute && frames.length > 1;
   const {solution:_saved,...bareBoard} = board; // without a route, export no saved solution
-  const source=OFFLINE?{board:bareBoard}:currentPresetId?{levelId:currentPresetId}:{board:bareBoard};
-  const input={...source,routeBoard:board,...(hasRoute?{moves:getNotation(),at:cursor}:{})};
+  // A route travels inside the board code (K4.<board><route>), so a link with a route always carries the board.
+  const input=hasRoute?{board:bareBoard,moves:getNotation(),at:cursor}:OFFLINE||!currentPresetId?{board:bareBoard}:{levelId:currentPresetId};
   // makeShareUrl only accepts http(s) bases, so over file:// build the hash with a placeholder base.
   return OFFLINE?location.href.split(/[?#]/)[0]+new URL(makeShareUrl('https://kunundrum.invalid/',input)).hash:makeShareUrl(location.href,input);
 }
 function shareCode(withRoute) {
-  const code=encodeBoard(board); // K4 holds the board only; an optional route follows as Z + compact alphanumeric route
+  const code=encodeBoard(board); // an optional compact alphanumeric route follows the board code directly
   return withRoute&&frames.length>1?code+encodeRoute(board,getNotation()):code;
 }
 function renderShare() {
@@ -938,7 +935,7 @@ function renderShare() {
   let link='',code='',error='';
   try{link=shareLink(withRoute);code=shareCode(withRoute);}catch(e){error=e.message;}
   $('share-link').value=link;$('share-code').value=code;
-  $('share-code-help').textContent=error||(withRoute?'Board code and route (after the Z); paste it in Import.':'Board code; paste it in Import.');
+  $('share-code-help').textContent=error||(withRoute?'Board code and route; paste it in Import.':'Board code; paste it in Import.');
   $('share-link-help').textContent=error||(withRoute?`Opens at move ${cursor}.`:'');
 }
 async function copyText(text,success) {
@@ -958,16 +955,17 @@ function importBoard() {
     if(/^(?:[a-z][a-z0-9+.-]*:\/\/|[?#])/i.test(input)) {
       const cut=input.search(/[?#]/); // only the query and hash matter, so links from file:// and any host work
       share=readShareUrl('https://kunundrum.invalid/'+(cut<0?'':input.slice(cut)));
-      nextBoard=share.boardCode?decodeBoard(share.boardCode,problems):LEVELS.find(level=>level.id===share.levelId);
+      const extra={};
+      nextBoard=share.boardCode?decodeBoard(share.boardCode,problems,extra):LEVELS.find(level=>level.id===share.levelId);
       if(!nextBoard)throw new Error('This link does not contain a recognized puzzle.');
+      if(extra.route&&!problems.length)route=decodeRouteCode(nextBoard,extra.route);
     } else if(/^K\d+\./.test(input)) {
-      const space=input.search(/\s/),extra={}; // `K4.code route` (the catalog line format) or `K4.codeZroute` (compact)
-      nextBoard=decodeBoard(space<0?input:input.slice(0,space),problems,extra);
-      if(space>=0)route=input.slice(space).trim();
-      else if(extra.route&&!problems.length)route=decodeRouteCode(nextBoard,extra.route);
+      const extra={}; // `K4.<board><route>`
+      nextBoard=decodeBoard(input,problems,extra);
+      if(extra.route&&!problems.length)route=decodeRouteCode(nextBoard,extra.route);
     } else nextBoard=decodeBoard(input,problems);
     if(problems.length){editInvalid(nextBoard,problems);clearLocation();$('board-dialog').close();return;}
-    const prepared=route?buildReplay(nextBoard,route):(share?.route||share?.moves)?buildReplay(nextBoard,share.route?decodeRoute(nextBoard,share.route):share.moves):undefined;
+    const prepared=route?buildReplay(nextBoard,route):undefined;
     adoptBoard(nextBoard,prepared,share?.at||0);
     clearLocation();$('board-dialog').close();toast(`Loaded ${board.title}.`);
   }catch(error){showError('board-error',error.message);}
@@ -1204,12 +1202,12 @@ function boot() {
   }
   try {
     const shared=readShareUrl(OFFLINE?'https://kunundrum.invalid/'+location.search+location.hash:location.href);
-    if(shared.boardCode||shared.levelId||shared.moves||shared.route){
-      const problems=[];
-      const next=shared.boardCode?decodeBoard(shared.boardCode,problems):shared.levelId?LEVELS.find(level=>level.id===shared.levelId):LEVELS[0];
+    if(shared.boardCode||shared.levelId){
+      const problems=[],extra={};
+      const next=shared.boardCode?decodeBoard(shared.boardCode,problems,extra):shared.levelId?LEVELS.find(level=>level.id===shared.levelId):LEVELS[0];
       if(!next)throw new Error(`Unknown puzzle ${shared.levelId}. Choose one from the collection.`);
       if(problems.length){adoptBoard(LEVELS[0]);editInvalid(next,problems);return;}
-      const prepared=(shared.route||shared.moves)?buildReplay(next,shared.route?decodeRoute(next,shared.route):shared.moves):undefined;
+      const prepared=extra.route?buildReplay(next,decodeRouteCode(next,extra.route)):undefined;
       adoptBoard(next,prepared,shared.at||0);
     }else if(saved?.board){
       const next=decodeBoard(saved.board);if(typeof saved.title==='string'&&saved.title&&saved.title.length<=80)next.title=saved.title; // custom boards keep their title (the K4 code has none)
@@ -1224,7 +1222,7 @@ function boot() {
   }catch(error){adoptBoard(LEVELS[0]);toast(`Could not load this run: ${error.message}`,true);}
 }
 boot();
-window.addEventListener('hashchange',()=>{if(/(?:^|&)(?:board|level|moves|route|at)=/.test(location.hash.slice(1)))boot();});
+window.addEventListener('hashchange',()=>{if(/(?:^|&)(?:board|level|at)=/.test(location.hash.slice(1)))boot();});
 window.addEventListener('beforeunload',persist);
 
 })();

@@ -185,7 +185,7 @@ The C++17 search/state model deliberately has no external libraries. It can be c
 
 ## Known limits
 
-- The app's K4 **board codes** are supported (`--catalog` reads `levels.js` lines `id = K4.code solution`). Legacy K1 and arbitrary JSON board files are not directly accepted; import/export JSON through Replay Lab first.
+- The app's K4 **board codes** are supported (`--catalog` reads `levels.js` lines `id = K4.<board code><route>`; a route after the board code is ignored by the solver, which also accepts exported codes that include one; solutions are printed without commas). Legacy K1 and arbitrary JSON board files are not directly accepted; import/export JSON through Replay Lab first.
 
 - Memory usage is dominated by the graph of visited states. `--max-states` is a count, **not** a strict memory budget.
 - Boards with many hexes still have a large search space, since every subset of consumed hexes is a distinct state, and the score bound is weak with large negative hexes (7.3 is inconclusive at small budgets; the project owner has since proven it optimal with a tight `--max-score`).

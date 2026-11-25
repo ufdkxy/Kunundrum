@@ -5,32 +5,10 @@ const { validateBoard,parseSolution,resolveBallId,createInitialState,applyMove,f
 
 /** A code identifies a board, independent of any later moves made on it. */
 const MAX_BOARD_CODE_LENGTH = 1_000;
+const MAX_ROUTE_CODE_LENGTH = 20_000; // a route may follow the board code
 const MAX_MOVES_LENGTH = 10_000;
 const MAX_URL_LENGTH = 131_072;
 const MAX_REPLAY_POSITION = 10_000;
-
-function toBase64Url(bytes            )         {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function fromBase64Url(payload        )             {
-  if (!payload || !/^[A-Za-z0-9_-]+$/.test(payload) || payload.length % 4 === 1) {
-    throw new Error("The board code is incomplete or contains invalid characters.");
-  }
-  let binary        ;
-  try {
-    binary = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-  } catch {
-    throw new Error("The board code is not valid base64 data.");
-  }
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  if (toBase64Url(bytes) !== payload) {
-    throw new Error("The board code is incomplete or has been altered.");
-  }
-  return bytes;
-}
 
 /** Compact route (binary move stream): varint number of moves; one byte choice mode; packed move
  * indices (ball index * 4 + direction, ceil(log2(ballCount*4)) bits each).
@@ -319,9 +297,8 @@ function decodeK4(code, problems, extra) {
     if (v >= 4 * total) fail('a ball position is out of range.');
     raw.balls.push({ ...spot(v >> 2), color: K4_BALL_COLORS[v & 3] });
   }
-  if (extra && s[pos] === 'Z') { // `K4.<board>Z<route>`: the board is self-delimiting, so Z after the balls starts an embedded route
-    extra.route = s.slice(pos + 1);
-    if (!extra.route) fail('the route after Z is empty.');
+  if (extra && pos < s.length) { // `K4.<board><route>`: the board is self-delimiting, so whatever follows the balls is the base-62 route
+    extra.route = s.slice(pos);
     s = s.slice(0, pos); code = K4_PREFIX + s;
   }
   if (pos !== s.length) fail('unexpected characters after the balls.');
@@ -354,6 +331,7 @@ function parseJsonBoard(json        , problems         )        {
 /** Accepts a board code, a JSON board, or a complete shared-board URL. */
 /** With a `problems` array, an unreadable-but-structurally-parsable board is returned and its validity problems are listed there instead of thrown. */
 function decodeBoard(input        , problems         , extra)        {
+  // With an `extra` object, a route after the K4 board code is returned in extra.route (decode it with decodeRouteCode).
   if (typeof input !== "string") throw new Error("Paste a board code or JSON board.");
   let code = input.trim();
   if (!code) throw new Error("Paste a board code, board link, or JSON board first.");
@@ -366,7 +344,7 @@ function decodeBoard(input        , problems         , extra)        {
     code = shared.boardCode;
   }
 
-  if (code.length > MAX_BOARD_CODE_LENGTH) {
+  if (code.length > MAX_BOARD_CODE_LENGTH + (extra ? MAX_ROUTE_CODE_LENGTH : 0)) {
     throw new Error("The board data is too large (maximum 1,000 characters).");
   }
   if (code.startsWith("{")) return parseJsonBoard(code, problems);
@@ -422,26 +400,18 @@ function readShareUrl(input        )             {
   const hash = new URLSearchParams(url.hash.replace(/^#/, ""));
   const boardCode = oneParameter(url.searchParams, hash, "board");
   const levelId = oneParameter(url.searchParams, hash, "level");
-  const moves = oneParameter(url.searchParams, hash, "moves");
-  const route = oneParameter(url.searchParams, hash, "route");
   const atText = oneParameter(url.searchParams, hash, "at");
   const result             = {};
 
   if (boardCode !== undefined) {
-    if (!boardCode || boardCode.length > MAX_BOARD_CODE_LENGTH) {
-      throw new Error("The shared board code is empty or too large (maximum 1,000 characters).");
+    if (!boardCode || boardCode.length > MAX_BOARD_CODE_LENGTH + MAX_ROUTE_CODE_LENGTH) {
+      throw new Error("The shared board code is empty or too large.");
     }
     result.boardCode = boardCode;
   }
   if (levelId !== undefined) result.levelId = checkLevelId(levelId);
   if (boardCode !== undefined && levelId !== undefined) {
     throw new Error("The shared link contains both a preset level and a custom board. Use one board source.");
-  }
-  if (moves !== undefined && route !== undefined) throw new Error('Supply either moves or compact route, not both.');
-  if (moves !== undefined) result.moves = checkMoves(moves);
-  if (route !== undefined) {
-    if (route.length > MAX_MOVES_LENGTH || !/^[A-Za-z0-9_-]+$/.test(route)) throw new Error('Invalid compact route.');
-    result.route=route;
   }
   if (atText !== undefined) {
     if (!/^(0|[1-9]\d*)$/.test(atText)) {
@@ -462,13 +432,12 @@ function makeShareUrl(baseUrl        , input            )         {
   if (input.board && input.levelId !== undefined) {
     throw new Error("Share either a preset level or a custom board, not both.");
   }
-  if (input.board) hash.set("board", encodeBoard(input.board));
+  if (input.board) {
+    let code = encodeBoard(input.board);
+    if (input.moves !== undefined) { checkMoves(input.moves); code += encodeRoute(input.board, input.moves); } // the route rides inside the board code
+    hash.set("board", code);
+  } else if (input.moves !== undefined) throw new Error("A route needs its board in the link.");
   if (input.levelId !== undefined) url.searchParams.set("level", checkLevelId(input.levelId));
-  if (input.moves !== undefined) {
-    checkMoves(input.moves);
-    if(input.routeBoard) hash.set('route',toBase64Url(compactSolution(validateBoard(input.routeBoard),input.moves)));
-    else hash.set('moves',input.moves);
-  }
   if (input.at !== undefined) hash.set("at", String(checkPosition(input.at)));
   const hashText = hash.toString();
   if (hashText) url.hash = hashText;
@@ -477,7 +446,7 @@ function makeShareUrl(baseUrl        , input            )         {
   return result;
 }
 
-/** Alphanumeric route text: the compact route bytes (with a leading 1 sentinel byte-group) as one base-62 number. */
+/** Alphanumeric route text: the compact route bytes, behind a leading sentinel 1, read as one base-62 number. */
 function toBase62(bytes) {
   let n = 1n;
   for (const b of bytes) n = n * 256n + BigInt(b);
@@ -495,20 +464,16 @@ function fromBase62(text) {
   if (toBase62(result) !== text) throw new Error('The route code is not in canonical form.');
   return result;
 }
-/** `Z` + alphanumeric compact route: appended to a K4 board code (`K4.<board>Z<route>`). */
+/** Alphanumeric compact route, appended directly to a K4 board code (`K4.<board><route>`, no separator). */
 function encodeRoute(board, notation) {
-  return 'Z' + toBase62(compactSolution(validateBoard(board), notation));
+  return toBase62(compactSolution(validateBoard(board), notation));
 }
-/** Decodes the text after the Z separator (as returned in `extra.route` by decodeBoard) into a route in text notation. */
+/** Decodes route text (as returned in `extra.route` by decodeBoard) into a route in text notation. */
 function decodeRouteCode(board, text) {
-  if (typeof text !== 'string' || text.length > MAX_MOVES_LENGTH) throw new Error('Invalid route code.');
+  if (typeof text !== 'string' || !text || text.length > MAX_ROUTE_CODE_LENGTH) throw new Error('Invalid route code.');
   return expandSolution(validateBoard(board), fromBase62(text));
 }
 
-function decodeRoute(board, code) {
-  if(typeof code!=='string'||code.length>MAX_MOVES_LENGTH)throw new Error('Invalid compact route route.');
-  return expandSolution(validateBoard(board),fromBase64Url(code));
-}
-return {encodeBoard,decodeBoard,decodeRoute,encodeRoute,decodeRouteCode,readShareUrl,makeShareUrl};
+return {encodeBoard,decodeBoard,encodeRoute,decodeRouteCode,readShareUrl,makeShareUrl};
 })();
 

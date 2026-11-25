@@ -409,33 +409,33 @@ function applyMoveAtPhase(state, board, ballId, direction, phase) {
 function parseSolution(text        )              {
   if (typeof text !== "string") throw new Error("A solution must be text.");
   if (text.length > 100000) throw new Error("The solution is too long (100,000 character maximum).");
-  const compact = text.replace(/\s+/g, "");
+  // Notation: ball id + directions, groups written back to back (a new group starts at a capital letter or digit); commas and spaces are ignored.
+  const compact = text.replace(/[\s,]+/g, "");
   if (!compact) return [];
   const tokens              = [];
-  const groups = compact.split(",");
-  for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
-    const group = groups[groupIndex];
-    if (!group) throw new Error(`Group ${groupIndex + 1} is empty; remove the extra comma.`);
-    const match = /^([RGBY](?:[1-9]\d*)?|[1-9]\d*)/.exec(group);
-    if (!match) throw new Error(`Group ${groupIndex + 1} must start with a ball ID, such as R, G3, or an unambiguous number.`);
+  let index = 0, groupIndex = 0;
+  while (index < compact.length) {
+    groupIndex++;
+    const match = /^([RGBY](?:[1-9]\d*)?|[1-9]\d*)/.exec(compact.slice(index));
+    if (!match) throw new Error(`Group ${groupIndex} must start with a ball ID, such as R, G3, or an unambiguous number; found '${compact[index]}'.`);
     const identifier = match[1];
-    let index = identifier.length, moveCount = 0;
-    while (index < group.length) {
-      const direction = group[index]             ;
-      if (!DIRECTIONS.includes(direction)) throw new Error(`Expected u, d, l, or r after ${identifier} in group ${groupIndex + 1}; found '${group[index]}'.`);
+    index += identifier.length;
+    let moveCount = 0;
+    while (index < compact.length && DIRECTIONS.includes(compact[index])) {
+      const direction = compact[index] ;
       index++; moveCount++;
       const choices              = [];
-      if (group[index] === "(") {
+      if (compact[index] === "(") {
         // One annotation per move: (->u), or two letters (->ur) = first arrow's orientation, then the first period-4 arrow's after a flip arrow.
-        const choice = /^\((?:->|→)([udlr]{1,2})\)/.exec(group.slice(index));
-        if (!choice) throw new Error(`Invalid rotating-arrow annotation in group ${groupIndex + 1}; use (->u), or (->ur) with two letters.`);
+        const choice = /^\((?:->|→)([udlr]{1,2})\)/.exec(compact.slice(index));
+        if (!choice) throw new Error(`Invalid rotating-arrow annotation in group ${groupIndex}; use (->u), or (->ur) with two letters.`);
         choices.push(...choice[1].split("")); index += choice[0].length;
-        if (group[index] === "(") throw new Error(`Group ${groupIndex + 1} has two annotations on one move; write the letters together, e.g. (->ur).`);
+        if (compact[index] === "(") throw new Error(`Group ${groupIndex} has two annotations on one move; write the letters together, e.g. (->ur).`);
       }
       tokens.push({ identifier, direction, choices });
       if (tokens.length > 10000) throw new Error("A replay can contain at most 10,000 moves.");
     }
-    if (!moveCount) throw new Error(`Ball ${identifier} needs at least one direction in group ${groupIndex + 1}.`);
+    if (!moveCount) throw new Error(`Ball ${identifier} needs at least one direction in group ${groupIndex}${index < compact.length ? `; found '${compact[index]}'` : ""}.`);
   }
   return tokens;
 }
@@ -482,7 +482,7 @@ function formatSolution(records                                                 
     else groups.push(`${record.ballId}${directions}`);
     previousId = record.ballId;
   }
-  return groups.join(",");
+  return groups.join("");
 }
 
 return {validateBoard,HEX_VALUES,arrowOrientation,applyMoveAtPhase,teleportExit,createInitialState,applyMove,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES};
