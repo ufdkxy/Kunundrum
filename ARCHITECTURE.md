@@ -41,12 +41,13 @@ No server or framework is required by the JavaScript sources. The native solver 
 | `levels.js` | Editable newline catalog data (`id = K4.<board code> <solution>`), held as a template-string assignment | `window.KUNUNDRUM_LEVEL_CODES` |
 | `catalog.js` | Parse and validate catalog entries and IDs | global `Collection.entries` |
 | `app.js` | Render SVG board, play/move controls, replay history, import/export, URL and localStorage state | `window.KunundrumHost` for editor integration |
+| `generator.js` | Random board generator (`Generator.generate({width,height})`): clumpy walls, goals on stopping cells, balls placed by a reverse walk from the solved state that uses `Core.applyMove` for every step; plain mechanics only so far | `Generator` |
 | `editor.js` | In-place board editing, object properties, drag/drop, undo/redo, validation, K4 export | `window.KunEditor` |
 | `styles.css` | Browser presentation, responsive layout | CSS |
 | `music.js` | Five-track music playlist; autoplays on load, or on the first user gesture if the browser blocks it; a manual pause is not stored | DOM audio controls and `Music/*.mp3` |
 | `favicon.svg` | Icon | static asset |
 
-Logical script dependencies: `engine.js` precedes `codec.js`; `levels.js` precedes `catalog.js`; `engine.js`/`codec.js`/`catalog.js` precede `app.js`; `app.js` creates `KunundrumHost` used by the editor. `music.js` is independent of the game mechanics. `index.html` loads, in order: `levels.js`, `engine.js`, `catalog.js`, `codec.js`, `app.js`, `editor.js`, `music.js` (all `defer`).
+Logical script dependencies: `engine.js` precedes `codec.js`; `levels.js` precedes `catalog.js`; `engine.js`/`codec.js`/`catalog.js` precede `app.js`; `app.js` creates `KunundrumHost` used by the editor. `music.js` is independent of the game mechanics. `index.html` loads, in order: `levels.js`, `engine.js`, `catalog.js`, `codec.js`, `generator.js`, `app.js`, `editor.js`, `music.js` (all `defer`).
 
 ### Public engine API
 

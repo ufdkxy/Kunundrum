@@ -361,10 +361,17 @@ function updateDimensions(){
  prune(E.draft);remember(prev);refresh();renderDraft();setStatus('Grid resized. Out-of-bounds objects were removed.');
 }
 function newBoard(){const prev=snapshot();setReview(null,false);const old=E.draft;E.draft=template();E.draft.width=old.width;E.draft.height=old.height;if(old.wallColor)E.draft.wallColor=old.wallColor;E.fromHost=false;E.selected=null;remember(prev);refresh();renderDraft();setStatus('New board.');}
+function generateBoard(){
+ const old=E.draft,result=Generator.generate({width:old.width,height:old.height});
+ if(!result){setStatus('No random board could be generated at this size (try at least 3 x 3).',true);return;}
+ const prev=snapshot();setReview(null,false);E.draft=result.board;if(old.wallColor)E.draft.wallColor=old.wallColor;E.fromHost=false;E.selected=null;remember(prev);refresh();renderDraft();
+ setStatus(`Random ${old.width} x ${old.height} board generated (resize first for another size). Tweak it, then press Play.`);
+}
 function ensureEditing(){if(!E.active)setMode(true);}
 const panel=document.getElementById('editor-panel');
 $('edit-mode-button').addEventListener('click',()=>setMode(!E.active));
 $('editor-new').addEventListener('click',()=>{ensureEditing();newBoard();});
+$('editor-generate').addEventListener('click',()=>{ensureEditing();generateBoard();});
 $('editor-save').addEventListener('click',()=>{try{const valid=Core.validateBoard(E.draft);const code=Codec.encodeBoard(valid);const output=$('editor-export-code');output.value=code;output.hidden=false;output.focus();output.select();if(navigator.clipboard?.writeText){navigator.clipboard.writeText(code).then(()=>setStatus('K4 code copied.')).catch(()=>setStatus('Select and copy the K4 code shown below.'));}else setStatus('Select and copy the K4 code shown below.');}catch(err){setStatus(err.message,true);}});
 $('editor-undo').addEventListener('click',()=>editorUndo());$('editor-redo').addEventListener('click',()=>editorUndo(true));
 $('editor-resize').addEventListener('click',updateDimensions);

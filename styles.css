@@ -539,7 +539,7 @@ body.edit-mode .selected-info { display:none; }
 .editor-review-thumb[hidden],#editor-json-box[hidden]{display:none}
 .editor-review-thumb canvas{display:block;max-width:100%;height:auto;border-radius:4px}
 .editor-review-thumb:hover{border-color:#48d7fa}
-.editor-json-row{display:flex}
+.editor-json-row{display:flex;gap:14px}
 #editor-json-box{display:grid;gap:6px}
 .editor-json{min-height:140px;max-height:260px;word-break:normal;white-space:pre}
 
