@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '4.3.1'; // Single source of truth; the footer reads it.
+const APP_VERSION = '4.3.2'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -440,7 +440,7 @@ let generatingRandom = false;
 // New random: the same generator as the editor's "Generate random board" link, but the board goes straight into play (no edit mode).
 async function newRandom() {
   if (generatingRandom || !window.KunEditor) return;
-  const started = board, {width, height, wallColor} = board;
+  const started = board, {width, height} = board;
   generatingRandom = true; renderMeta();
   try {
     const result = await window.KunEditor.generate(width, height);
@@ -448,7 +448,7 @@ async function newRandom() {
     else if (result.failed) toast(result.solverError ? 'The solver failed: ' + result.solverError.message : 'No board with a proven optimal route was found within 10 s. Try again.', true);
     else if (board !== started) { /* another board was opened meanwhile: discard */ }
     else {
-      const next = result.board; if (wallColor) next.wallColor = wallColor;
+      const next = result.board;
       generatingRandom = false; adoptBoard(next); clearReplayLocation(); persist(); return;
     }
   } catch (error) { toast('Generating failed: ' + error.message, true); }

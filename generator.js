@@ -116,7 +116,8 @@ const Generator = (() => {
     if (ids.some(id => count[id] < perBall) || route.length < steps) return null; // dead-ended walks are discarded: the target length is the point
     // Self-check: the reversed walk must solve the board from the starting position.
     const start = state.balls.map(b => ({ color: b.color, x: b.x, y: b.y }));
-    const draft = { id: 'generated', title: 'Random', width: w, height: h, walls: wallList(walls), balls: start, goals, arrows: [], gates: [], switches: [], teleports: [], hexes: [] };
+    const wallColor = [undefined, 'R', 'G'][Math.floor(Math.random() * 3)]; // cosmetic: blue (absent), red or green walls
+    const draft = { id: 'generated', title: 'Random', ...(wallColor ? {wallColor} : {}), width: w, height: h, walls: wallList(walls), balls: start, goals, arrows: [], gates: [], switches: [], teleports: [], hexes: [] };
     const valid = Core.validateBoard(draft);
     let replay = Core.createInitialState(valid);
     if (replay.balls.some(b => b.locked)) return null;

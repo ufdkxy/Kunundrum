@@ -223,7 +223,7 @@ function validateBoard(raw         , problems         , notes         )        {
   }
   const board        = {
     id: string(source.id, "Board ID", 80, "custom"),
-    title: string(source.title, "Board title", 100, "Custom board"),
+    title: string(source.title, "Board title", 100, "Custom"),
     width, height, walls, balls, goals, arrows, gates, switches, teleports, hexes,
   };
   if (tunnels.length) board.tunnels = tunnels;

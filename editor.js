@@ -56,7 +56,7 @@ const prune = b => {const ids=new Set([...b.gates,...b.teleports].map(v=>v.id));
 const list = s => clean(s).split(',').map(clean).filter(Boolean);
 const at = (p,x,y)=>p.x===x&&p.y===y;
 const nextId = (arr, prefix) => {let i=1;while(arr.some(v=>v.id===prefix+i))i++;return prefix+i;};
-const template=()=>({id:'custom',title:'Custom board',width:10,height:7,walls:[],balls:[],goals:[],arrows:[],gates:[],switches:[],teleports:[],hexes:[]});
+const template=()=>({id:'custom',title:'Custom',width:10,height:7,walls:[],balls:[],goals:[],arrows:[],gates:[],switches:[],teleports:[],hexes:[]});
 function snapshot(){return JSON.stringify(E.draft);}
 // marks[i] is true when the step taken from history[i] replaced the whole board (new, random or imported); fmarks mirrors future.
 // replaced() is therefore false again once such a step is undone.
@@ -107,7 +107,7 @@ function refresh(){
  if(E.tool!=='tunnel')E.pendingTunnel=null;
  if(E.active&&document.activeElement!==$('editor-title'))$('editor-title').value=E.draft.title;
  $('edit-mode-label').textContent=E.active?'Play':'Edit';
- if(E.active){$('level-title').textContent='Board editor';document.title='Board editor · Kunundrum';}
+ if(E.active){$('level-title').textContent='Editor';document.title='Editor · Kunundrum';}
  $('edit-mode-icon-edit').hidden=E.active;
  $('edit-mode-icon-play').hidden=!E.active;
  $('edit-mode-button').setAttribute('aria-pressed',String(E.active));
@@ -229,7 +229,7 @@ function renderDraft(){
  const svg=host().svg(preview);
  $('board-stage').innerHTML=svg.replace('</svg>',overlay()+'</svg>');
  $('board-dimensions').textContent=`${E.draft.width} × ${E.draft.height}`;
- if(E.active)$('level-title').textContent='Board editor';
+ if(E.active)$('level-title').textContent='Editor';
  syncJson();
 }
 function setMode(active){
@@ -384,7 +384,7 @@ async function generateBoard(){
   if(!result){setStatus('No random board could be generated at this size (try at least 3 x 3).',true);return;}
   if(result.failed){setStatus(result.solverError?'The solver failed: '+result.solverError.message:'No board with a proven optimal route was found within 10 s. Try again.',true);return;}
   if(!E.active||snapshot()!==before){setStatus('The board was changed meanwhile: the generated board was discarded.',true);return;}
-  const prev=snapshot();setReview(null,false);E.draft=result.board;if(old.wallColor)E.draft.wallColor=old.wallColor;E.fromHost=false;E.selected=null;remember(prev,true);refresh();renderDraft();
+  const prev=snapshot();setReview(null,false);E.draft=result.board;E.fromHost=false;E.selected=null;remember(prev,true);refresh();renderDraft();
   setStatus(`Random ${old.width} x ${old.height} board generated, optimal route ${result.moves} moves`+(result.short?' (below the target length of 12; the 10 s limit ran out).':'.'));
  }catch(e){setStatus('Generating failed: '+e.message,true);}
  finally{generating=false;link.disabled=false;link.textContent=label;}
@@ -397,7 +397,7 @@ $('editor-generate').addEventListener('click',()=>{ensureEditing();generateBoard
 $('editor-save').addEventListener('click',()=>{try{const valid=Core.validateBoard(E.draft);const code=Codec.encodeBoard(valid);const output=$('editor-export-code');output.value=code;output.hidden=false;output.focus();output.select();if(navigator.clipboard?.writeText){navigator.clipboard.writeText(code).then(()=>setStatus('K4 code copied.')).catch(()=>setStatus('Select and copy the K4 code shown below.'));}else setStatus('Select and copy the K4 code shown below.');}catch(err){setStatus(err.message,true);}});
 $('editor-undo').addEventListener('click',()=>editorUndo());$('editor-redo').addEventListener('click',()=>editorUndo(true));
 $('editor-resize').addEventListener('click',updateDimensions);
-$('editor-title').addEventListener('change',event=>{const prev=snapshot();E.draft.title=clean(event.target.value)||'Custom board';E.draft.id=E.draft.title.toLowerCase().replace(/[^a-z0-9_.-]/g,'-').replace(/^-+/,'').slice(0,80)||'custom';remember(prev);renderDraft();refresh();});
+$('editor-title').addEventListener('change',event=>{const prev=snapshot();E.draft.title=clean(event.target.value)||'Custom';E.draft.id=E.draft.title.toLowerCase().replace(/[^a-z0-9_.-]/g,'-').replace(/^-+/,'').slice(0,80)||'custom';remember(prev);renderDraft();refresh();});
 $('editor-properties').addEventListener('change',event=>{const key=event.target.dataset.edit;if(key)applyProperty(key,event.target.value);});
 $('editor-properties').addEventListener('click',event=>{if(event.target.id==='editor-delete-object'&&E.selected){const prev=snapshot();const s=E.selected;if(s.type==='tunnels'){E.draft.tunnels=(E.draft.tunnels||[]).filter(t=>!sameOpening(t.a,s)&&!sameOpening(t.b,s));normTunnels(E.draft);}else E.draft[s.type]=E.draft[s.type].filter(p=>!at(p,s.x,s.y));prune(E.draft);E.selected=null;remember(prev);refresh();renderDraft();}});
 for(const button of panel.querySelectorAll('[data-editor-tool]')) {
