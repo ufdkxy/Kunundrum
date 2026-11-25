@@ -22,6 +22,11 @@ assert.equal(corner.back.tunnels.length,2);ok('corner cell with two edge opening
 const wallColor=round('green',{width:2,height:1,walls:[],balls:[{x:1,y:1,color:'R'}],goals:[{x:2,y:1,color:'R'}],wallColor:'G'});assert.equal(wallColor.back.wallColor,'G');ok('wall color');
 const rot=round('rot',{width:4,height:1,walls:[],balls:[{x:1,y:1,color:'R'}],goals:[{x:4,y:1,color:'R'}],arrows:[{x:2,y:1,direction:'u',rotating:true,type:'flip'},{x:3,y:1,direction:'l',rotating:true},{x:4,y:1,direction:'d',rotating:true,type:'ccw'}].slice(0,2)});
 assert.equal(rot.back.arrows[0].type,'flip');ok('rotating arrow types');
+// 2b. Routes embedded in the code: `K4.<board>Z<route>` (alphanumeric), whole catalog.
+{let text=0,code=0;for(const {id,code:c,solution} of Collection.entries){const b=Core.validateBoard({...Codec.decodeBoard(c),id,title:'Level '+id});
+ const z=Codec.encodeRoute(b,solution),extra={},back=Codec.decodeBoard(c+z,undefined,extra);assert.equal(Codec.encodeBoard(back),c,id);assert(/^Z[0-9A-Za-z]+$/.test(z),id);
+ assert.equal(Core.formatSolution?Core.formatSolution(Core.parseSolution(Codec.decodeRouteCode(back,extra.route))):Codec.decodeRouteCode(back,extra.route),Core.formatSolution?Core.formatSolution(Core.parseSolution(solution)):solution,id);text+=solution.length;code+=z.length;}
+ ok(`routes: 300 round-trip through Z suffix (${text} text chars -> ${code})`);}
 // 3. Rejections.
 const base='K4.'+Codec.encodeBoard({width:2,height:1,walls:[],balls:[{x:1,y:1,color:'R'}],goals:[{x:2,y:1,color:'R'}]}).slice(3);
 const bad=(name,fn)=>{assert.throws(fn);ok('rejects '+name);};
@@ -36,4 +41,9 @@ bad('size 16',()=>Codec.encodeBoard({width:16,height:1,walls:[],balls:[{x:1,y:1,
 bad('hex value 7',()=>Codec.encodeBoard({width:3,height:1,walls:[],balls:[{x:1,y:1,color:'R'}],goals:[{x:2,y:1,color:'R'}],hexes:[{x:3,y:1,id:'h',value:7}]}));
 bad('opening facing floor',()=>Codec.encodeBoard({width:3,height:1,walls:[],balls:[{x:1,y:1,color:'R'}],goals:[{x:2,y:1,color:'R'}],tunnels:[{a:{x:1,y:1,side:'r'},b:{x:3,y:1,side:'r'}}]}));
 bad('uncontrolled gate',()=>Codec.encodeBoard({width:3,height:1,walls:[],balls:[{x:1,y:1,color:'R'}],goals:[{x:2,y:1,color:'R'}],gates:[{x:3,y:1,id:'g',active:true}]}));
+{const c='K4.3401pa6a2010F',b=Codec.decodeBoard(c),z=Codec.encodeRoute(Core.validateBoard({...b,id:'1.1',title:'x'}),'Gd');
+ bad('Z without a route',()=>Codec.decodeBoard(c+'Z',undefined,{}));
+ bad('Z route without an extra receiver',()=>Codec.decodeBoard(c+z));
+ bad('non-canonical route (leading 0)',()=>Codec.decodeRouteCode(b,'0'+z.slice(1)));
+ bad('garbage route',()=>Codec.decodeRouteCode(b,'!!'));}
 console.log(n+' checks passed');

@@ -238,10 +238,10 @@ function encodeK4(input) {
   return out;
 }
 
-function decodeK4(code, problems) {
+function decodeK4(code, problems, extra) {
   const fail = message => { throw new Error('Invalid K4 board code: ' + message); };
   if (!code.startsWith(K4_PREFIX) || !/^[0-9A-Za-z]+$/.test(code.slice(3))) fail('only letters and digits may follow "K4.".');
-  const s = code.slice(3);
+  let s = code.slice(3);
   let pos = 0;
   const next = () => { if (pos >= s.length) fail('the code is truncated.'); return s[pos++]; };
   const num = (max, what) => { const c = next(), v = N62.indexOf(c); if (v > max) fail(`${what} is out of range.`); return v; };
@@ -319,6 +319,11 @@ function decodeK4(code, problems) {
     if (v >= 4 * total) fail('a ball position is out of range.');
     raw.balls.push({ ...spot(v >> 2), color: K4_BALL_COLORS[v & 3] });
   }
+  if (extra && s[pos] === 'Z') { // `K4.<board>Z<route>`: the board is self-delimiting, so Z after the balls starts an embedded route
+    extra.route = s.slice(pos + 1);
+    if (!extra.route) fail('the route after Z is empty.');
+    s = s.slice(0, pos); code = K4_PREFIX + s;
+  }
   if (pos !== s.length) fail('unexpected characters after the balls.');
   const own = [], board = validateBoard(raw, problems ?? own);
   if (!(problems ?? own).length) { // strict: only the canonical spelling is accepted
@@ -348,7 +353,7 @@ function parseJsonBoard(json        , problems         )        {
 
 /** Accepts a board code, a JSON board, or a complete shared-board URL. */
 /** With a `problems` array, an unreadable-but-structurally-parsable board is returned and its validity problems are listed there instead of thrown. */
-function decodeBoard(input        , problems         )        {
+function decodeBoard(input        , problems         , extra)        {
   if (typeof input !== "string") throw new Error("Paste a board code or JSON board.");
   let code = input.trim();
   if (!code) throw new Error("Paste a board code, board link, or JSON board first.");
@@ -365,7 +370,7 @@ function decodeBoard(input        , problems         )        {
     throw new Error("The board data is too large (maximum 1,000 characters).");
   }
   if (code.startsWith("{")) return parseJsonBoard(code, problems);
-  if (code.startsWith(K4_PREFIX)) return decodeK4(code, problems);
+  if (code.startsWith(K4_PREFIX)) return decodeK4(code, problems, extra);
   if (/^K\d+\./.test(code)) throw new Error('Unsupported board-code version; this player supports K4.');
   throw new Error('A board code must start with K4.');
 }
@@ -472,10 +477,38 @@ function makeShareUrl(baseUrl        , input            )         {
   return result;
 }
 
+/** Alphanumeric route text: the compact route bytes (with a leading 1 sentinel byte-group) as one base-62 number. */
+function toBase62(bytes) {
+  let n = 1n;
+  for (const b of bytes) n = n * 256n + BigInt(b);
+  let out = '';
+  while (n > 0n) { out = N62[Number(n % 62n)] + out; n /= 62n; }
+  return out;
+}
+function fromBase62(text) {
+  let n = 0n;
+  for (const c of text) { const v = N62.indexOf(c); if (v < 0) throw new Error('Invalid route code.'); n = n * 62n + BigInt(v); }
+  const bytes = [];
+  while (n > 1n) { bytes.push(Number(n & 255n)); n >>= 8n; }
+  if (n !== 1n) throw new Error('Invalid route code.');
+  const result = Uint8Array.from(bytes.reverse());
+  if (toBase62(result) !== text) throw new Error('The route code is not in canonical form.');
+  return result;
+}
+/** `Z` + alphanumeric compact route: appended to a K4 board code (`K4.<board>Z<route>`). */
+function encodeRoute(board, notation) {
+  return 'Z' + toBase62(compactSolution(validateBoard(board), notation));
+}
+/** Decodes the text after the Z separator (as returned in `extra.route` by decodeBoard) into a route in text notation. */
+function decodeRouteCode(board, text) {
+  if (typeof text !== 'string' || text.length > MAX_MOVES_LENGTH) throw new Error('Invalid route code.');
+  return expandSolution(validateBoard(board), fromBase62(text));
+}
+
 function decodeRoute(board, code) {
   if(typeof code!=='string'||code.length>MAX_MOVES_LENGTH)throw new Error('Invalid compact route route.');
   return expandSolution(validateBoard(board),fromBase64Url(code));
 }
-return {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl};
+return {encodeBoard,decodeBoard,decodeRoute,encodeRoute,decodeRouteCode,readShareUrl,makeShareUrl};
 })();
 

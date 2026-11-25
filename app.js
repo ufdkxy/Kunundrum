@@ -3,12 +3,12 @@
 (() => {
 const {validateBoard,createInitialState,applyMove,applyMoveAtPhase,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES}=Core;
 const {entries:CATALOG_ENTRIES}=Collection;
-const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
+const {encodeBoard,decodeBoard,decodeRoute,encodeRoute,decodeRouteCode,readShareUrl,makeShareUrl}=Codec;
 
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '4.3.2'; // Single source of truth; the footer reads it.
+const APP_VERSION = '4.4.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -105,7 +105,8 @@ function renderHelpIcons() {
     id:'help-symbols', title:'Help symbols', width:6, height:2,
     balls:[{color:'B',x:1,y:1}], goals:[{color:'B',x:1,y:2}],
     arrows:[{x:2,y:1,direction:'r'}],
-    switches:[{id:'S',x:3,y:1,controls:['G1']}], gates:[{id:'G1',x:5,y:2,active:true}],
+    switches:[{id:'S',x:3,y:1,controls:['G1']}], gates:[{id:'G1',x:5,y:2,active:false}], // inactive gate: the derived switch indicator is then Off (the help icon shows the red switch)
+   
     teleports:[{id:'T1',color:'Y',x:4,y:1,active:true},{id:'T2',color:'Y',x:4,y:2,active:true}],
     hexes:[{id:'minus',x:5,y:1,value:-5}],
   });
@@ -926,8 +927,8 @@ function shareLink(withRoute) {
   return OFFLINE?location.href.split(/[?#]/)[0]+new URL(makeShareUrl('https://kunundrum.invalid/',input)).hash:makeShareUrl(location.href,input);
 }
 function shareCode(withRoute) {
-  const code=encodeBoard(board); // K4 holds the board only; a route follows it after a space (the catalog line format)
-  return withRoute&&frames.length>1?`${code} ${getNotation()}`:code;
+  const code=encodeBoard(board); // K4 holds the board only; an optional route follows as Z + compact alphanumeric route
+  return withRoute&&frames.length>1?code+encodeRoute(board,getNotation()):code;
 }
 function renderShare() {
   const canRoute=frames.length>1, withRoute=shareRoute&&canRoute, n=frames.length-1;
@@ -937,7 +938,7 @@ function renderShare() {
   let link='',code='',error='';
   try{link=shareLink(withRoute);code=shareCode(withRoute);}catch(e){error=e.message;}
   $('share-link').value=link;$('share-code').value=code;
-  $('share-code-help').textContent=error||withRoute?'Board code and route; paste it in Import.':'Board code; paste it in Import.';
+  $('share-code-help').textContent=error||(withRoute?'Board code and route (after the Z); paste it in Import.':'Board code; paste it in Import.');
   $('share-link-help').textContent=error||(withRoute?`Opens at move ${cursor}.`:'');
 }
 async function copyText(text,success) {
@@ -960,9 +961,10 @@ function importBoard() {
       nextBoard=share.boardCode?decodeBoard(share.boardCode,problems):LEVELS.find(level=>level.id===share.levelId);
       if(!nextBoard)throw new Error('This link does not contain a recognized puzzle.');
     } else if(/^K\d+\./.test(input)) {
-      const space=input.search(/\s/); // `K4.code route` (the catalog line format)
-      nextBoard=decodeBoard(space<0?input:input.slice(0,space),problems);
+      const space=input.search(/\s/),extra={}; // `K4.code route` (the catalog line format) or `K4.codeZroute` (compact)
+      nextBoard=decodeBoard(space<0?input:input.slice(0,space),problems,extra);
       if(space>=0)route=input.slice(space).trim();
+      else if(extra.route&&!problems.length)route=decodeRouteCode(nextBoard,extra.route);
     } else nextBoard=decodeBoard(input,problems);
     if(problems.length){editInvalid(nextBoard,problems);clearLocation();$('board-dialog').close();return;}
     const prepared=route?buildReplay(nextBoard,route):(share?.route||share?.moves)?buildReplay(nextBoard,share.route?decodeRoute(nextBoard,share.route):share.moves):undefined;
