@@ -365,11 +365,26 @@ function updateDimensions(){
  prune(E.draft);remember(prev);refresh();renderDraft();setStatus('Grid resized. Out-of-bounds objects were removed.');
 }
 function newBoard(){const prev=snapshot();setReview(null,false);const old=E.draft;E.draft=template();E.draft.width=old.width;E.draft.height=old.height;if(old.wallColor)E.draft.wallColor=old.wallColor;E.fromHost=false;E.selected=null;remember(prev,true);refresh();renderDraft();setStatus('New board.');}
-function generateBoard(){
- const old=E.draft,result=Generator.generate({width:old.width,height:old.height});
- if(!result){setStatus('No random board could be generated at this size (try at least 3 x 3).',true);return;}
- const prev=snapshot();setReview(null,false);E.draft=result.board;if(old.wallColor)E.draft.wallColor=old.wallColor;E.fromHost=false;E.selected=null;remember(prev,true);refresh();renderDraft();
- setStatus(`Random ${old.width} x ${old.height} board generated.`);
+let generating=false;
+function solverClient(){ // solver-client.js is loaded on first use (the Solver dialog loads the same script)
+ if(window.KunSolver)return Promise.resolve(window.KunSolver);
+ return new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='./solver-client.js';s.onload=()=>resolve(window.KunSolver);s.onerror=()=>reject(new Error('Could not load the solver files.'));document.head.append(s);});
+}
+async function generateBoard(){
+ if(generating)return;
+ const link=$('editor-generate'),label=link.textContent,old=E.draft,before=snapshot();
+ generating=true;link.disabled=true;link.textContent='Generating...';setStatus('');
+ try{
+  const client=await solverClient();
+  const result=await Generator.generate({width:old.width,height:old.height,seconds:10,minMoves:12,
+   solve:(code,options)=>{const job=client.solve(code,{algorithm:'auto',maxMemoryMB:1000,...options});return job.promise.then(r=>{const check=client.verifyResult(r,code);if(!check.ok)throw new Error(check.error);return r;});}});
+  if(!result){setStatus('No random board could be generated at this size (try at least 3 x 3).',true);return;}
+  if(result.failed){setStatus(result.solverError?'The solver failed: '+result.solverError.message:'No board with a proven optimal route was found within 10 s. Try again.',true);return;}
+  if(!E.active||snapshot()!==before){setStatus('The board was changed meanwhile: the generated board was discarded.',true);return;}
+  const prev=snapshot();setReview(null,false);E.draft=result.board;if(old.wallColor)E.draft.wallColor=old.wallColor;E.fromHost=false;E.selected=null;remember(prev,true);refresh();renderDraft();
+  setStatus(`Random ${old.width} x ${old.height} board generated, optimal route ${result.moves} moves`+(result.short?' (below the target length of 12; the 10 s limit ran out).':'.'));
+ }catch(e){setStatus('Generating failed: '+e.message,true);}
+ finally{generating=false;link.disabled=false;link.textContent=label;}
 }
 function ensureEditing(){if(!E.active)setMode(true);}
 const panel=document.getElementById('editor-panel');

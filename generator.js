@@ -4,7 +4,7 @@
 // and walk BACKWARDS: each step picks a ball and a (start cell, direction) whose forward move, simulated with the game engine itself
 // (Core.applyMove), ends exactly on the ball's current cell. The balls' final cells are the starting position, the reversed walk is a
 // valid (not necessarily shortest) route. No rule is re-implemented here: every move is judged by engine.js.
-// Generator.generate({width, height}) -> {board, route, attempts} | null.   Requires engine.js (Core).
+// Generator.generate({width, height, solve, seconds, minMoves}) -> Promise<{board, route, moves, ...} | {failed} | null> (see generate()).   Requires engine.js (Core) and codec.js (Codec).
 const Generator = (() => {
   const DIRS = ['u', 'd', 'l', 'r'], DX = { u: 0, d: 0, l: -1, r: 1 }, DY = { u: 1, d: -1, l: 0, r: 0 };
   const rnd = n => Math.floor(Math.random() * n);
@@ -130,14 +130,64 @@ const Generator = (() => {
     return { board: draft, route: Core.formatSolution(records), moves: route.length };
   }
 
-  /** A random board of the given size, or null if none was found (very small boards). */
-  function generate({ width = 10, height = 7 } = {}) {
-    if (width < 3 || height < 3) return null;
+  // The walk's own route is only one valid route. With a solver the board is kept only if the solver proves a route optimal and that route
+  // is at least `minMoves` long; the proven route is what the board carries.
+  const pause = () => new Promise(resolve => setTimeout(resolve, 0)); // lets the page repaint ("Generating...") between heavy steps
+
+  function replays(board, route) {
+    try {
+      const valid = Core.validateBoard(board);
+      let state = Core.createInitialState(valid);
+      for (const t of Core.parseSolution(route)) {
+        const m = Core.applyMove(state, valid, Core.resolveBallId(state, t.identifier), t.direction, t.choices);
+        if (m.kind !== 'ok') return false;
+        state = m.state;
+      }
+      return Core.isComplete(state);
+    } catch { return false; }
+  }
+
+  /** One walk-built candidate of the given size (no solver involved), or null if none was found in 1000 attempts (very small boards). */
+  function candidate(width, height) {
     for (let attempts = 1; attempts <= 1000; attempts++) {
       const result = attempt(width, height);
       if (result) return { ...result, attempts };
     }
     return null;
+  }
+
+  /**
+   * A random board of the given size. Resolves to null if the size is too small.
+   * Without `solve`: the first walk-built candidate, carrying the walk's route (not necessarily shortest).
+   * With `solve(code, {seconds}) -> Promise<solver result>` (the app passes KunSolver.solve): candidates are solved one after another until one has
+   * a replay-verified OPTIMAL route of at least `minMoves` moves, or `seconds` (total, default 10) run out. On timeout the best proven-optimal
+   * candidate so far is returned (`short: true` if below `minMoves`), or {failed: true} if none was proven. Solver errors on a candidate skip it;
+   * the same error on every candidate is reported as `solverError`.
+   */
+  async function generate({ width = 10, height = 7, solve = null, seconds = 10, minMoves = 12, perSolve = 3, now = () => Date.now() } = {}) {
+    if (width < 3 || height < 3) return null;
+    await pause();
+    if (!solve) return candidate(width, height);
+    const deadline = now() + seconds * 1000;
+    let best = null, tried = 0, solverError = null, solved = 0;
+    while (now() < deadline - 300) {
+      const cand = candidate(width, height);
+      if (!cand) return null;
+      tried++;
+      let r;
+      try {
+        const code = Codec.encodeBoard(Core.validateBoard(cand.board));
+        r = await solve(code, { seconds: Math.min(perSolve, (deadline - now()) / 1000) });
+      } catch (e) { solverError = e; await pause(); continue; }
+      solverError = null; solved++;
+      if (r && r.hasSolution && r.status === 'OPTIMAL' && replays(cand.board, r.solution)) {
+        if (!best || r.moves > best.moves) best = { board: { ...cand.board, solution: r.solution }, route: r.solution, moves: r.moves, tried };
+        if (r.moves >= minMoves) return { ...best, tried };
+      }
+      await pause();
+    }
+    if (best) return { ...best, tried, short: true };
+    return { failed: true, tried, solverError: solved === 0 ? solverError : null };
   }
 
   return { generate };

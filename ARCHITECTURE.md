@@ -41,7 +41,7 @@ No server or framework is required by the JavaScript sources. The native solver 
 | `levels.js` | Editable newline catalog data (`id = K4.<board code> <solution>`), held as a template-string assignment | `window.KUNUNDRUM_LEVEL_CODES` |
 | `catalog.js` | Parse and validate catalog entries and IDs | global `Collection.entries` |
 | `app.js` | Render SVG board, play/move controls, replay history, import/export, URL and localStorage state | `window.KunundrumHost` for editor integration |
-| `generator.js` | Random board generator (`Generator.generate({width,height})`): clumpy walls, goals on stopping cells, balls placed by a reverse walk from the solved state that uses `Core.applyMove` for every step; plain mechanics only so far | `Generator` |
+| `generator.js` | Random board generator (`Generator.generate({width,height})`): clumpy walls, goals on stopping cells, balls placed by a reverse walk from the solved state that uses `Core.applyMove` for every step; `generate()` is async and, given a `solve` function (the editor passes `KunSolver.solve`), keeps only candidates with a verified OPTIMAL route of at least 12 moves within a 10 s budget and stores that route as `solution`; plain mechanics only so far | `Generator` |
 | `editor.js` | In-place board editing, object properties, drag/drop, undo/redo, validation, K4 export | `window.KunEditor` |
 | `styles.css` | Browser presentation, responsive layout | CSS |
 | `music.js` | Five-track music playlist; autoplays on load, or on the first user gesture if the browser blocks it; a manual pause is not stored | DOM audio controls and `Music/*.mp3` |
