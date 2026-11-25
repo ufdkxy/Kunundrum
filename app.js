@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '4.2.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '4.3.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -51,6 +51,7 @@ const ICON_PATHS = {
   'skip-last': '<path d="M18 5v14M6 5l7 7-7 7" stroke-width="2.4"/>',
   'save': '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z"/><path d="M7 21v-8h10v8M7 3v5h8"/>',
   'check': '<path d="m5 12 4 4L19 6"/>',
+  'star': '<path d="m12 2.8 2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8Z"/>',
   'edit': '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
 };
 function icon(name) { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name] || ''}</svg>`; }
@@ -259,7 +260,7 @@ function adoptBoard(nextBoard, replayFrames, at = 0) {
 function persist() {
   try {
     const records = getNotation();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ board: encodeBoard(board), title: currentPresetId ? undefined : board.title, moves: records, at: cursor, selected, mode, settings, draft: $('solution-input').value }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ board: encodeBoard(board), title: currentPresetId ? undefined : board.title, solution: currentPresetId ? undefined : board.solution, moves: records, at: cursor, selected, mode, settings, draft: $('solution-input').value }));
     if (isComplete(state()) && currentPresetId) {
       const previous = bestScores[currentPresetId];
       if (!previous || state().score < previous.score || state().score === previous.score && state().moves < previous.moves) {
@@ -435,6 +436,22 @@ function renderBoard(trace = frames[cursor]) {
   if(window.KunEditor?.active){window.KunEditor.render();return;}
   $('board-stage').innerHTML = renderSvg(board,state(),{outlinedBallId,trace});
 }
+// Stars: the score of the board's best known route (the saved solution: proven optimal for generated boards and 99% of the catalog)
+// decides. score <= best: 3 stars, <= best + 2: 2 stars, otherwise 1; an unfinished board has 0.
+const bestKnownCache = new Map();
+function bestKnownScore(b) {
+  if (!b?.solution) return null;
+  if (!bestKnownCache.has(b.solution)) {
+    let score = null;
+    try { const last = buildReplay(b, b.solution).at(-1).state; if (isComplete(last)) score = last.score; } catch {}
+    bestKnownCache.set(b.solution, score);
+  }
+  return bestKnownCache.get(b.solution);
+}
+function starCount(score, best) { return score <= best ? 3 : score <= best + 2 ? 2 : 1; }
+function starsHtml(count) {
+  return `<span class="stars" role="img" aria-label="${count} of 3 stars">${[1, 2, 3].map(i => `<span class="${i <= count ? 'on' : 'off'}">${icon('star')}</span>`).join('')}</span>`;
+}
 // Next level in numeric order (chapter, number) among catalog levels; levels.js file order is not numeric.
 function nextLevel() {
   if (!currentPresetId) return null;
@@ -450,8 +467,11 @@ function renderMeta() {
   const docked=state().balls.filter(ball=>ball.locked).length;
   $('docked-value').innerHTML=`${docked}<span>/${state().balls.length}</span>`;
   const completed=$('completion-inline');
-  const hasNext=isComplete(state())&&!!nextLevel();
-  completed.innerHTML=isComplete(state())?`Complete${hasNext?'<button class="next-puzzle" id="next-puzzle" type="button" title="Go to the next puzzle (N)">Next puzzle ›</button>':''}`:'';
+  const finished=isComplete(state());
+  const best=finished?bestKnownScore(board):null;
+  const hasNext=finished&&!!nextLevel();
+  const hasRandom=finished&&!currentPresetId&&!!board.solution; // a generated board (the only non-catalog board that carries a route)
+  completed.innerHTML=finished?`${best===null?'Complete':starsHtml(starCount(state().score,best))}${hasNext?'<button class="next-puzzle" id="next-puzzle" type="button" title="Go to the next puzzle (N)">Next puzzle ›</button>':''}${hasRandom?'<button class="next-puzzle" id="new-random" type="button" title="Generate a new random board (N)">New random</button>':''}`:'';
   completed.className=`completion-inline${isComplete(state())?' done':''}`;
 }
 // Bottom-bar hint. "Moving..." is shown only while autoplay is running (isPlaying), never for a
@@ -771,7 +791,8 @@ function refreshLevelCards() { // best scores and the current level change betwe
   for (const card of $('level-cards').querySelectorAll('.level-card')) {
     const best = bestScores[card.dataset.level];
     card.classList.toggle('active', currentPresetId === card.dataset.level);
-    card.querySelector('.level-card-title span').innerHTML = best ? `${icon('check')} ${best.score}` : '';
+    const known = best ? bestKnownScore(levelById.get(card.dataset.level)) : null;
+    card.querySelector('.level-card-title span').innerHTML = best ? `${known === null ? icon('check') : starsHtml(starCount(best.score, known))} ${best.score}` : '';
   }
 }
 function revealChapterButton() { // keep the active chapter button visible in the chapter bar
@@ -997,7 +1018,7 @@ $('levels-dialog').addEventListener('close',()=>{try{localStorage.setItem(PUZZLE
 $('level-cards').addEventListener('scroll',()=>{if(!spyFrame)spyFrame=requestAnimationFrame(updateChapterSpy);});
 window.addEventListener('resize',()=>{if(levelCardsBuilt&&$('levels-dialog').open)sizeLevelSpacer();});
 $('chapter-bar').addEventListener('click',event=>{const b=event.target.closest('[data-chapter]');if(b)scrollToChapter(Number(b.dataset.chapter));});
-$('completion-inline').addEventListener('click',event=>{if(!event.target.closest('#next-puzzle')||busy||isPlaying)return;const next=nextLevel();if(next){adoptBoard(next);clearLocation();}});
+$('completion-inline').addEventListener('click',event=>{if(busy||isPlaying)return;if(event.target.closest('#new-random')){$('editor-generate').click();return;}if(!event.target.closest('#next-puzzle'))return;const next=nextLevel();if(next){adoptBoard(next);clearLocation();}});
 $('level-cards').addEventListener('click',event=>{const target=event.target.closest('[data-level]');if(!target)return;const next=LEVELS.find(level=>level.id===target.dataset.level);if(next){levelsSelected=next.id;adoptBoard(next);clearLocation();$('levels-dialog').close();}});
 $('open-help').addEventListener('click',()=>openDialog('help-dialog'));
 $('open-share').addEventListener('click',()=>{shareRoute=true;$('share-include-route').checked=true;renderShare();openDialog('share-dialog');});
@@ -1053,7 +1074,7 @@ document.addEventListener('keydown',event=>{
   const viewToggle=!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&{c:'toggle-coords',l:'toggle-labels',o:'toggle-outline',t:'toggle-trace'}[event.key.toLowerCase()];
   if(viewToggle){event.preventDefault();$(viewToggle).click();return;}
   // N = Next puzzle, P = Puzzles, S = Solver, only while the matching button is available. Shift+S = load the saved solution (a hidden shortcut, shown nowhere in the UI).
-  const action=!event.ctrlKey&&!event.metaKey&&!event.altKey&&(!event.shiftKey&&{n:'next-puzzle',p:'open-levels',s:'open-solver'}[event.key.toLowerCase()]);
+  const action=!event.ctrlKey&&!event.metaKey&&!event.altKey&&(!event.shiftKey&&{n:$('new-random')?'new-random':'next-puzzle',p:'open-levels',s:'open-solver'}[event.key.toLowerCase()]);
   if(event.shiftKey&&event.key==='S'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){if(board.solution&&!isPlaying&&!busy&&$('load-solution').offsetParent!==null){event.preventDefault();loadSolution(board.solution);}return;}
   if(action){const button=$(action);if(button&&!button.disabled&&!isPlaying&&!busy&&button.offsetParent!==null){event.preventDefault();button.click();return;}}
   if(isPlaying)return;
@@ -1172,6 +1193,7 @@ function boot() {
       adoptBoard(next,prepared,shared.at||0);
     }else if(saved?.board){
       const next=decodeBoard(saved.board);if(typeof saved.title==='string'&&saved.title&&saved.title.length<=80)next.title=saved.title; // custom boards keep their title (the K4 code has none)
+      if(typeof saved.solution==='string'&&saved.solution.length<=10000)next.solution=saved.solution; // a generated board keeps its best known route (needed for stars)
       const prepared=saved.moves?buildReplay(next,saved.moves):undefined;
       adoptBoard(next,prepared,Number.isInteger(saved.at)?saved.at:0);
       if(cursor===0&&state().balls.some(ball=>ball.id===saved.selected&&!ball.locked))selected=saved.selected;

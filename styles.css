@@ -575,3 +575,11 @@ body.edit-mode .selected-info { display:none; }
 .board-bottom #board-hint, .compact-layout .board-bottom #board-hint { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; justify-content: flex-end; }
 .board-bottom .selected-info { min-width: 0; }
 .board-bottom .completion-inline { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Stars (3-star scoring) */
+.stars { color: #f2c14e; display: inline-flex; align-items: center; gap: 1px; vertical-align: middle; }
+.stars > span { display: inline-flex; }
+.stars svg { width: 15px; height: 15px; fill: currentColor; stroke-width: 1.3; }
+.stars .off { opacity: .28; }
+.stars .off svg { fill: none; }
+.level-card-title .stars svg { width: 13px; height: 13px; }
