@@ -60,7 +60,9 @@ const Generator = (() => {
       if (board.goals.some(g => g.color === ball.color && g.x === p.x && g.y === p.y)) continue; // would start docked
       if (last && last.id === id && last.x === p.x && last.y === p.y) continue;
       const pre = { ...state, balls: state.balls.map(b => b.id === id ? { ...b, x: p.x, y: p.y, locked: false } : b) };
-      for (const d of DIRS) {
+      // Plain boards only: a slide that ends at the ball's cell must head towards it (arrows, teleports and tunnels will need all four).
+      const toward = p.x === ball.x ? (p.y < ball.y ? 'u' : 'd') : (p.x < ball.x ? 'r' : 'l');
+      for (const d of [toward]) {
         const r = Core.applyMove(pre, board, id, d);
         if (r.kind !== 'ok') continue;
         const end = r.state.balls.find(b => b.id === id);
@@ -72,23 +74,31 @@ const Generator = (() => {
     return candidates;
   }
 
+  const BALLS = 4; // always 4 balls, all of different colors
+
+  // One wall layout, several tries at goals and walks (most failures are goals nothing can stop on, which a new goal draw fixes cheaply).
   function attempt(w, h) {
     const walls = makeWalls(w, h), floor = floorCells(w, h, walls);
-    const n = 2 + rnd(3); // 2-4 balls, all of different colors
-    if (floor.length < 3 * n + 4 || !connected(floor, walls)) return null;
+    if (floor.length < 3 * BALLS + 4 || !connected(floor, walls)) return null;
+    for (let tries = 0; tries < 12; tries++) { const result = walk(w, h, walls, floor); if (result) return result; }
+    return null;
+  }
+
+  function walk(w, h, walls, floor) {
+    const n = BALLS;
     const colors = shuffled(['R', 'G', 'B', 'Y']).slice(0, n), goalCells = shuffled(floor).slice(0, n); // any floor cell: a goal a lone ball cannot stop on needs another ball as a stopper, and the walk finds out
     const goals = colors.map((color, i) => ({ color, ...goalCells[i] }));
     // Solved state: every ball on the goal of its color (docked).
     const board = Core.validateBoard({ width: w, height: h, walls: wallList(walls), balls: goals.map(g => ({ ...g })), goals });
     let state = Core.createInitialState(board);
-    const ids = state.balls.map(b => b.id), moved = new Set(), route = [];
-    const steps = 5 + rnd(16); // 5-20 reverse steps
+    const ids = state.balls.map(b => b.id), count = Object.fromEntries(ids.map(id => [id, 0])), route = [];
+    const steps = 12 + rnd(9), perBall = 3; // 12-20 reverse steps, at least 3 per ball
     let last = null; // forbids the walk from simply undoing its previous step (same ball back to the cell it just came from)
     for (let k = 0; k < steps + 30; k++) {
-      const unmoved = ids.filter(id => !moved.has(id));
-      if (k >= steps && !unmoved.length) break;
-      const forced = unmoved.length && steps - k <= unmoved.length;
-      const order = shuffled(forced || (unmoved.length && Math.random() < 0.5) ? unmoved.concat(ids) : ids);
+      const short = ids.filter(id => count[id] < perBall), deficit = short.reduce((a, id) => a + perBall - count[id], 0);
+      if (k >= steps && !short.length) break;
+      const forced = short.length && steps - k <= deficit; // the remaining steps are all needed for balls below their minimum
+      const order = shuffled(forced ? short : short.length && Math.random() < 0.5 ? short.concat(ids) : ids);
       let step = null;
       for (const id of order) {
         // Candidate steps for this ball, in random order; a step must leave the ball on a cell that has predecessors itself (unless it is the
@@ -100,10 +110,10 @@ const Generator = (() => {
         if (step) break;
       }
       if (!step) break;
-      state = step.pre; moved.add(step.id); last = { id: step.id, x: step.to.x, y: step.to.y };
+      state = step.pre; count[step.id]++; last = { id: step.id, x: step.to.x, y: step.to.y };
       route.unshift({ id: step.id, d: step.d });
     }
-    if (moved.size < ids.length || route.length < steps) return null; // dead-ended walks are discarded: the target length is the point
+    if (ids.some(id => count[id] < perBall) || route.length < steps) return null; // dead-ended walks are discarded: the target length is the point
     // Self-check: the reversed walk must solve the board from the starting position.
     const start = state.balls.map(b => ({ color: b.color, x: b.x, y: b.y }));
     const draft = { id: 'generated', title: 'Random board', width: w, height: h, walls: wallList(walls), balls: start, goals, arrows: [], gates: [], switches: [], teleports: [], hexes: [] };
