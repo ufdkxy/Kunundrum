@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '4.3.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '4.3.1'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -436,6 +436,24 @@ function renderBoard(trace = frames[cursor]) {
   if(window.KunEditor?.active){window.KunEditor.render();return;}
   $('board-stage').innerHTML = renderSvg(board,state(),{outlinedBallId,trace});
 }
+let generatingRandom = false;
+// New random: the same generator as the editor's "Generate random board" link, but the board goes straight into play (no edit mode).
+async function newRandom() {
+  if (generatingRandom || !window.KunEditor) return;
+  const started = board, {width, height, wallColor} = board;
+  generatingRandom = true; renderMeta();
+  try {
+    const result = await window.KunEditor.generate(width, height);
+    if (!result) toast('No random board could be generated at this size.', true);
+    else if (result.failed) toast(result.solverError ? 'The solver failed: ' + result.solverError.message : 'No board with a proven optimal route was found within 10 s. Try again.', true);
+    else if (board !== started) { /* another board was opened meanwhile: discard */ }
+    else {
+      const next = result.board; if (wallColor) next.wallColor = wallColor;
+      generatingRandom = false; adoptBoard(next); clearReplayLocation(); persist(); return;
+    }
+  } catch (error) { toast('Generating failed: ' + error.message, true); }
+  generatingRandom = false; renderMeta();
+}
 // Stars: the score of the board's best known route (the saved solution: proven optimal for generated boards and 99% of the catalog)
 // decides. score <= best: 3 stars, <= best + 2: 2 stars, otherwise 1; an unfinished board has 0.
 const bestKnownCache = new Map();
@@ -471,7 +489,7 @@ function renderMeta() {
   const best=finished?bestKnownScore(board):null;
   const hasNext=finished&&!!nextLevel();
   const hasRandom=finished&&!currentPresetId&&!!board.solution; // a generated board (the only non-catalog board that carries a route)
-  completed.innerHTML=finished?`${best===null?'Complete':starsHtml(starCount(state().score,best))}${hasNext?'<button class="next-puzzle" id="next-puzzle" type="button" title="Go to the next puzzle (N)">Next puzzle ›</button>':''}${hasRandom?'<button class="next-puzzle" id="new-random" type="button" title="Generate a new random board (N)">New random</button>':''}`:'';
+  completed.innerHTML=finished?`${best===null?'Complete':starsHtml(starCount(state().score,best))}${hasNext?'<button class="next-puzzle" id="next-puzzle" type="button" title="Go to the next puzzle (N)">Next puzzle ›</button>':''}${hasRandom?`<button class="next-puzzle" id="new-random" type="button" title="Generate a new random board (N)"${generatingRandom?' disabled':''}>${generatingRandom?'Generating...':'New random'}</button>`:''}`:'';
   completed.className=`completion-inline${isComplete(state())?' done':''}`;
 }
 // Bottom-bar hint. "Moving..." is shown only while autoplay is running (isPlaying), never for a
@@ -1018,7 +1036,7 @@ $('levels-dialog').addEventListener('close',()=>{try{localStorage.setItem(PUZZLE
 $('level-cards').addEventListener('scroll',()=>{if(!spyFrame)spyFrame=requestAnimationFrame(updateChapterSpy);});
 window.addEventListener('resize',()=>{if(levelCardsBuilt&&$('levels-dialog').open)sizeLevelSpacer();});
 $('chapter-bar').addEventListener('click',event=>{const b=event.target.closest('[data-chapter]');if(b)scrollToChapter(Number(b.dataset.chapter));});
-$('completion-inline').addEventListener('click',event=>{if(busy||isPlaying)return;if(event.target.closest('#new-random')){$('editor-generate').click();return;}if(!event.target.closest('#next-puzzle'))return;const next=nextLevel();if(next){adoptBoard(next);clearLocation();}});
+$('completion-inline').addEventListener('click',event=>{if(busy||isPlaying)return;if(event.target.closest('#new-random')){newRandom();return;}if(!event.target.closest('#next-puzzle'))return;const next=nextLevel();if(next){adoptBoard(next);clearLocation();}});
 $('level-cards').addEventListener('click',event=>{const target=event.target.closest('[data-level]');if(!target)return;const next=LEVELS.find(level=>level.id===target.dataset.level);if(next){levelsSelected=next.id;adoptBoard(next);clearLocation();$('levels-dialog').close();}});
 $('open-help').addEventListener('click',()=>openDialog('help-dialog'));
 $('open-share').addEventListener('click',()=>{shareRoute=true;$('share-include-route').checked=true;renderShare();openDialog('share-dialog');});

@@ -370,14 +370,17 @@ function solverClient(){ // solver-client.js is loaded on first use (the Solver 
  if(window.KunSolver)return Promise.resolve(window.KunSolver);
  return new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='./solver-client.js';s.onload=()=>resolve(window.KunSolver);s.onerror=()=>reject(new Error('Could not load the solver files.'));document.head.append(s);});
 }
+async function generateResult(width,height){ // shared with the New random button in the bottom bar (app.js)
+ const client=await solverClient();
+ return Generator.generate({width,height,seconds:10,minMoves:12,
+  solve:(code,options)=>{const job=client.solve(code,{algorithm:'auto',maxMemoryMB:1000,...options});return job.promise.then(r=>{const check=client.verifyResult(r,code);if(!check.ok)throw new Error(check.error);return r;});}});
+}
 async function generateBoard(){
  if(generating)return;
  const link=$('editor-generate'),label=link.textContent,old=E.draft,before=snapshot();
  generating=true;link.disabled=true;link.textContent='Generating...';setStatus('');
  try{
-  const client=await solverClient();
-  const result=await Generator.generate({width:old.width,height:old.height,seconds:10,minMoves:12,
-   solve:(code,options)=>{const job=client.solve(code,{algorithm:'auto',maxMemoryMB:1000,...options});return job.promise.then(r=>{const check=client.verifyResult(r,code);if(!check.ok)throw new Error(check.error);return r;});}});
+  const result=await generateResult(old.width,old.height);
   if(!result){setStatus('No random board could be generated at this size (try at least 3 x 3).',true);return;}
   if(result.failed){setStatus(result.solverError?'The solver failed: '+result.solverError.message:'No board with a proven optimal route was found within 10 s. Try again.',true);return;}
   if(!E.active||snapshot()!==before){setStatus('The board was changed meanwhile: the generated board was discarded.',true);return;}
@@ -471,6 +474,6 @@ $('editor-json-apply').addEventListener('click',()=>{
   refresh();renderDraft();setStatus(notes.length?`JSON applied. ${notes.join('; ')}`:'JSON applied.');
  }catch(err){setStatus(`Invalid JSON board: ${err.message}`,true);}
 });
-window.KunEditor={get active(){return E.active;},render:renderDraft,openDraft,setReview};
+window.KunEditor={get active(){return E.active;},render:renderDraft,openDraft,setReview,generate:generateResult};
 refresh();
 })();
