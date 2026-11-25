@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '4.1.3'; // Single source of truth; the footer reads it.
+const APP_VERSION = '4.1.4'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -462,7 +462,7 @@ function renderHint() {
   $('board-hint').innerHTML=isComplete(s)?'':(isPlaying?'Moving...':`<span class="mouse-mini" aria-hidden="true"></span><span aria-hidden="true">/</span>Arrow keys: move`);
 }
 function updateResetControl() {
-  $('reset').disabled=isPlaying||(!busy&&frames.length===1&&cursor===0&&!$('solution-input').value);
+  $('reset').disabled=isPlaying||(!busy&&frames.length===1&&cursor===0);
 }
 function renderControls() {
   const current=state();
@@ -975,7 +975,7 @@ async function importScreenshot(file){
 // Controls use one delegated listener each so rendering snapshots cannot multiply handlers.
 document.querySelector('.skip-link').addEventListener('click',event=>{event.preventDefault();$('board-stage').focus();$('board-stage').scrollIntoView({block:'start'});});
 $('undo').addEventListener('click',deleteLastMove);
-$('reset').addEventListener('click',()=>{resetRun();$('solution-input').value='';updateResetControl();persist();});
+$('reset').addEventListener('click',resetRun);
 $('replay-first').addEventListener('click',()=>goTo(0));
 $('replay-back').addEventListener('click',()=>goTo(cursor-1));
 $('replay-next').addEventListener('click',()=>goTo(cursor+1));
@@ -1035,6 +1035,12 @@ $('board-stage').addEventListener('pointercancel',()=>{gesture=null;});
 $('board-stage').addEventListener('click',event=>{const hit=event.target.closest('[data-ball]');if(hit&&!busy&&!gesture)selectBall(hit.dataset.ball);});
 $('board-stage').addEventListener('keydown',event=>{const hit=event.target.closest('[data-ball]');if(hit&&(event.key==='Enter'||event.key===' ')){event.preventDefault();event.stopPropagation();selectBall(hit.dataset.ball);}});
 document.addEventListener('keydown',event=>{
+  // E toggles the editor (also while editing, hence before the editor bail-out below).
+  if(event.key.toLowerCase()==='e'&&!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.isComposing&&!document.querySelector('dialog[open]')&&!event.target.isContentEditable&&!event.target.closest('input,textarea,select')){
+    event.preventDefault();const edit=$('edit-mode-button');
+    if(!event.repeat&&!edit.disabled&&!isPlaying&&!busy)edit.click();
+    return;
+  }
   if(event.isComposing||document.querySelector('dialog[open]')||window.KunEditor?.active)return;
   // Allow held Previous/Next shortcuts to step through the recorded route.
   // Prevent held movement and other commands from firing repeatedly.
