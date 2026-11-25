@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,decodeRoute,readShareUrl,makeShareUrl}=Codec;
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '4.1.2'; // Single source of truth; the footer reads it.
+const APP_VERSION = '4.1.3'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -235,7 +235,7 @@ function buildReplay(nextBoard, notation) {
   return result;
 }
 
-function adoptBoard(nextBoard, replayFrames, at = 0, resetInput = true) {
+function adoptBoard(nextBoard, replayFrames, at = 0) {
   // Validate the whole candidate before replacing the user's current run.
   const normalized = validateBoard(nextBoard);
   const code = encodeBoard(normalized);
@@ -250,7 +250,6 @@ function adoptBoard(nextBoard, replayFrames, at = 0, resetInput = true) {
   selected = (cursor > 0 ? frames[cursor].record?.ballId : null) || state().balls.find(ball => !ball.locked)?.id || state().balls[0].id;
   mode = replayFrames ? 'replay' : 'manual';
   currentPresetId = preset;
-  if (resetInput) $('solution-input').value = replayFrames ? getNotation() : '';
   showError('replay-error');
   document.title = `${board.title} · Kunundrum`;
   render();
@@ -692,7 +691,7 @@ function resetRun() {
   gesture=null;clearTimeout(toastTimer);$('toast').className='toast';
   frames=[initialFrame(board)];cursor=0;mode='manual';
   selected=state().balls.find(ball=>!ball.locked)?.id||state().balls[0].id;
-  $('solution-input').value='';showError('replay-error');
+  showError('replay-error');
   clearReplayLocation();render();persist();
 }
 async function nextStep() {
@@ -722,7 +721,7 @@ function loadSolution(text) {
   try {
     const prepared=buildReplay(board,text);
     stopPlayback();frames=prepared;cursor=0;mode='replay';selected=frames[1].record.ballId;
-    $('solution-input').value=text.trim();showError('replay-error');render();persist();
+    showError('replay-error');render();persist();
     toast(`Loaded ${frames.length-1} moves. ${isComplete(frames.at(-1).state)?'Completes the board.':'Partial route.'}`);
   }catch(error){showError('replay-error',error.message);}
 }
@@ -976,7 +975,7 @@ async function importScreenshot(file){
 // Controls use one delegated listener each so rendering snapshots cannot multiply handlers.
 document.querySelector('.skip-link').addEventListener('click',event=>{event.preventDefault();$('board-stage').focus();$('board-stage').scrollIntoView({block:'start'});});
 $('undo').addEventListener('click',deleteLastMove);
-$('reset').addEventListener('click',resetRun);
+$('reset').addEventListener('click',()=>{resetRun();$('solution-input').value='';updateResetControl();persist();});
 $('replay-first').addEventListener('click',()=>goTo(0));
 $('replay-back').addEventListener('click',()=>goTo(cursor-1));
 $('replay-next').addEventListener('click',()=>goTo(cursor+1));
@@ -1088,22 +1087,23 @@ $('replay-speed').addEventListener('change',()=>{ if(selectByMouse){selectByMous
 // Leaving the editor with a changed draft: keep the route whenever it still works on the edited
 // board. Otherwise keep the longest prefix that does (validity is monotone in prefix length) and
 // leave the full original route in the solution box, so it is never silently lost.
-function adoptEdited(draft) {
+function adoptEdited(draft,dropRoute=false) {
   const normalized=validateBoard(draft);
-  const total=frames.length-1,at=cursor,previousMode=mode,full=getNotation();
+  if(dropRoute){ // a new, generated or imported board replaced the old one in the editor: the old moves are dropped silently
+    adoptBoard(normalized);clearReplayLocation();persist();return;
+  }
+  const total=frames.length-1,at=cursor,previousMode=mode;
   let lo=0,hi=total;
   while(lo<hi){
     const mid=Math.ceil((lo+hi)/2);
     try{buildReplay(normalized,getNotation(mid));lo=mid;}catch{hi=mid-1;}
   }
   const prepared=lo>0?buildReplay(normalized,getNotation(lo)):undefined;
-  adoptBoard(normalized,prepared,Math.min(at,lo),false);
+  adoptBoard(normalized,prepared,Math.min(at,lo));
   if(prepared)mode=previousMode;
   if(lo<total){
-    const input=$('solution-input'),restored=!input.value.trim()||input.value.trim()===full;
-    if(restored)input.value=full;
-    toast(lo===0?`The route no longer works on the edited board.${restored?' It is kept in the solution box.':''}`
-      :`Route kept up to move ${lo} of ${total}; move ${lo+1} no longer works on the edited board.${restored?' The full route is in the solution box.':''}`,true);
+    toast(lo===0?'The route no longer works on the edited board.'
+      :`Route kept up to move ${lo} of ${total}; move ${lo+1} no longer works on the edited board.`,true);
   }
   persist();
 }
@@ -1111,7 +1111,7 @@ window.KunundrumHost = {
   getBoard:()=>JSON.parse(JSON.stringify(board)),
   svg:draft=>renderSvg(draft,createInitialState(draft),{outlinedBallId:null}),
   stop:()=>cancelMotion(),
-  play:draft=>{adoptEdited(draft);},
+  play:(draft,dropRoute)=>{adoptEdited(draft,dropRoute);},
   resume:()=>{render();},
   toast:message=>toast(message),
   // Solver dialog (solver-ui.js): the current board as a K4 code, plus the score and move count of the CURRENT route (the full move history, `frames`, not just the moves up to the cursor and independent of the Replay text box) when it finishes the board. Stops any playback.

@@ -47,7 +47,7 @@ function applyTunnelProperty(key,value){
 // Nearest cell side to the pointer, from the cell's hit rectangle (used by the Tunnel tool).
 function sideOf(event){const el=event.target.closest?.('[data-edit-x]');if(!el)return null;const r=el.getBoundingClientRect(),fx=(event.clientX-r.left)/r.width,fy=(event.clientY-r.top)/r.height,d={l:fx,r:1-fx,u:fy,d:1-fy};return Object.keys(d).reduce((m,k)=>d[k]<d[m]?k:m,'l');}
 const openingAt=(t,x,y,side)=>[t.a,t.b].some(e=>e.x===x&&e.y===y&&(!side||e.side===side));
-const mutable = {active:false,draft:null,grab:null,floatDrag:null,preferFloor:false,pendingTunnel:null,clickSide:null,hitTunnel:null,tool:'select',color:'G',direction:'r',rotating:false,arrowType:'cw',activeTile:true,hexValue:-5,selected:null,history:[],future:[],dragging:false,dragChanged:false,dragBefore:null,lastCell:'',dirty:false};
+const mutable = {active:false,draft:null,grab:null,floatDrag:null,preferFloor:false,pendingTunnel:null,clickSide:null,hitTunnel:null,tool:'select',color:'G',direction:'r',rotating:false,arrowType:'cw',activeTile:true,hexValue:-5,selected:null,history:[],future:[],dragging:false,dragChanged:false,dragBefore:null,lastCell:'',dirty:false,marks:[],fmarks:[],replacedBase:false};
 const E = mutable;
 const host = () => window.KunundrumHost;
 const same=(a,b)=>a&&b&&a.x===b.x&&a.y===b.y;
@@ -58,7 +58,10 @@ const at = (p,x,y)=>p.x===x&&p.y===y;
 const nextId = (arr, prefix) => {let i=1;while(arr.some(v=>v.id===prefix+i))i++;return prefix+i;};
 const template=()=>({id:'custom',title:'Custom board',width:10,height:7,walls:[],balls:[],goals:[],arrows:[],gates:[],switches:[],teleports:[],hexes:[]});
 function snapshot(){return JSON.stringify(E.draft);}
-function remember(before){if(before===snapshot())return false;E.history.push(before);if(E.history.length>150)E.history.shift();E.future=[];E.dirty=true;return true;}
+// marks[i] is true when the step taken from history[i] replaced the whole board (new, random or imported); fmarks mirrors future.
+// replaced() is therefore false again once such a step is undone.
+function remember(before,replace=false){if(before===snapshot())return false;E.history.push(before);E.marks.push(replace);if(E.history.length>150){E.history.shift();if(E.marks.shift())E.replacedBase=true;}E.future=[];E.fmarks=[];E.dirty=true;return true;}
+function replaced(){return E.replacedBase||E.marks.some(Boolean);}
 function setStatus(message='',error=false){$('editor-status').textContent=message;$('editor-status').classList.toggle('error',error);}
 function putProps(){
  const match=E.selected;
@@ -233,7 +236,7 @@ function setMode(active){
  if(active===E.active)return;
  if(active){
   host().stop();
-  E.draft=clone(host().getBoard());E.fromHost=true;E.history=[];E.future=[];E.selected=null;E.tool='select';E.dirty=false;
+  E.draft=clone(host().getBoard());E.fromHost=true;E.history=[];E.future=[];E.marks=[];E.fmarks=[];E.replacedBase=false;E.selected=null;E.tool='select';E.dirty=false;
   // The screenshot review stays across Play/Edit toggles; only a new import (setReview) or a new/blank board replaces it.
   E.active=true;$('editor-export-code').hidden=true;setStatus('');refresh();renderDraft();
  }else{
@@ -242,7 +245,7 @@ function setMode(active){
    // only a draft copied from the running board with an empty undo history resumes it.
    const unchanged=E.fromHost&&!E.history.length;
    const notes=[];
-   if(!unchanged)host().play(Core.validateBoard(E.draft,undefined,notes));
+   if(!unchanged)host().play(Core.validateBoard(E.draft,undefined,notes),replaced());
    E.active=false;E.selected=null;clearFloatingDrag();refresh();setStatus('');
    if(notes.length)host().toast(notes.join('; '));
    host().resume();
@@ -252,7 +255,7 @@ function setMode(active){
 function openDraft(draft,problems=[],fromScreenshot=false){
  // Open a board that failed validation for repair; Play stays gated by validateBoard in setMode(false).
  host().stop();
- E.draft=clone(draft);E.fromHost=false;E.history=[];E.future=[];E.selected=null;E.tool='select';E.dirty=true;
+ E.draft=clone(draft);E.fromHost=false;E.history=[];E.future=[];E.marks=[];E.fmarks=[];E.replacedBase=false;E.selected=null;E.tool='select';E.dirty=true;
  E.active=true;$('editor-export-code').hidden=true;if(!fromScreenshot)setReview(null,false);refresh();
  try{renderDraft();}catch(err){setStatus(`Opened for repair, but the board cannot be drawn: ${err.message}`,true);return;}
  setStatus(problems.length?`This board is not playable yet — fix it, then press Play. ${problems.join(' ')}`:'',problems.length>0);
@@ -349,7 +352,8 @@ function applyProperty(key,value){
 function editorUndo(redo=false){
  const from=redo?E.future:E.history,to=redo?E.history:E.future;
  if(!from.length)return;
- to.push(snapshot());E.draft=JSON.parse(from.pop());E.selected=null;refresh();renderDraft();setStatus('');
+ const m=redo?E.fmarks:E.marks,tm=redo?E.marks:E.fmarks;
+ to.push(snapshot());tm.push(m.pop());E.draft=JSON.parse(from.pop());E.selected=null;refresh();renderDraft();setStatus('');
 }
 function updateDimensions(){
  const w=Number($('editor-width').value),h=Number($('editor-height').value);
@@ -360,11 +364,11 @@ function updateDimensions(){
  if(E.draft.tunnels){E.draft.tunnels=E.draft.tunnels.filter(t=>inside(t.a)&&inside(t.b));if(!E.draft.tunnels.length)delete E.draft.tunnels;}
  prune(E.draft);remember(prev);refresh();renderDraft();setStatus('Grid resized. Out-of-bounds objects were removed.');
 }
-function newBoard(){const prev=snapshot();setReview(null,false);const old=E.draft;E.draft=template();E.draft.width=old.width;E.draft.height=old.height;if(old.wallColor)E.draft.wallColor=old.wallColor;E.fromHost=false;E.selected=null;remember(prev);refresh();renderDraft();setStatus('New board.');}
+function newBoard(){const prev=snapshot();setReview(null,false);const old=E.draft;E.draft=template();E.draft.width=old.width;E.draft.height=old.height;if(old.wallColor)E.draft.wallColor=old.wallColor;E.fromHost=false;E.selected=null;remember(prev,true);refresh();renderDraft();setStatus('New board.');}
 function generateBoard(){
  const old=E.draft,result=Generator.generate({width:old.width,height:old.height});
  if(!result){setStatus('No random board could be generated at this size (try at least 3 x 3).',true);return;}
- const prev=snapshot();setReview(null,false);E.draft=result.board;if(old.wallColor)E.draft.wallColor=old.wallColor;E.fromHost=false;E.selected=null;remember(prev);refresh();renderDraft();
+ const prev=snapshot();setReview(null,false);E.draft=result.board;if(old.wallColor)E.draft.wallColor=old.wallColor;E.fromHost=false;E.selected=null;remember(prev,true);refresh();renderDraft();
  setStatus(`Random ${old.width} x ${old.height} board generated.`);
 }
 function ensureEditing(){if(!E.active)setMode(true);}
