@@ -365,7 +365,7 @@ function generateBoard(){
  const old=E.draft,result=Generator.generate({width:old.width,height:old.height});
  if(!result){setStatus('No random board could be generated at this size (try at least 3 x 3).',true);return;}
  const prev=snapshot();setReview(null,false);E.draft=result.board;if(old.wallColor)E.draft.wallColor=old.wallColor;E.fromHost=false;E.selected=null;remember(prev);refresh();renderDraft();
- setStatus(`Random ${old.width} x ${old.height} board generated (resize first for another size). Tweak it, then press Play.`);
+ setStatus(`Random ${old.width} x ${old.height} board generated.`);
 }
 function ensureEditing(){if(!E.active)setMode(true);}
 const panel=document.getElementById('editor-panel');
