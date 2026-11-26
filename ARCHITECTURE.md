@@ -179,8 +179,6 @@ Native tests (`Solver/tests/`):
 ```sh
 make
 node tests/verify.js
-node tests/random-compare.js
-node tests/random-switch.js
 ```
 
 `verify.js` checks bundled catalog levels and small rotating-arrow/hex/switch fixtures (also with `--algorithm beam`, which must replay and claims optimality only when certified) by decoding the C++ output via JavaScript `Codec` and replaying it via JavaScript `Core`. The randomized suites compare C++ forward versus bidirectional outcomes (50 static cases and 100 switch cases; deterministic seeds) and check `--max-depth` at the optimum (must return `OPTIMAL`) and one below it (must return `NO SOLUTION WITHIN`). `tests/mechanics.js` compares all algorithms with an engine-based brute-force oracle on tunnel and rotating-arrow boards.

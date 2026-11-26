@@ -156,15 +156,14 @@ Node.js (optional, for independent cross-validation) is needed only for tests; t
 
 ```sh
 node tests/verify.js
-node tests/random-compare.js
-node tests/random-switch.js
+node tests/split.js
 ```
 
 `tests/verify.js` runs several real catalog levels and simple feature fixtures, decodes the native solver's exported K4 codes with the app's JavaScript codec, and replays every solution using the *original* JS `engine.js`.
 
 `tests/verify.js` also runs beam search on 1.7, 1.8, 2.2 (known optimal scores 3, 5, 9), 7.3 and 8.1 plus basic, rotating-arrow and switch fixtures: each route must replay in the JavaScript engine; on hexed levels and on 8.1 at width 20,000 the output must say "optimality not certified", while 6.6 at width 2,000,000 and the tiny fixtures must be certified `OPTIMAL`. `tests/mechanics.js` (called by `verify.js`) checks tunnels and rotating arrows on small hand-made boards against a brute-force BFS built on the JS engine (`Core.applyMoveAtPhase` over every phase): forward, bidirectional and beam must all return its optimum, and the routes must replay.
 
-`tests/random-compare.js` generates 50 small random static boards (including identical-color balls, walls, fixed arrows and colored/universal teleports) and compares C++ forward BFS against C++ bidirectional BFS on every board. For each solvable board both algorithms are also run with `--max-depth` equal to the optimum (must return `OPTIMAL` with the same length) and optimum − 1 (must return `NO SOLUTION WITHIN`); unsolvable boards must stay unsolvable under a depth limit. `tests/random-switch.js` does the same on random switch boards (see below).
+`tests/split.js` checks the v0.24 predecessor fixes (24.1 and 8.6) and `--split-depth` against the plain bidirectional search on 10.8.
 
 Tested on the following supplied catalog levels (times vary by machine):
 
@@ -191,10 +190,6 @@ The C++17 search/state model deliberately has no external libraries. It can be c
 - Memory usage is dominated by the graph of visited states. `--max-states` is a count, **not** a strict memory budget.
 - Boards with many hexes still have a large search space, since every subset of consumed hexes is a distinct state, and the score bound is weak with large negative hexes (7.3 is inconclusive at small budgets; the project owner has since proven it optimal with a tight `--max-score`).
 - Forward and bidirectional search are multi-threaded (v0.19, `--threads`); beam search is not. The WASM build (`wasm/`) is single-threaded.
-
-### Switch regression suite
-
-Run `node tests/random-switch.js` to compare exact forward BFS and switch-aware bidirectional search on 100 generated 4-by-3 boards (including shared gate groups, mixed initial gate states, blocked closures, and some switch-controlled teleports). The seeded test currently passes all 100. Run `node tests/verify.js` to verify solutions and K3 payloads against the independently maintained JavaScript game engine.
 
 ### Existing solutions as test inputs
 
