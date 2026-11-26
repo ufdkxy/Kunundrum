@@ -50,6 +50,7 @@ Options:
 
 - `--beam-heuristic static|dynamic` — beam ranking (default `static`); see [Beam search](#beam-search-heuristic-upper-bound).
 - `--beam-width N` — states kept per layer by `--algorithm beam` (default 200,000); `--seed N` — its tie-break seed (default 1).
+- `--split-depth P` / `--reverse-depth R` — bidirectional search only (v0.24). Builds the reverse set once (to depth R; without `--reverse-depth` it grows until it would use about 40% of `--max-states`/`--max-memory`, so one of the three is required), then runs a separate forward search from every distinct state at depth P against it, freeing each run's forward states afterwards. The memory peak is the reverse set plus ONE root's forward states, so it trades time for memory: roots overlap (moves of different balls commute), so total work grows with P. Prefer the smallest P that fits, typically 1 or 2. Use `--max-depth` for lower-bound proofs. Too small an R makes every root's forward search deep and slow.
 - `--max-depth N` — only consider solutions of at most N moves (N >= 1, default unlimited); see [Depth limit](#depth-limit-certifying-a-known-solution).
 - `--max-score N` — only consider routes with score at most N (default: no bound); see [Score limit](#score-limit).
 - `--json` — print the result as one JSON object (status, score, moves, solution, bounds, statistics, error) instead of text; the WebAssembly export returns the same object.

@@ -157,6 +157,7 @@ struct Store{
  vector<size_t> bounds{0}; // bounds[k] = index of the first node of layer k (the last entry opens the layer being generated)
  void init(int k){K=k;stride=K;table.assign(1<<16,NONE);bounds.assign(1,0);}
  void closeLayer(){bounds.push_back(count);}
+ void reset(){chunks.clear();count=0;table.assign(1<<16,NONE);bounds.assign(1,0);} // empties the store and frees its memory (v0.24)
  int depthOf(size_t i)const{return (int)(upper_bound(bounds.begin(),bounds.end(),i)-bounds.begin())-1;}
  uint8_t* at(size_t i)const{return chunks[i>>SHIFT].get()+(i&(((size_t)1<<SHIFT)-1))*stride;}
  size_t size()const{return count;}
@@ -234,7 +235,7 @@ void successors(const Board&b,const State&s,Stats&stats,const function<void(Tran
  }
 }
 struct SearchResult{bool solved=false,exhaustive=false,boundProved=false;vector<Move> path;uint64_t states=0,transitions=0,bytes=0;int depth=0;int provenMoves=0;/* balanced search: complete layers prove that no route of at most this many moves exists */string algorithm;};
-struct Limits{uint64_t maxStates=3000000;/* UINT64_MAX = unlimited */uint64_t maxBytes=0;/* 0 = unlimited */double seconds=60;/* 0 = unlimited */int maxDepth=0;/* 0 = unlimited */bool scoreCap=false;long long maxScore=0;/* --max-score: only routes with score <= maxScore matter */bool verbose=true;string algorithm="auto";bool beamDynamic=false;size_t beamWidth=200000;int threads=0;/* worker threads for the exact searches; 0 = all cores (the WebAssembly build always uses 1) */uint64_t seed=1;/* --algorithm beam: states kept per layer, tie-break seed */};
+struct Limits{uint64_t maxStates=3000000;/* UINT64_MAX = unlimited */uint64_t maxBytes=0;/* 0 = unlimited */double seconds=60;/* 0 = unlimited */int maxDepth=0;/* 0 = unlimited */bool scoreCap=false;long long maxScore=0;/* --max-score: only routes with score <= maxScore matter */bool verbose=true;string algorithm="auto";bool beamDynamic=false;size_t beamWidth=200000;int threads=0;/* worker threads for the exact searches; 0 = all cores (the WebAssembly build always uses 1) */uint64_t seed=1;/* --algorithm beam: states kept per layer, tie-break seed */int splitDepth=0;/* --split-depth P: bidirectional search with a shared reverse set and one forward search per state at depth P (0 = off) */int reverseDepth=0;/* --reverse-depth R: depth of the shared reverse set (0 = grow to about 40% of the budget) */};
 static ostream* g_log=&cerr; // progress/diagnostic stream: stderr for the CLI, a callback stream in the WebAssembly build
 #define LOG (*g_log)
 using Clock=chrono::steady_clock;
@@ -410,6 +411,7 @@ void backReach(const Board&b,const State&s,int i,int dest,int phase,vector<int>&
   const int ti=b.teleAt[dest],ex=b.teleExit[ti][color];
   if(ex<0||!s.tele[ex]||occupied(b.teleports[ex].p))for(int h=0;h<4;h++)arrive(dest,h);
  }
+ const size_t seedCount=queue.size();
  // Preimages of the pre-step state (c,h): one entry into a cell (plus arrow and teleport effects) that leaves the ball there.
  for(size_t qi=0;qi<queue.size();qi++){
   const int c=queue[qi]>>2,h=queue[qi]&3;
@@ -432,7 +434,8 @@ void backReach(const Board&b,const State&s,int i,int dest,int phase,vector<int>&
    else arrive(c,h);
   }
  }
- for(int k:queue)if((k>>2)!=dest)out.push_back(k);
+ // The seeds standing on dest are zero-length moves (blocked at once) and are dropped; a start on dest that was reached by the walk is a move that loops back over its own start cell (v0.24: it used to be dropped as well).
+ for(size_t q=0;q<queue.size();q++){const int k=queue[q];if((k>>2)==dest&&q<seedCount)continue;out.push_back(k);}
  sort(out.begin(),out.end());
 }
 // ---- Bidirectional BFS (SOLVER-017) ----
@@ -441,7 +444,7 @@ void backReach(const Board&b,const State&s,int i,int dest,int phase,vector<int>&
 // directions). Certification: if the forward side is complete to depth fd and the reverse side to depth rd, every route of at most
 // fd+rd moves has been found, so the best candidate is optimal once fd+rd >= best-1 (or no route exists within fd+rd moves).
 SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const Packer&pk){
- SearchResult out;out.algorithm="bidirectional BFS";const int D=lim.maxDepth>0?lim.maxDepth:INT32_MAX; // D: only paths of at most D moves matter
+ SearchResult out;out.algorithm="bidirectional BFS";int D=lim.maxDepth>0?lim.maxDepth:INT32_MAX; // D: only paths of at most D moves matter
  if(!b.staticReverse||b.goals.size()!=b.balls.size())return out;
  State start=initial(b),target=start;
  for(int c=0;c<4;c++){
@@ -520,9 +523,9 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
      const int p=sd>>2;
      // Previously occupied target goal cannot be departed; all other balls stay fixed.
      if(b.fixed[p]||b.goalColor[p]==b.balls[i].color)continue;
-     int gi=b.gateAt[p];if(gi>=0&&targetState.gate[gi])continue;
+     // v0.24: no gate test on the start cell. A ball may start a move on a cell whose gate is closed (the initial position can have a ball inside a closed gate, and the forward
+     // move generator lets it leave), and a switch pressed by the move itself may close or open the start cell's gate behind the ball. The `check` replay below validates every candidate.
      bool occupied=false;for(int j=0;j<b.n;j++)if(j!=i&&targetState.p[j]==p){occupied=true;break;}if(occupied)continue;
-     if(gi>=0&&tmpl.gate[gi])continue;
      tr++;
      State predecessor=tmpl;predecessor.p[i]=p;
      // Replay the switch's effects to reject invalid reverse candidates.
@@ -541,16 +544,16 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
  };
  // Route to a forward node without scanning layers (v0.22): at each depth the stored predecessor one layer lower is found by looking up the
  // state's predecessors (the same enumeration the reverse search uses) instead of expanding the previous layer until a parent turns up.
- auto rebuildForwardFast=[&](uint32_t idx){
-  vector<Move> path;vector<uint8_t> cur(K),tmp(K);memcpy(cur.data(),fwd.key(idx),K);Stats stats;uint64_t tr=0;
-  for(int d=fwd.depthOf(idx);d>0;d--){
+ auto rebuildForwardFast=[&](const Store&S,uint32_t idx){
+  vector<Move> path;vector<uint8_t> cur(K),tmp(K);memcpy(cur.data(),S.key(idx),K);Stats stats;uint64_t tr=0;
+  for(int d=S.depthOf(idx);d>0;d--){
    uint32_t parent=Store::NONE;
-   forEachPred(cur.data(),tr,[&](const uint8_t*kb,uint64_t h){if(parent!=Store::NONE)return;const uint32_t j=fwd.find(kb,h);if(j!=Store::NONE&&fwd.depthOf(j)==d-1)parent=j;});
+   forEachPred(cur.data(),tr,[&](const uint8_t*kb,uint64_t h){if(parent!=Store::NONE)return;const uint32_t j=S.find(kb,h);if(j!=Store::NONE&&S.depthOf(j)==d-1)parent=j;});
    if(parent==Store::NONE)throw runtime_error("internal error: route reconstruction failed");
-   State ps;pk.unpack(fwd.key(parent),ps);bool ok=false;
+   State ps;pk.unpack(S.key(parent),ps);bool ok=false;
    successors(b,ps,stats,[&](Transition&& t){if(ok)return;pk.pack(t.s,tmp.data());if(!memcmp(tmp.data(),cur.data(),K)){ok=true;path.push_back(t.m);}});
    if(!ok)throw runtime_error("internal error: route reconstruction failed");
-   memcpy(cur.data(),fwd.key(parent),K);
+   memcpy(cur.data(),S.key(parent),K);
   }
   reverse(path.begin(),path.end());return path;
  };
@@ -568,6 +571,86 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
   }
   return true;};
  auto stop=[&]{if(timer.expired()||full())limited=true;return limited;};
+
+ // ---- Split search (v0.24): the reverse set is built once and kept in memory; the forward search then runs separately from every distinct state at depth P ----
+ // A shortest route of at least P moves passes through exactly one layer-P state, so the minimum over those roots of P + (distance of the root) is the answer. Each root run is a forward
+ // BFS against the frozen reverse set, and its states are freed afterwards, so the memory peak is the reverse set plus ONE root's forward states. Roots are bounded by the best route so far.
+ if(lim.splitDepth>0){
+  const int P=lim.splitDepth;
+  if(lim.reverseDepth<=0&&lim.maxStates==UINT64_MAX&&lim.maxBytes==0)throw runtime_error("--split-depth needs --reverse-depth or a --max-states/--max-memory budget");
+  bool interrupted=false;
+  // Phase A: reverse layers up to --reverse-depth, or (without it) while the next layer is estimated (1.6x the last) to keep the reverse set within 40% of the budget.
+  while(true){
+   if(timer.expired()||limited){interrupted=true;break;}
+   if(lim.reverseDepth>0&&rd>=lim.reverseDepth)break;
+   if(rEnd==rHead)break; // the reverse set is complete
+   if(lim.reverseDepth<=0){
+    const double next=1.6*(double)(rEnd-rHead);bool over=false;
+    if(lim.maxStates!=UINT64_MAX)over=(double)rev.size()+next>0.4*(double)lim.maxStates;
+    if(lim.maxBytes)over=over||(double)rev.bytes()+next*(double)(K+8)>0.4*(double)lim.maxBytes;
+    if(over)break;
+   }
+   expandLayer(rHead,rEnd,lim.threads,transitions,genR,[&](vector<uint8_t>&buf){return mergeInto(rev,false,buf);},stop);
+   if(early){certified=true;break;}
+   if(limited){interrupted=true;break;}
+   rHead=rEnd;rd++;rEnd=rev.size();rev.closeLayer();
+   if(lim.verbose)LOG<<"reverse depth "<<rd<<" states "<<rev.size()<<" elapsed "<<timer.elapsed()<<"s\n";
+  }
+  // Phase B: forward layers up to depth P (against the reverse set), keeping them for the prefix routes.
+  while(!interrupted&&!certified&&!exhausted&&fd<P){
+   if(fEnd==fHead){exhausted=true;break;}
+   expandLayer(fHead,fEnd,lim.threads,transitions,genF,[&](vector<uint8_t>&buf){return mergeInto(fwd,true,buf);},stop);
+   if(early){certified=true;break;}
+   if(limited||timer.expired()){interrupted=true;break;}
+   fHead=fEnd;fd++;fEnd=fwd.size();fwd.closeLayer();
+   if(lim.verbose)LOG<<"forward depth "<<fd<<" reverse depth "<<rd<<" states "<<fwd.size()+rev.size()<<" best "<<(best==INT32_MAX?-1:best)<<" elapsed "<<timer.elapsed()<<"s\n";
+   {int need=min(best==INT32_MAX?INT32_MAX:best-1,D);if(need!=INT32_MAX&&(long long)fd+rd>=need){certified=true;break;}}
+  }
+  int gbest=INT32_MAX;vector<Move> gpath;uint64_t peakFwd=0,peakFwdBytes=0;bool allDone=false;int provenFwd=0;
+  if(best!=INT32_MAX&&best<=D){gbest=best;gpath=rebuildForwardFast(fwd,fMeet);auto after=rebuildReverse(b,rev,pk,rMeet);gpath.insert(gpath.end(),after.begin(),after.end());}
+  if(certified||exhausted){allDone=!interrupted;}
+  else if(!interrupted){
+   // Phase C: one forward search per root.
+   Store pre=std::move(fwd);fwd.reset();fwd.init(K);
+   const size_t r0=pre.bounds[P],r1=pre.bounds[P+1];const size_t N=r1-r0;
+   if(lim.verbose)LOG<<"split: "<<N<<" roots at depth "<<P<<", reverse depth "<<rd<<" ("<<rev.size()<<" states), elapsed "<<timer.elapsed()<<"s\n";
+   allDone=true;
+   for(size_t ri=r0;ri<r1;ri++){
+    const long long cap=min<long long>(D,gbest==INT32_MAX?(long long)INT32_MAX:(long long)gbest-1);
+    if(cap!=INT32_MAX&&cap<P)continue; // this root cannot improve on the best route
+    const int Dsave=D;D=cap==INT32_MAX?INT32_MAX:(int)(cap-P);
+    fwd.reset();fwd.init(K);fwd.add(pre.key(ri));fwd.closeLayer();
+    fd=0;fHead=0;fEnd=1;best=INT32_MAX;early=false;fMeet=0;rMeet=0;
+    meetF(0);
+    bool done=false;
+    while(!timer.expired()&&!limited){
+     {int need=min(best==INT32_MAX?INT32_MAX:best-1,D);if(need!=INT32_MAX&&(long long)fd+rd>=need){done=true;break;}}
+     if(fEnd==fHead){done=true;break;} // this root cannot reach the goal
+     expandLayer(fHead,fEnd,lim.threads,transitions,genF,[&](vector<uint8_t>&buf){return mergeInto(fwd,true,buf);},stop);
+     if(early){done=true;break;}
+     if(limited)break;
+     fHead=fEnd;fd++;fEnd=fwd.size();fwd.closeLayer();
+     if(lim.verbose)LOG<<"root "<<(ri-r0+1)<<"/"<<N<<" forward depth "<<fd<<" states "<<fwd.size()<<" best "<<(gbest==INT32_MAX?-1:gbest)<<" elapsed "<<timer.elapsed()<<"s\n";
+    }
+    peakFwd=max<uint64_t>(peakFwd,fwd.size());peakFwdBytes=max<uint64_t>(peakFwdBytes,fwd.bytes());
+    if(!done){allDone=false;provenFwd=(ri+1<r1)?0:fd;break;} // interrupted: the unstarted roots are only known to need more than the reverse depth
+    if(best!=INT32_MAX&&best<=D){
+     gbest=P+best;gpath=rebuildForwardFast(pre,(uint32_t)ri);
+     auto mid=rebuildForwardFast(fwd,fMeet);gpath.insert(gpath.end(),mid.begin(),mid.end());
+     auto after=rebuildReverse(b,rev,pk,rMeet);gpath.insert(gpath.end(),after.begin(),after.end());
+    }
+    D=Dsave;
+    if(lim.verbose)LOG<<"root "<<(ri-r0+1)<<"/"<<N<<" done: depth "<<fd<<" states "<<fwd.size()<<" best "<<(gbest==INT32_MAX?-1:gbest)<<" elapsed "<<timer.elapsed()<<"s\n";
+   }
+   D=lim.maxDepth>0?lim.maxDepth:INT32_MAX;
+   fwd.reset();
+  }
+  out.states=rev.size()+peakFwd+fwd.size();out.bytes=rev.bytes()+peakFwdBytes;out.transitions=transitions;
+  out.provenMoves=allDone?0:(interrupted?fd+rd:P+rd+provenFwd);
+  if(gbest!=INT32_MAX&&gbest<=D){out.solved=true;out.depth=gbest;out.exhaustive=allDone;out.path=std::move(gpath);}
+  else if(allDone){if(D==INT32_MAX)out.exhaustive=true;else out.boundProved=true;}
+  return out;
+ }
  while(!timer.expired()&&!limited){
   const size_t fSize=fEnd-fHead,rSize=rEnd-rHead;
   if(fSize==0||rSize==0){exhausted=true;break;} // one side has enumerated everything it can reach
@@ -589,7 +672,7 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
  if(best!=INT32_MAX&&best<=D){
   out.solved=true;out.depth=best;out.exhaustive=certified||exhausted;vector<Move> before,after;
   if(lim.verbose)LOG<<"rebuilding route elapsed "<<timer.elapsed()<<"s\n";
-  before=rebuildForwardFast(fMeet);after=rebuildReverse(b,rev,pk,rMeet);
+  before=rebuildForwardFast(fwd,fMeet);after=rebuildReverse(b,rev,pk,rMeet);
   if(lim.verbose)LOG<<"route rebuilt elapsed "<<timer.elapsed()<<"s\n";
   out.path=std::move(before);out.path.insert(out.path.end(),after.begin(),after.end());
  }else if(best==INT32_MAX){if(exhausted)out.exhaustive=true;else if(certified)out.boundProved=true;}
@@ -920,10 +1003,10 @@ Board parseCode(string code){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open catalog: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0){string rest=trim(line.substr(prefix.size()));return rest.substr(0,rest.find_first_of(" \t"));}}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.23"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.24"; // Solver's own version, independent of the web app's APP_VERSION.
 // ---- Core entry point (shared by the CLI and the WebAssembly build) ----
 struct Cli{Limits lim;string input,level,catalog="levels.js";bool version=false,help=false,json=false;};
-static const char* HELP_TEXT="Kunundrum exact C++ solver (K4)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--threads N] [--max-states N] [--seconds N] [--max-memory MB] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and its K4 board code.\nauto = bidirectional search when applicable (no hexes, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic: certifies optimality (exit 0) only on hex-free boards when no state was ever dropped by the beam width, otherwise an upper bound (exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";
+static const char* HELP_TEXT="Kunundrum exact C++ solver (K4)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--split-depth P] [--reverse-depth R] [--threads N] [--max-states N] [--seconds N] [--max-memory MB] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and its K4 board code.\nauto = bidirectional search when applicable (no hexes, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic: certifies optimality (exit 0) only on hex-free boards when no state was ever dropped by the beam width, otherwise an upper bound (exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";
 // Same flags as the command line; the WebAssembly export passes its options as a flag string.
 static Cli parseArgs(const vector<string>&args){
  Cli c;Limits&lim=c.lim;string&input=c.input,&level=c.level,&catalog=c.catalog;
@@ -931,7 +1014,7 @@ static Cli parseArgs(const vector<string>&args){
   if(a=="--version"){c.version=true;return c;}
   if(a=="--help"||a=="-h"){c.help=true;return c;}
   if(a=="--json"){c.json=true;continue;}
-   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states"){lim.maxStates=stoull(value());if(lim.maxStates==0)lim.maxStates=UINT64_MAX;}else if(a=="--threads"){lim.threads=stoi(value());if(lim.threads<0)throw runtime_error("--threads must be >= 0");}else if(a=="--max-memory"){lim.maxBytes=stoull(value())<<20;}else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--beam-width"){lim.beamWidth=stoull(value());if(lim.beamWidth<1)throw runtime_error("--beam-width must be at least 1");}else if(a=="--beam-heuristic"){string v=value();if(v!="static"&&v!="dynamic")throw runtime_error("--beam-heuristic must be static or dynamic");lim.beamDynamic=v=="dynamic";}else if(a=="--seed")lim.seed=stoull(value());else if(a=="--quiet")lim.verbose=false;else if(a.rfind("--",0)==0)throw runtime_error("unknown option: "+a);else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
+   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states"){lim.maxStates=stoull(value());if(lim.maxStates==0)lim.maxStates=UINT64_MAX;}else if(a=="--threads"){lim.threads=stoi(value());if(lim.threads<0)throw runtime_error("--threads must be >= 0");}else if(a=="--max-memory"){lim.maxBytes=stoull(value())<<20;}else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--beam-width"){lim.beamWidth=stoull(value());if(lim.beamWidth<1)throw runtime_error("--beam-width must be at least 1");}else if(a=="--beam-heuristic"){string v=value();if(v!="static"&&v!="dynamic")throw runtime_error("--beam-heuristic must be static or dynamic");lim.beamDynamic=v=="dynamic";}else if(a=="--seed")lim.seed=stoull(value());else if(a=="--split-depth"){lim.splitDepth=stoi(value());if(lim.splitDepth<0||lim.splitDepth>64)throw runtime_error("--split-depth must be between 0 and 64");}else if(a=="--reverse-depth"){lim.reverseDepth=stoi(value());if(lim.reverseDepth<0)throw runtime_error("--reverse-depth must be >= 0");}else if(a=="--quiet")lim.verbose=false;else if(a.rfind("--",0)==0)throw runtime_error("unknown option: "+a);else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
  }
  return c;
 }
@@ -964,6 +1047,7 @@ static Outcome solveBoard(const string&input,Limits lim){
   bool feasibleSeeds=terminalBits<=16&&(1ULL<<terminalBits)<=lim.maxStates/4;
   bool canBi=b.staticReverse&&b.goals.size()==b.balls.size()&&feasibleSeeds;
   if(lim.algorithm=="bidirectional"&&!canBi)throw runtime_error("bidirectional search requires no hexagons, equal goals/balls and an affordable terminal-state enumeration");
+  if(lim.splitDepth>0&&!(lim.algorithm=="bidirectional"||(lim.algorithm=="auto"&&canBi&&b.n>=3)))throw runtime_error("--split-depth requires the bidirectional search");
   if(lim.algorithm=="bidirectional"||(lim.algorithm=="auto"&&canBi&&b.n>=3))res=bidirectional(b,lim,timer,pk);
   else if(lim.algorithm=="beam")res=beamSearch(b,lim,timer,pk);
   else if(lim.algorithm=="auto"||lim.algorithm=="forward")res=forwardBFS(b,lim,timer,pk);
