@@ -27,6 +27,8 @@
 #ifndef __EMSCRIPTEN__ // the WebAssembly build stays single-threaded
 #include <atomic>
 #include <thread>
+#include <mutex>
+#include <filesystem>
 #define KUN_THREADS 1
 #endif
 using namespace std;
@@ -235,7 +237,7 @@ void successors(const Board&b,const State&s,Stats&stats,const function<void(Tran
  }
 }
 struct SearchResult{bool solved=false,exhaustive=false,boundProved=false;vector<Move> path;uint64_t states=0,transitions=0,bytes=0;int depth=0;int provenMoves=0;/* balanced search: complete layers prove that no route of at most this many moves exists */string algorithm;};
-struct Limits{uint64_t maxStates=3000000;/* UINT64_MAX = unlimited */uint64_t maxBytes=0;/* 0 = unlimited */double seconds=60;/* 0 = unlimited */int maxDepth=0;/* 0 = unlimited */bool scoreCap=false;long long maxScore=0;/* --max-score: only routes with score <= maxScore matter */bool verbose=true;string algorithm="auto";bool beamDynamic=false;size_t beamWidth=200000;int threads=0;/* worker threads for the exact searches; 0 = all cores (the WebAssembly build always uses 1) */uint64_t seed=1;/* --algorithm beam: states kept per layer, tie-break seed */int splitDepth=0;/* --split-depth P: bidirectional search with a shared reverse set and one forward search per state at depth P (0 = off) */int reverseDepth=0;/* --reverse-depth R: depth of the shared reverse set (0 = grow to about 40% of the budget) */};
+struct Limits{uint64_t maxStates=3000000;/* UINT64_MAX = unlimited */uint64_t maxBytes=0;/* 0 = unlimited */double seconds=60;/* 0 = unlimited */int maxDepth=0;/* 0 = unlimited */bool scoreCap=false;long long maxScore=0;/* --max-score: only routes with score <= maxScore matter */bool verbose=true;string algorithm="auto";bool beamDynamic=false;size_t beamWidth=200000;int threads=0;/* worker threads for the exact searches; 0 = all cores (the WebAssembly build always uses 1) */uint64_t seed=1;/* --algorithm beam: states kept per layer, tie-break seed */int splitDepth=0;/* --split-depth P: bidirectional search with a shared reverse set and one forward search per state at depth P (0 = off) */int diskBuckets=256;/* --disk-buckets */string diskDir;/* --disk-dir DIR: forward layers on disk */int reverseDepth=0;/* --reverse-depth R: depth of the shared reverse set (0 = grow to about 40% of the budget) */};
 static ostream* g_log=&cerr; // progress/diagnostic stream: stderr for the CLI, a callback stream in the WebAssembly build
 #define LOG (*g_log)
 using Clock=chrono::steady_clock;
@@ -572,16 +574,12 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
   return true;};
  auto stop=[&]{if(timer.expired()||full())limited=true;return limited;};
 
- // ---- Split search (v0.24): the reverse set is built once and kept in memory; the forward search then runs separately from every distinct state at depth P ----
- // A shortest route of at least P moves passes through exactly one layer-P state, so the minimum over those roots of P + (distance of the root) is the answer. Each root run is a forward
- // BFS against the frozen reverse set, and its states are freed afterwards, so the memory peak is the reverse set plus ONE root's forward states. Roots are bounded by the best route so far.
- if(lim.splitDepth>0){
-  const int P=lim.splitDepth;
-  if(lim.reverseDepth<=0&&lim.maxStates==UINT64_MAX&&lim.maxBytes==0)throw runtime_error("--split-depth needs --reverse-depth or a --max-states/--max-memory budget");
-  bool interrupted=false;
-  // Phase A: reverse layers up to --reverse-depth, or (without it) while the next layer is estimated (1.6x the last) to keep the reverse set within 40% of the budget.
+ // Phase A of the split and disk searches: reverse layers up to --reverse-depth, or (without it) while the next layer is estimated (1.6x the last) to keep the reverse set within 40% of the budget.
+ // Returns true when the time or state limit interrupted it (certified/early are set by mergeInto).
+ auto buildReverse=[&]()->bool{
+  if(lim.reverseDepth<=0&&lim.maxStates==UINT64_MAX&&lim.maxBytes==0)throw runtime_error("--split-depth and --disk-dir need --reverse-depth or a --max-states/--max-memory budget");
   while(true){
-   if(timer.expired()||limited){interrupted=true;break;}
+   if(timer.expired()||limited)return true;
    if(lim.reverseDepth>0&&rd>=lim.reverseDepth)break;
    if(rEnd==rHead)break; // the reverse set is complete
    if(lim.reverseDepth<=0){
@@ -592,10 +590,150 @@ SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const
    }
    expandLayer(rHead,rEnd,lim.threads,transitions,genR,[&](vector<uint8_t>&buf){return mergeInto(rev,false,buf);},stop);
    if(early){certified=true;break;}
-   if(limited){interrupted=true;break;}
+   if(limited)return true;
    rHead=rEnd;rd++;rEnd=rev.size();rev.closeLayer();
    if(lim.verbose)LOG<<"reverse depth "<<rd<<" states "<<rev.size()<<" elapsed "<<timer.elapsed()<<"s\n";
   }
+  return false;
+ };
+
+ // ---- Disk forward search (v0.25) ----
+ // The reverse set stays in RAM (built exactly as for --split-depth). The forward layers live on disk in hash buckets: every layer is a set of files L<depth>_<bucket>.bin of packed keys.
+ // Expanding layer d reads its bucket files, writes every successor to a candidate file of the successor's bucket (meeting the reverse set on the way), then each bucket is deduplicated
+ // against ALL its earlier layers (loaded into a hash table one bucket at a time) and the survivors form layer d+1. Only sequential file access; every state is expanded exactly once.
+ // RAM = reverse set + per-thread bucket tables, so the forward side is limited by disk space only (about one packed key per state plus one layer of candidates).
+ if(!lim.diskDir.empty()){
+#ifndef KUN_THREADS
+  throw runtime_error("--disk-dir is not available in the WebAssembly build");
+#else
+  namespace fs=std::filesystem;
+  if(lim.splitDepth>0)throw runtime_error("--disk-dir and --split-depth cannot be combined");
+  const int M=max(1,min(lim.diskBuckets,65536));const int nth=max(lim.threads,1);
+  const fs::path dir(lim.diskDir);std::error_code ec;fs::create_directories(dir,ec);if(ec)throw runtime_error("cannot create "+lim.diskDir+": "+ec.message());
+  struct Cleanup{fs::path d;~Cleanup(){std::error_code e;for(auto&it:fs::directory_iterator(d,e)){const string n=it.path().filename().string();if(!n.empty()&&(n[0]=='L'||n[0]=='C')&&it.path().extension()==".bin")fs::remove(it.path(),e);}}} cleanup{dir};
+  auto bucketOf=[&](uint64_t h)->int{return (int)((h>>32)%(uint64_t)M);};
+  auto layerPath=[&](int d,int bk){return (dir/("L"+to_string(d)+"_"+to_string(bk)+".bin")).string();};
+  auto candPath=[&](int bk){return (dir/("C"+to_string(bk)+".bin")).string();};
+  auto readAll=[&](const string&path,vector<uint8_t>&data){FILE*f=fopen(path.c_str(),"rb");if(!f)throw runtime_error("cannot read "+path);fseek(f,0,SEEK_END);const long n=ftell(f);fseek(f,0,SEEK_SET);data.resize((size_t)n);if(n>0&&fread(data.data(),1,(size_t)n,f)!=(size_t)n){fclose(f);throw runtime_error("short read of "+path);}fclose(f);};
+  auto writeAll=[&](const string&path,const vector<uint8_t>&data){FILE*f=fopen(path.c_str(),"wb");if(!f)throw runtime_error("cannot write "+path+" (disk full or directory not writable?)");if(!data.empty()&&fwrite(data.data(),1,data.size(),f)!=data.size()){fclose(f);throw runtime_error("write failed on "+path+" (disk full?)");}if(fclose(f)!=0)throw runtime_error("write failed on "+path+" (disk full?)");};
+  bool interrupted=buildReverse();
+  std::atomic<int> bestD(best);vector<uint8_t> meetKey(K);int meetDepth=-1;uint32_t rMeetD=0;std::mutex meetMu;
+  vector<vector<uint64_t>> cnt; // cnt[d][bucket]: states of layer d in that bucket
+  cnt.emplace_back(M,0);
+  {const uint64_t h=hashBytes(fwd.key(0),K);vector<uint8_t> one(fwd.key(0),fwd.key(0)+K);cnt[0][bucketOf(h)]=1;
+   for(int bk=0;bk<M;bk++)if(cnt[0][bk])writeAll(layerPath(0,bk),one);
+   if(best!=INT32_MAX){memcpy(meetKey.data(),fwd.key(0),K);meetDepth=0;rMeetD=rMeet;}}
+  uint64_t forwardStates=1,candidates=0;
+  while(!interrupted&&!certified){
+   if(timer.expired()){interrupted=true;break;}
+   {const int bn=bestD.load();const int need=min(bn==INT32_MAX?INT32_MAX:bn-1,D);if(need!=INT32_MAX&&(long long)fd+rd>=need){certified=true;break;}}
+   uint64_t layerTotal=0;for(int bk=0;bk<M;bk++)layerTotal+=cnt[fd][bk];
+   if(layerTotal==0){exhausted=true;break;}
+   const int nd=fd+1;
+   // 1. expand layer fd into candidate files
+   vector<FILE*> cf(M,nullptr);vector<std::mutex> cmu(M);
+   for(int bk=0;bk<M;bk++){cf[bk]=fopen(candPath(bk).c_str(),"wb");if(!cf[bk])throw runtime_error("cannot write "+candPath(bk)+" (disk full or directory not writable?)");}
+   struct TL{vector<vector<uint8_t>> ob;vector<uint8_t> ck;vector<uint64_t> ch;uint64_t tr=0,written=0;};
+   const size_t CS=1<<20,FLUSH=1<<16;vector<TL> tls(nth);for(auto&t:tls){t.ob.resize(M);t.ck.assign(CS*K,0);t.ch.assign(CS,0);}
+   bool failed=false;string failMsg;std::mutex failMu;
+   auto flush=[&](TL&t,int bk){if(t.ob[bk].empty())return;std::lock_guard<std::mutex> g(cmu[bk]);if(fwrite(t.ob[bk].data(),1,t.ob[bk].size(),cf[bk])!=t.ob[bk].size()){std::lock_guard<std::mutex> g2(failMu);failed=true;failMsg="write failed on "+candPath(bk)+" (disk full?)";}t.written+=t.ob[bk].size()/K;t.ob[bk].clear();};
+   for(int sb=0;sb<M&&!interrupted&&!failed;sb++){
+    if(cnt[fd][sb]==0)continue;
+    if(timer.expired()){interrupted=true;break;}
+    vector<uint8_t> par;readAll(layerPath(fd,sb),par);const size_t np_=par.size()/K;const size_t nt=(np_+TASK_PARENTS-1)/TASK_PARENTS;
+    atomic<size_t> nextTask{0};
+    auto run=[&](int tid){TL&tl=tls[tid];thread_local vector<uint8_t> kb;kb.resize(K);
+     for(size_t t;(t=nextTask++)<nt;){
+      const size_t a=t*TASK_PARENTS,e=min(np_,a+TASK_PARENTS);
+      for(size_t pi=a;pi<e;pi++){
+       State st;pk.unpack(&par[pi*K],st);
+       for(int i=0;i<b.n;i++){
+        if(b.goalColor[st.p[i]]==b.balls[i].color)continue;
+        for(int d=0;d<4;d++){
+         for(int ph=0;ph<b.nPhases;ph++){
+          bool rot=false;tl.tr++;int np=fastEnd(b,st,i,d,ph,rot);
+          if(np>=0){
+           State next=st;next.p[i]=np;
+           int swi=b.switchAt[np];if(swi>=0)b.fireSwitch(swi,next);
+           pk.pack(next,kb.data());const uint64_t h=hashBytes(kb.data(),K);
+           const size_t slot=h&(CS-1);
+           if(!(tl.ch[slot]==h&&!memcmp(&tl.ck[slot*K],kb.data(),K))){ // not a repeat of a recent candidate of this thread
+            tl.ch[slot]=h;memcpy(&tl.ck[slot*K],kb.data(),K);
+            const uint32_t o=rev.find(kb.data(),h);
+            if(o!=Store::NONE){const int len=nd+rev.depthOf(o);if(len<bestD.load()){std::lock_guard<std::mutex> g(meetMu);if(len<bestD.load()){bestD=len;memcpy(meetKey.data(),kb.data(),K);meetDepth=nd;rMeetD=o;if(lim.verbose)LOG<<"candidate "<<len<<" moves (forward "<<nd<<", reverse "<<rev.depthOf(o)<<")\n";}}}
+            const int bk=bucketOf(h);auto&ob=tl.ob[bk];ob.insert(ob.end(),kb.begin(),kb.begin()+K);if(ob.size()>=FLUSH)flush(tl,bk);
+           }
+          }
+          if(!rot)break;
+         }
+        }
+       }
+      }
+     }
+    };
+    {vector<thread> pool;for(int t=1;t<nth;t++)pool.emplace_back(run,t);run(0);for(auto&x:pool)x.join();}
+    for(auto&t:tls)for(int bk=0;bk<M;bk++)flush(t,bk);
+   }
+   for(int bk=0;bk<M;bk++)if(cf[bk]){if(fclose(cf[bk])!=0){failed=true;failMsg="write failed on "+candPath(bk)+" (disk full?)";}}
+   for(auto&t:tls){transitions+=t.tr;candidates+=t.written;}
+   if(failed)throw runtime_error(failMsg);
+   if(interrupted)break;
+   // 2. deduplicate each bucket against all its earlier layers; the survivors are layer nd
+   cnt.emplace_back(M,0);
+   {atomic<int> nextB{0};auto work=[&]{
+     for(int bk;(bk=nextB++)<M;){
+      Store hist;hist.init(K);hist.threads=1;vector<uint8_t> data;
+      for(int j=0;j<=fd;j++)if(cnt[j][bk]){readAll(layerPath(j,bk),data);for(size_t o=0;o<data.size();o+=K)hist.add(&data[o]);}
+      vector<uint8_t> fresh;
+      {FILE*f=fopen(candPath(bk).c_str(),"rb");if(!f)throw runtime_error("cannot read "+candPath(bk));
+       vector<uint8_t> blk(K*(size_t)65536);size_t got;
+       while((got=fread(blk.data(),K,65536,f))>0){for(size_t o=0;o<got*K;o+=K){const uint64_t h=hashBytes(&blk[o],K);if(hist.find(&blk[o],h)==Store::NONE){hist.add(&blk[o],h);fresh.insert(fresh.end(),&blk[o],&blk[o]+K);}}}
+       fclose(f);std::error_code e2;fs::remove(candPath(bk),e2);}
+      if(!fresh.empty())writeAll(layerPath(nd,bk),fresh);
+      cnt[nd][bk]=fresh.size()/K;
+     }};
+    vector<thread> pool;std::mutex em;string emsg;bool bad=false;
+    auto guarded=[&]{try{work();}catch(const std::exception&ex){std::lock_guard<std::mutex> g(em);bad=true;emsg=ex.what();}};
+    for(int t=1;t<nth;t++)pool.emplace_back(guarded);
+    guarded();for(auto&x:pool)x.join();if(bad)throw runtime_error(emsg);}
+   uint64_t newTotal=0;for(int bk=0;bk<M;bk++)newTotal+=cnt[nd][bk];forwardStates+=newTotal;fd=nd;
+   if(lim.verbose)LOG<<"forward depth "<<fd<<" (layer "<<newTotal<<", candidates written so far "<<candidates<<") reverse depth "<<rd<<" states "<<forwardStates+rev.size()<<" best "<<(bestD.load()==INT32_MAX?-1:bestD.load())<<" elapsed "<<timer.elapsed()<<"s\n";
+  }
+  best=bestD.load();
+  out.states=rev.size()+forwardStates;out.bytes=rev.bytes();out.transitions=transitions;out.provenMoves=exhausted?0:fd+rd;
+  if(best!=INT32_MAX&&best<=D){
+   out.solved=true;out.depth=best;out.exhaustive=(certified||exhausted)&&!interrupted;
+   if(lim.verbose)LOG<<"rebuilding route elapsed "<<timer.elapsed()<<"s\n";
+   vector<Move> path;vector<uint8_t> cur(K),tmp(K);memcpy(cur.data(),meetKey.data(),K);Stats stats;uint64_t tr=0;
+   for(int d=meetDepth;d>0;d--){
+    vector<vector<uint8_t>> cand(M);
+    forEachPred(cur.data(),tr,[&](const uint8_t*kb,uint64_t h){auto&v=cand[bucketOf(h)];v.insert(v.end(),kb,kb+K);});
+    vector<uint8_t> parentKey;bool found=false;
+    for(int bk=0;bk<M&&!found;bk++){
+     if(cand[bk].empty()||cnt[d-1][bk]==0)continue;
+     Store st;st.init(K);vector<uint8_t> data;readAll(layerPath(d-1,bk),data);for(size_t o=0;o<data.size();o+=K)st.add(&data[o]);
+     for(size_t o=0;o<cand[bk].size()&&!found;o+=K)if(st.find(&cand[bk][o])!=Store::NONE){parentKey.assign(cand[bk].begin()+o,cand[bk].begin()+o+K);found=true;}
+    }
+    if(!found)throw runtime_error("internal error: route reconstruction failed");
+    State ps;pk.unpack(parentKey.data(),ps);bool ok=false;
+    successors(b,ps,stats,[&](Transition&& t){if(ok)return;pk.pack(t.s,tmp.data());if(!memcmp(tmp.data(),cur.data(),K)){ok=true;path.push_back(t.m);}});
+    if(!ok)throw runtime_error("internal error: route reconstruction failed");
+    cur=parentKey;
+   }
+   reverse(path.begin(),path.end());auto after=rebuildReverse(b,rev,pk,rMeetD);path.insert(path.end(),after.begin(),after.end());out.path=std::move(path);
+   if(lim.verbose)LOG<<"route rebuilt elapsed "<<timer.elapsed()<<"s\n";
+  }else if(best==INT32_MAX){if(exhausted)out.exhaustive=true;else if(certified)out.boundProved=true;}
+  else out.boundProved=certified||exhausted;
+  return out;
+#endif
+ }
+
+ // ---- Split search (v0.24): the reverse set is built once and kept in memory; the forward search then runs separately from every distinct state at depth P ----
+ // A shortest route of at least P moves passes through exactly one layer-P state, so the minimum over those roots of P + (distance of the root) is the answer. Each root run is a forward
+ // BFS against the frozen reverse set, and its states are freed afterwards, so the memory peak is the reverse set plus ONE root's forward states. Roots are bounded by the best route so far.
+ if(lim.splitDepth>0){
+  const int P=lim.splitDepth;
+  bool interrupted=buildReverse();
   // Phase B: forward layers up to depth P (against the reverse set), keeping them for the prefix routes.
   while(!interrupted&&!certified&&!exhausted&&fd<P){
    if(fEnd==fHead){exhausted=true;break;}
@@ -1003,10 +1141,10 @@ Board parseCode(string code){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open catalog: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0){string rest=trim(line.substr(prefix.size()));return rest.substr(0,rest.find_first_of(" \t"));}}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.24"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.25"; // Solver's own version, independent of the web app's APP_VERSION.
 // ---- Core entry point (shared by the CLI and the WebAssembly build) ----
 struct Cli{Limits lim;string input,level,catalog="levels.js";bool version=false,help=false,json=false;};
-static const char* HELP_TEXT="Kunundrum exact C++ solver (K4)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--split-depth P] [--reverse-depth R] [--threads N] [--max-states N] [--seconds N] [--max-memory MB] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and its K4 board code.\nauto = bidirectional search when applicable (no hexes, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic: certifies optimality (exit 0) only on hex-free boards when no state was ever dropped by the beam width, otherwise an upper bound (exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";
+static const char* HELP_TEXT="Kunundrum exact C++ solver (K4)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--split-depth P] [--reverse-depth R] [--disk-dir DIR] [--disk-buckets N] [--threads N] [--max-states N] [--seconds N] [--max-memory MB] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and its K4 board code.\nauto = bidirectional search when applicable (no hexes, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic: certifies optimality (exit 0) only on hex-free boards when no state was ever dropped by the beam width, otherwise an upper bound (exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";
 // Same flags as the command line; the WebAssembly export passes its options as a flag string.
 static Cli parseArgs(const vector<string>&args){
  Cli c;Limits&lim=c.lim;string&input=c.input,&level=c.level,&catalog=c.catalog;
@@ -1014,7 +1152,7 @@ static Cli parseArgs(const vector<string>&args){
   if(a=="--version"){c.version=true;return c;}
   if(a=="--help"||a=="-h"){c.help=true;return c;}
   if(a=="--json"){c.json=true;continue;}
-   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states"){lim.maxStates=stoull(value());if(lim.maxStates==0)lim.maxStates=UINT64_MAX;}else if(a=="--threads"){lim.threads=stoi(value());if(lim.threads<0)throw runtime_error("--threads must be >= 0");}else if(a=="--max-memory"){lim.maxBytes=stoull(value())<<20;}else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--beam-width"){lim.beamWidth=stoull(value());if(lim.beamWidth<1)throw runtime_error("--beam-width must be at least 1");}else if(a=="--beam-heuristic"){string v=value();if(v!="static"&&v!="dynamic")throw runtime_error("--beam-heuristic must be static or dynamic");lim.beamDynamic=v=="dynamic";}else if(a=="--seed")lim.seed=stoull(value());else if(a=="--split-depth"){lim.splitDepth=stoi(value());if(lim.splitDepth<0||lim.splitDepth>64)throw runtime_error("--split-depth must be between 0 and 64");}else if(a=="--reverse-depth"){lim.reverseDepth=stoi(value());if(lim.reverseDepth<0)throw runtime_error("--reverse-depth must be >= 0");}else if(a=="--quiet")lim.verbose=false;else if(a.rfind("--",0)==0)throw runtime_error("unknown option: "+a);else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
+   else if(a=="--level")level=value();else if(a=="--catalog")catalog=value();else if(a=="--algorithm")lim.algorithm=value();else if(a=="--max-states"){lim.maxStates=stoull(value());if(lim.maxStates==0)lim.maxStates=UINT64_MAX;}else if(a=="--threads"){lim.threads=stoi(value());if(lim.threads<0)throw runtime_error("--threads must be >= 0");}else if(a=="--max-memory"){lim.maxBytes=stoull(value())<<20;}else if(a=="--seconds")lim.seconds=stod(value());else if(a=="--max-score"){lim.maxScore=stoll(value());lim.scoreCap=true;if(lim.maxScore<-1000000000000LL||lim.maxScore>1000000000000LL)throw runtime_error("--max-score out of range");}else if(a=="--max-depth"){lim.maxDepth=stoi(value());if(lim.maxDepth<1)throw runtime_error("--max-depth must be at least 1");}else if(a=="--beam-width"){lim.beamWidth=stoull(value());if(lim.beamWidth<1)throw runtime_error("--beam-width must be at least 1");}else if(a=="--beam-heuristic"){string v=value();if(v!="static"&&v!="dynamic")throw runtime_error("--beam-heuristic must be static or dynamic");lim.beamDynamic=v=="dynamic";}else if(a=="--seed")lim.seed=stoull(value());else if(a=="--disk-dir")lim.diskDir=value();else if(a=="--disk-buckets"){lim.diskBuckets=stoi(value());if(lim.diskBuckets<1||lim.diskBuckets>65536)throw runtime_error("--disk-buckets must be between 1 and 65536");}else if(a=="--split-depth"){lim.splitDepth=stoi(value());if(lim.splitDepth<0||lim.splitDepth>64)throw runtime_error("--split-depth must be between 0 and 64");}else if(a=="--reverse-depth"){lim.reverseDepth=stoi(value());if(lim.reverseDepth<0)throw runtime_error("--reverse-depth must be >= 0");}else if(a=="--quiet")lim.verbose=false;else if(a.rfind("--",0)==0)throw runtime_error("unknown option: "+a);else if(input.empty())input=a;else throw runtime_error("unexpected argument: "+a);
  }
  return c;
 }
@@ -1047,7 +1185,7 @@ static Outcome solveBoard(const string&input,Limits lim){
   bool feasibleSeeds=terminalBits<=16&&(1ULL<<terminalBits)<=lim.maxStates/4;
   bool canBi=b.staticReverse&&b.goals.size()==b.balls.size()&&feasibleSeeds;
   if(lim.algorithm=="bidirectional"&&!canBi)throw runtime_error("bidirectional search requires no hexagons, equal goals/balls and an affordable terminal-state enumeration");
-  if(lim.splitDepth>0&&!(lim.algorithm=="bidirectional"||(lim.algorithm=="auto"&&canBi&&b.n>=3)))throw runtime_error("--split-depth requires the bidirectional search");
+  if((lim.splitDepth>0||!lim.diskDir.empty())&&!(lim.algorithm=="bidirectional"||(lim.algorithm=="auto"&&canBi&&b.n>=3)))throw runtime_error("--split-depth and --disk-dir require the bidirectional search");
   if(lim.algorithm=="bidirectional"||(lim.algorithm=="auto"&&canBi&&b.n>=3))res=bidirectional(b,lim,timer,pk);
   else if(lim.algorithm=="beam")res=beamSearch(b,lim,timer,pk);
   else if(lim.algorithm=="auto"||lim.algorithm=="forward")res=forwardBFS(b,lim,timer,pk);
