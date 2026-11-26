@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,encodeRoute,decodeRouteCode,readShareUrl,makeShar
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '4.5.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '4.6.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -1129,34 +1129,24 @@ $('replay-speed').addEventListener('pointerdown',()=>{selectByMouse=true;});
 $('replay-speed').addEventListener('keydown',()=>{selectByMouse=false;});
 $('replay-speed').addEventListener('change',()=>{ if(selectByMouse){selectByMouse=false;returnFocusToBoard();} });
 
-// Leaving the editor with a changed draft: keep the route whenever it still works on the edited
-// board. Otherwise keep the longest prefix that does (validity is monotone in prefix length) and
-// leave the full original route in the solution box, so it is never silently lost.
-function adoptEdited(draft,dropRoute=false) {
-  const normalized=validateBoard(draft);
-  if(dropRoute){ // a new, generated or imported board replaced the old one in the editor: the old moves are dropped silently
-    adoptBoard(normalized);clearReplayLocation();persist();return;
-  }
-  const total=frames.length-1,at=cursor,previousMode=mode;
-  let lo=0,hi=total;
-  while(lo<hi){
-    const mid=Math.ceil((lo+hi)/2);
-    try{buildReplay(normalized,getNotation(mid));lo=mid;}catch{hi=mid-1;}
-  }
-  const prepared=lo>0?buildReplay(normalized,getNotation(lo)):undefined;
-  adoptBoard(normalized,prepared,Math.min(at,lo));
-  if(prepared)mode=previousMode;
-  if(lo<total){
-    toast(lo===0?'The route no longer works on the edited board.'
-      :`Route kept up to move ${lo} of ${total}; move ${lo+1} no longer works on the edited board.`,true);
-  }
-  persist();
+// The board the editor opens on: the position at the replay cursor (current ball positions, gate/teleport states,
+// consumed hexagons removed) as a regular starting board. At move 0 this is the board itself.
+function boardAtCursor() {
+  const b = JSON.parse(JSON.stringify(board));
+  if (cursor === 0) return b;
+  const s = state(), consumed = new Set(s.consumedHexIds);
+  b.balls = s.balls.map(({ locked, ...ball }) => ball);
+  for (const g of b.gates) g.active = s.gateActive[g.id];
+  for (const t of b.teleports) t.active = s.teleportActive[t.id];
+  b.hexes = b.hexes.filter(h => !consumed.has(h.id));
+  for (const sw of b.switches) delete sw.on; // derived again by validateBoard from the elements' states
+  return validateBoard(b);
 }
 window.KunundrumHost = {
-  getBoard:()=>JSON.parse(JSON.stringify(board)),
+  getBoard:boardAtCursor,
   svg:draft=>renderSvg(draft,createInitialState(draft),{outlinedBallId:null}),
   stop:()=>cancelMotion(),
-  play:(draft,dropRoute)=>{adoptEdited(draft,dropRoute);},
+  play:draft=>{adoptBoard(validateBoard(draft));clearReplayLocation();persist();}, // an edited board always starts a fresh run: the old route is dropped
   resume:()=>{render();},
   toast:message=>toast(message),
   // Solver dialog (solver-ui.js): the current board as a K4 code, plus the score and move count of the CURRENT route (the full move history, `frames`, not just the moves up to the cursor and independent of the Replay text box) when it finishes the board. Stops any playback.
