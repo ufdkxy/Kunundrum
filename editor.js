@@ -38,21 +38,98 @@ function applyTunnelProperty(key,value){
   list[ix]={a:{...self},b:{...zEnd}};list[jz]={a:{...other},b:{...w}};
  }
  if(key==='Side'){
-  if(value!==self.side&&list.some(u=>[u.a,u.b].some(e=>e!==self&&sameOpening(e,{x:self.x,y:self.y,side:value})))){setStatus(`The ${sideNames[value]} side of (${self.x}, ${self.y}) already has an opening.`,true);refresh();return;}
+  const bad=value!==self.side&&openingProblem(b,{x:self.x,y:self.y,side:value},self);
+  if(bad){setStatus(bad,true);refresh();return;}
   self.side=value;E.selected={...sel,side:value};
  }
  normTunnels(b);
  if(remember(prev)){refresh();renderDraft();setStatus('Tunnel updated.');}
 }
-// Nearest cell side to the pointer, from the cell's hit rectangle (used by the Tunnel tool).
-function sideOf(event){const el=event.target.closest?.('[data-edit-x]');if(!el)return null;const r=el.getBoundingClientRect(),fx=(event.clientX-r.left)/r.width,fy=(event.clientY-r.top)/r.height,d={l:fx,r:1-fx,u:fy,d:1-fy};return Object.keys(d).reduce((m,k)=>d[k]<d[m]?k:m,'l');}
+// Tunnel openings sit on the boundary between a floor cell and a wall cell or the board edge (K4 rules 4-5):
+// an opening is the floor cell plus the side facing the wall/edge, and a wall cell carries at most one opening.
+const STEP={u:[0,1],d:[0,-1],l:[-1,0],r:[1,0]},OPP={u:'d',d:'u',l:'r',r:'l'};
+const nbr=e=>({x:e.x+STEP[e.side][0],y:e.y+STEP[e.side][1]});
+const inGrid=(b,p)=>p.x>=1&&p.y>=1&&p.x<=b.width&&p.y<=b.height;
+const isWallAt=(b,p)=>b.walls.some(w=>at(w,p.x,p.y));
+function staticProblem(b,e){
+ if(!inGrid(b,e))return 'A tunnel opening must be on the board.';
+ if(isWallAt(b,e))return 'A tunnel opening cannot be in a wall cell.';
+ const n=nbr(e);
+ if(inGrid(b,n)&&!isWallAt(b,n))return 'Tunnel openings go on wall edges or the board edge.';
+ return null;
+}
+function openingProblem(b,e,ignore){
+ const bad=staticProblem(b,e);if(bad)return bad;
+ const n=nbr(e);
+ for(const t of b.tunnels||[])for(const o of [t.a,t.b]){
+  if(ignore&&sameOpening(o,ignore))continue;
+  if(sameOpening(o,e))return 'There is already a tunnel opening here. Use Erase to remove it.';
+  if(same(nbr(o),n))return 'A wall cell can carry only one tunnel opening.';
+ }
+ return null;
+}
+// Opening under the pointer: the nearest cell side (a wall cell stands for the floor cell next to it).
+function tunnelSpot(b,x,y,side,ignore){
+ let e;
+ if(isWallAt(b,{x,y})){
+  const n={x:x+STEP[side][0],y:y+STEP[side][1]};
+  if(!inGrid(b,n)||isWallAt(b,n))return {error:'Tunnel openings need a floor cell next to the wall.'};
+  e={x:n.x,y:n.y,side:OPP[side]};
+ }else e={x,y,side};
+ const bad=openingProblem(b,e,ignore);
+ return bad?{error:bad}:{e};
+}
+// Drop tunnel pairs that no longer follow the rules (a wall was removed or moved, the grid changed).
+function pruneTunnels(b){
+ if(!b.tunnels)return 0;
+ const before=b.tunnels.length,used=new Set(),kept=[];
+ for(const t of b.tunnels){
+  const es=[t.a,t.b];if(es.some(e=>staticProblem(b,e)))continue;
+  const ks=es.map(e=>{const n=nbr(e);return inGrid(b,n)?`${n.x},${n.y}`:null;});
+  if(ks.some(k=>k&&used.has(k))||(ks[0]&&ks[0]===ks[1]))continue;
+  ks.forEach(k=>k&&used.add(k));kept.push(t);
+ }
+ if(kept.length)b.tunnels=kept;else delete b.tunnels;
+ return before-kept.length;
+}
+// Nearest cell side to the pointer (outside the grid the nearest border cell is used).
+function sideOf(event){
+ const pt=svgPoint(event),b=E.draft;if(!pt||!b)return null;
+ const fx=(pt.x-18)/64,fy=(pt.y-18)/64,c=Math.min(b.width,Math.max(1,Math.floor(fx)+1)),r=Math.min(b.height-1,Math.max(0,Math.floor(fy)));
+ const d={l:Math.abs(fx-(c-1)),r:Math.abs(fx-c),u:Math.abs(fy-r),d:Math.abs(fy-(r+1))};
+ return Object.keys(d).reduce((m,k)=>d[k]<d[m]?k:m,'l');
+}
+function tunnelTarget(event,ignore){
+ const p=cellAt(event),side=sideOf(event),b=E.draft;
+ if(!p||!side)return {error:''};
+ return tunnelSpot(b,Math.min(b.width,Math.max(1,p[0])),Math.min(b.height,Math.max(1,p[1])),side,ignore);
+}
+function tunnelClick(b,x,y){
+ const pend=E.pendingTunnel,r=tunnelSpot(b,x,y,E.clickSide||'r');
+ if(r.error){setStatus(r.error,true);return false;}
+ const e=r.e;
+ if(pend&&sameOpening(pend,e)){E.pendingTunnel=null;renderDraft();setStatus('');return false;}
+ if(!pend){E.pendingTunnel=e;renderDraft();setStatus(`First opening: ${openingLabel(e)}. Click the partner opening.`);return false;}
+ if(same(nbr(pend),nbr(e))){setStatus('A wall cell can carry only one tunnel opening.',true);return false;}
+ if(staticProblem(b,pend)){E.pendingTunnel=null;renderDraft();setStatus(staticProblem(b,pend),true);return false;}
+ delete b.solution;(b.tunnels||(b.tunnels=[])).push({a:{...pend},b:{...e}});E.pendingTunnel=null;normTunnels(b);
+ E.dragChanged=true;E.dirty=true;E.selected=null;refresh();renderDraft();setStatus('Draft edited — choose Play to validate and test.');return true;
+}
+function moveTunnel(from,to){
+ const b=E.draft,t=(b.tunnels||[]).find(u=>sameOpening(u.a,from)||sameOpening(u.b,from));
+ if(!t||!to||sameOpening(from,to))return false;
+ const prev=snapshot();delete b.solution;
+ Object.assign(sameOpening(t.a,from)?t.a:t.b,{x:to.x,y:to.y,side:to.side});normTunnels(b);
+ if(!remember(prev))return false;
+ E.selected={type:'tunnels',...to};E.dirty=true;refresh();renderDraft();setStatus('Tunnel moved.');return true;
+}
 const openingAt=(t,x,y,side)=>[t.a,t.b].some(e=>e.x===x&&e.y===y&&(!side||e.side===side));
 const mutable = {active:false,draft:null,grab:null,floatDrag:null,preferFloor:false,pendingTunnel:null,clickSide:null,hitTunnel:null,tool:'select',color:'G',direction:'r',rotating:false,arrowType:'cw',activeTile:true,hexValue:-5,selected:null,history:[],future:[],dragging:false,dragChanged:false,dragBefore:null,lastCell:'',dirty:false,openSig:null};
 const E = mutable;
 const host = () => window.KunundrumHost;
 const same=(a,b)=>a&&b&&a.x===b.x&&a.y===b.y;
 const clean = s => String(s||'').trim();
-const prune = b => {const ids=new Set([...b.gates,...b.teleports].map(v=>v.id));for(const sw of b.switches)sw.controls=sw.controls.filter(id=>ids.has(id));};
+const prune = b => {const ids=new Set([...b.gates,...b.teleports].map(v=>v.id));for(const sw of b.switches)sw.controls=sw.controls.filter(id=>ids.has(id));return pruneTunnels(b);};
 const list = s => clean(s).split(',').map(clean).filter(Boolean);
 const at = (p,x,y)=>p.x===x&&p.y===y;
 const nextId = (arr, prefix) => {let i=1;while(arr.some(v=>v.id===prefix+i))i++;return prefix+i;};
@@ -147,7 +224,7 @@ function overlay(){
  }
  out+='</g>';
  const edge=e=>{const px=pad+(e.x-1)*cell,py=pad+(b.height-e.y)*cell;return {u:[px+cell/2,py],d:[px+cell/2,py+cell],l:[px,py+cell/2],r:[px+cell,py+cell/2]}[e.side];};
- if(E.tool==='select')for(const t of b.tunnels||[])for(const e of [t.a,t.b]){ // clickable areas over the openings (the board edge is not a cell)
+ if(E.tool==='select'||E.tool==='erase')for(const t of b.tunnels||[])for(const e of [t.a,t.b]){ // clickable areas over the openings (the board edge is not a cell)
   const [ex,ey]=edge(e),h=e.side==='u'||e.side==='d';
   out+=`<rect class="editor-tunnel-hit" data-edit-x="${e.x}" data-edit-y="${e.y}" data-edit-tunnel="${e.x},${e.y},${e.side}" x="${ex-(h?30:15)}" y="${ey-(h?15:30)}" width="${h?60:30}" height="${h?30:60}" rx="6" fill="transparent"/>`;
  }
@@ -155,6 +232,10 @@ function overlay(){
  if(sel)for(const e of [sel.a,sel.b]){
   const [ex,ey]=edge(e),mine=sameOpening(e,E.selected),h=e.side==='u'||e.side==='d';
   out+=`<rect class="editor-tunnel-sel" pointer-events="none" x="${ex-(h?30:15)}" y="${ey-(h?15:30)}" width="${h?60:30}" height="${h?30:60}" rx="8" fill="#43dcff" fill-opacity="${mine?.22:.08}" stroke="${mine?'#90f2ff':'#43dcff'}" stroke-width="${mine?3:2}" stroke-dasharray="${mine?'none':'5 4'}"/>`;
+ }
+ if(E.dragging&&E.grab?.tunnel&&E.grab.target&&!sameOpening(E.grab.target,E.grab.from)){
+  const e=E.grab.target,[ex,ey]=edge(e),h=e.side==='u'||e.side==='d';
+  out+=`<rect pointer-events="none" x="${ex-(h?30:15)}" y="${ey-(h?15:30)}" width="${h?60:30}" height="${h?30:60}" rx="8" fill="#43dcff" fill-opacity=".3" stroke="#90f2ff" stroke-width="3" stroke-dasharray="7 4"/>`;
  }
  if(E.pendingTunnel){
   const e=E.pendingTunnel,[ex,ey]=edge(e);
@@ -268,10 +349,11 @@ function find(x,y,underBall=false){
  return null;
 }
 function eraseAt(x,y,all=false){
- const b=E.draft;
+ const b=E.draft,hit=E.hitTunnel;E.hitTunnel=null;
+ if(hit&&!all){b.tunnels=(b.tunnels||[]).filter(t=>!sameOpening(t.a,hit)&&!sameOpening(t.b,hit));if(!b.tunnels.length)delete b.tunnels;return;}
  if(all){for(const name of keys)b[name]=b[name].filter(v=>!at(v,x,y));return;}
  const found=find(x,y);
- if(!found){if(b.tunnels){const side=E.clickSide,exact=side&&b.tunnels.some(t=>openingAt(t,x,y,side));b.tunnels=b.tunnels.filter(t=>!openingAt(t,x,y,exact?side:null));if(!b.tunnels.length)delete b.tunnels;}return;}
+ if(!found)return;
  b[found.type]=b[found.type].filter(p=>!(p.x===x&&p.y===y));
  E.selected=null;
 }
@@ -293,28 +375,22 @@ function moveObject(start,end,selection){
   }
   item.x=end.x;item.y=end.y;
  delete E.draft.solution;
- prune(E.draft);
+ const lost=prune(E.draft);
  const changed=remember(original);
- if(changed){E.selected={...selection,x:end.x,y:end.y};renderDraft();refresh();setStatus('Object moved.');}
+ if(changed){E.selected={...selection,x:end.x,y:end.y};renderDraft();refresh();setStatus(lost?'Object moved. A tunnel pair was removed because its wall edge is gone.':'Object moved.');}
  return changed;
 }
 function editAt(x,y,eraser=false){
  if(!E.active||x<1||y<1||x>E.draft.width||y>E.draft.height)return false;
  const b=E.draft,t=eraser?'erase':E.tool;
  if(t==='select') {const hit=E.hitTunnel;E.hitTunnel=null;E.selected=hit?{type:'tunnels',...hit}:find(x,y,E.preferFloor);refresh();renderDraft();setStatus('');return false;}
- if(t==='tunnel'&&(b.tunnels||[]).some(p=>openingAt(p,x,y,E.clickSide||'r'))){setStatus('There is already a tunnel opening here. Use Erase to remove it.',true);return false;}
+
+ if(t==='tunnel')return tunnelClick(b,x,y);
  const previous=snapshot();
  if(t!=='select')delete b.solution;
  if(t==='erase') eraseAt(x,y);
  else if(t==='ball') {b.walls=b.walls.filter(p=>!at(p,x,y));b.gates=b.gates.filter(p=>!(p.active&&at(p,x,y)));b.balls=b.balls.filter(p=>!at(p,x,y));b.balls.push({color:E.color,x,y});}
- else if(t==='tunnel'){
-  const side=E.clickSide||'r',pend=E.pendingTunnel;
-  if(b.walls.some(p=>at(p,x,y))){setStatus('A tunnel opening cannot be in a fixed wall cell.',true);return false;}
-  const list=b.tunnels||(b.tunnels=[]);
-  if(!pend||(pend.x===x&&pend.y===y&&pend.side===side)){E.pendingTunnel=pend?null:{x,y,side};renderDraft();setStatus(pend?'':`First opening: ${sideNames[side]} side of (${x}, ${y}). Click the partner opening.`);}
-  else{list.push({a:{...pend},b:{x,y,side}});E.pendingTunnel=null;}
-  normTunnels(b);
- }else if(t==='teleport'){
+ else if(t==='teleport'){
   clearFloor(x,y);
   b.teleports.push({id:nextId(b.teleports,'T'),color:E.color,active:E.activeTile,x,y});
  }else{
@@ -327,9 +403,9 @@ function editAt(x,y,eraser=false){
   if(t==='arrow')b.arrows.push({...point,direction:E.direction,...(E.rotating?{rotating:true,...(E.arrowType!=='cw'?{type:E.arrowType}:{})}:{})});
   if(t==='hex')b.hexes.push({...point,id:nextId(b.hexes,'hex'),value:E.hexValue||-5});
  }
- prune(b);
+ const lost=prune(b);
  const changed=previous!==snapshot();
- if(changed){E.dragChanged=true;E.dirty=true;E.selected=null;refresh();renderDraft();setStatus('Draft edited — choose Play to validate and test.');}
+ if(changed){E.dragChanged=true;E.dirty=true;E.selected=null;refresh();renderDraft();setStatus(lost?'A tunnel pair was removed because its wall edge is gone.':'Draft edited — choose Play to validate and test.');}
  return changed;
 }
 function applyProperty(key,value){
@@ -420,10 +496,15 @@ stage.addEventListener('drop',event=>{if(!E.active)return;event.preventDefault()
 stage.addEventListener('pointerdown',event=>{
  if(!E.active)return;event.stopImmediatePropagation();event.preventDefault();if(event.button!==0&&event.button!==2)return;
  const p=cellAt(event);if(!p)return;E.dragging=true;E.dragChanged=false;E.dragBefore=snapshot();E.lastCell='';stage.setPointerCapture(event.pointerId);
- E.lastCell=p.join(',');E.preferFloor=event.altKey;E.clickSide=sideOf(event);{const h=event.target.closest?.('[data-edit-tunnel]')?.dataset.editTunnel?.split(',');E.hitTunnel=h?{x:Number(h[0]),y:Number(h[1]),side:h[2]}:null;}editAt(p[0],p[1],event.button===2);E.grab=E.tool==='select'&&event.button===0&&E.selected&&E.selected.type!=='tunnels'?{from:{x:p[0],y:p[1]},selection:E.selected,hover:{x:p[0],y:p[1]}}:null;stage.classList.toggle('editor-grabbing',!!E.grab);stage.classList.remove('editor-grabbable');if(E.grab)startFloatingDrag(event);
+ E.lastCell=p.join(',');E.preferFloor=event.altKey;E.clickSide=sideOf(event);{const h=event.target.closest?.('[data-edit-tunnel]')?.dataset.editTunnel?.split(',');E.hitTunnel=h?{x:Number(h[0]),y:Number(h[1]),side:h[2]}:null;}editAt(p[0],p[1],event.button===2);E.grab=E.tool==='select'&&event.button===0&&E.selected?(E.selected.type==='tunnels'?{tunnel:true,from:{x:E.selected.x,y:E.selected.y,side:E.selected.side},selection:E.selected,target:null}:{from:{x:p[0],y:p[1]},selection:E.selected,hover:{x:p[0],y:p[1]}}):null;stage.classList.toggle('editor-grabbing',!!E.grab);stage.classList.remove('editor-grabbable');if(E.grab&&!E.grab.tunnel)startFloatingDrag(event);
 },true);
 stage.addEventListener('pointermove',event=>{
  if(!E.active||!E.dragging)return;event.stopImmediatePropagation();event.preventDefault();
+ if(E.tool==='select'&&E.grab?.tunnel){
+  const r=tunnelTarget(event,E.grab.from),k=r.e?`${r.e.x},${r.e.y},${r.e.side}`:'';
+  if(k!==(E.grab.targetKey??'')){E.grab.target=r.e||null;E.grab.targetKey=k;E.grab.error=r.error||null;renderDraft();}
+  return;
+ }
  const p=cellAt(event);
  if(E.tool==='select'&&E.grab){
   if(p){E.grab.hover={x:p[0],y:p[1]};}
@@ -447,7 +528,8 @@ stage.addEventListener('pointermove',event=>{
 },true);
 stage.addEventListener('pointerup',event=>{
  if(!E.active)return;event.stopImmediatePropagation();if(!E.dragging)return;E.dragging=false;if(stage.hasPointerCapture(event.pointerId))stage.releasePointerCapture(event.pointerId);
- if(E.tool==='select'&&E.grab){const dest=cellAt(event);clearFloatingDrag();if(dest)moveObject(E.grab.from,{x:dest[0],y:dest[1]},E.grab.selection);E.grab=null;renderDraft();}
+ if(E.tool==='select'&&E.grab?.tunnel){const g=E.grab;E.grab=null;if(!moveTunnel(g.from,g.target)&&g.error)setStatus(g.error,true);renderDraft();}
+ else if(E.tool==='select'&&E.grab){const dest=cellAt(event);clearFloatingDrag();if(dest)moveObject(E.grab.from,{x:dest[0],y:dest[1]},E.grab.selection);E.grab=null;renderDraft();}
  stage.classList.remove('editor-grabbing');
  if(E.dragChanged)remember(E.dragBefore);refresh();
 },true);
