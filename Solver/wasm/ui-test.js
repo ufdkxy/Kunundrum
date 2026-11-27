@@ -35,17 +35,17 @@ const root=path.join(__dirname,'..','..');
  assert.strictEqual(await page.evaluate(()=>document.getElementById('board-stage').innerHTML.length+'|'+localStorage.length),before,'board changed while solver open');
  await page.click('#open-solver');await page.waitForSelector('#solver-dialog[open]');assert(await page.isEnabled('#solver-solve'));assert(await page.isHidden('#solver-result'));
  await page.keyboard.press('Escape');
- // 5b. the board code box: default is the start board; custom and invalid codes; "Current position" after stepping along the route
+ // 5b. the board code box: default is the initial position; custom and invalid codes; "Current position" after stepping along the route
  await open('6.6',true);
  const startCode=await page.inputValue('#solver-code');assert(/^K4\./.test(startCode),startCode);
- assert(/Start board/.test(await text('#solver-code-help')));assert(await page.isEnabled('#solver-certify'));assert(await page.isDisabled('#solver-use-position'),'at move 0 the position is the start board');
+ assert(/Initial position/.test(await text('#solver-code-help')));assert(await page.isEnabled('#solver-certify'));await page.click('#solver-use-position');assert.equal(await page.inputValue('#solver-code'),startCode,'at move 0 the current position is the initial one');
  await page.fill('#solver-code','garbage');assert(await page.isVisible('#solver-code-error'));assert(await page.isDisabled('#solver-solve'));
  const other=await page.evaluate(()=>window.KUNUNDRUM_LEVEL_CODES.split('\n').find(l=>l.startsWith('1.1 = ')).slice(6));
  await page.fill('#solver-code',other);assert(await page.isHidden('#solver-code-error'));assert(/Custom board.*ignored/.test(await text('#solver-code-help')),await text('#solver-code-help'));
- assert(await page.isEnabled('#solver-solve')&&await page.isDisabled('#solver-certify'),'Certify only applies to the start board');
+ assert(await page.isEnabled('#solver-solve')&&await page.isDisabled('#solver-certify'),'Certify only applies to the initial position');
  await page.click('#solver-solve');await page.waitForSelector('#solver-result:not([hidden])',{timeout:60000});assert(/Optimal solution found/.test(await text('#solver-verdict')),await text('#solver-verdict'));
  assert(!/current route/.test(await text('#solver-note')),'the saved route is not compared on a custom board');
- await page.click('#solver-use-start');assert.equal(await page.inputValue('#solver-code'),startCode);assert(await page.isEnabled('#solver-certify'));assert(await page.isHidden('#solver-result')===true);
+ await page.click('#solver-use-initial');assert.equal(await page.inputValue('#solver-code'),startCode);assert(await page.isEnabled('#solver-certify'));assert(await page.isHidden('#solver-result')===true);
  await page.keyboard.press('Escape');await page.waitForSelector('#solver-dialog:not([open])',{state:'attached'});
  await page.click('#replay-next');await page.click('#replay-next');
  await page.click('#open-solver');await page.waitForSelector('#solver-dialog[open]');assert.equal(await page.inputValue('#solver-code'),startCode,'the box keeps its content while the start board is unchanged');

@@ -1,5 +1,5 @@
 // Solver dialog: opened from the "Solver" button in the Replay panel. The board code that will be solved is shown in an editable box
-// (default: the start board of the current run; "Current position" fills in the position at the replay cursor; any K4 code can be pasted).
+// (default: the initial position of the current run; "Current position" fills in the position at the replay cursor; any K4 code can be pasted).
 // Runs the WebAssembly solver (kunsolve-bundle.js) in a worker.
 // The dialog is modal and the global key handler ignores input while a dialog is open, so no moves can be made while it runs;
 // closing the dialog (button or Escape) stops the search. The button is disabled while the board editor is active (editor.js).
@@ -40,21 +40,20 @@ function syncCode() {
   $('solver-code-error').hidden = !parsed.error;
   $('solver-code-error').textContent = parsed.error || '';
   const p = info?.position;
-  $('solver-code-help').textContent = parsed.error ? '' : isStart() ? 'Start board.' : p && parsed.code === p.code ? `Position after move ${p.at} of ${p.total}.` : 'Custom board' + (parsed.hadRoute ? '; the route in the code is ignored.' : '.');
+  $('solver-code-help').textContent = parsed.error ? '' : isStart() ? 'Initial position.' : p && parsed.code === p.code ? `Position after move ${p.at} of ${p.total}.` : 'Custom board' + (parsed.hadRoute ? '; the route in the code is ignored.' : '.');
   $('solver-code-help').hidden = !!parsed.error;
-  $('solver-use-position').disabled = !p || p.at === 0 || !$('solver-stop').hidden;
-  $('solver-use-position').title = p?.at ? `The board as it is now, after move ${p.at} of ${p.total} (the score so far is not included)` : 'The replay is at its start: this is the start board';
+  $('solver-use-position').disabled = !p || !$('solver-stop').hidden;
   refreshButtons();
 }
 function refreshButtons() {
   const running = !$('solver-stop').hidden;
   $('solver-solve').disabled = running || !!parsed.error;
   $('solver-certify').disabled = running || !info?.route || !isStart();
-  $('solver-certify').title = !info?.route ? 'The current route is not a solution' : isStart() ? 'Prove that no route scores below the current route' : 'Only available for the start board of the current route';
+  $('solver-certify').title = !info?.route ? 'Needs a complete route' : isStart() ? 'Prove that no route scores below the current route' : 'Only for the initial position';
 }
 function setRunning(running) {
   $('solver-stop').hidden = !running;
-  codeBox.disabled = running; $('solver-use-start').disabled = running;
+  codeBox.disabled = running; $('solver-use-initial').disabled = running;
   for (const el of dialog.querySelectorAll('.solver-fields input, .solver-fields select')) el.disabled = running;
   $('solver-algorithm').dispatchEvent(new Event('change'));
   syncCode();
@@ -113,7 +112,7 @@ async function run(certifying) {
   syncCode();
   if (!info || parsed.error || (certifying && (!info.route || !isStart()))) return;
   const code = parsed.code;
-  lastRoute = isStart() ? info.route : null; // the saved route only belongs to the start board
+  lastRoute = isStart() ? info.route : null; // the saved route only belongs to the initial position
   const token = ++runToken;
   $('solver-result').hidden = true;
   $('solver-progress').hidden = false;
@@ -146,7 +145,7 @@ $('open-solver').addEventListener('click', () => {
   info = host().prepareSolver();
   const sameBoard = previous && previous.code === info.code;
   $('solver-board').textContent = info.title + (info.route ? ` · current route: ${info.route.moves} moves, score ${info.route.score}` : ' · no complete route');
-  // Closing only hides the dialog: code, fields, progress and result stay, unless the start board changed meanwhile.
+  // Closing only hides the dialog: code, fields, progress and result stay, unless the board changed meanwhile.
   if (!sameBoard) { codeBox.value = info.code; $('solver-result').hidden = true; $('solver-progress').hidden = true; }
   setRunning(false);
   dialog.showModal();
@@ -154,7 +153,7 @@ $('open-solver').addEventListener('click', () => {
   loadClient().then(() => window.KunSolver.loadSource()).then(() => { $('solver-version').textContent = window.KUNSOLVE_VERSION ? 'v' + window.KUNSOLVE_VERSION : ''; }, () => {});
 });
 codeBox.addEventListener('input', () => { syncCode(); $('solver-result').hidden = true; $('solver-progress').hidden = true; });
-$('solver-use-start').addEventListener('click', () => { codeBox.value = info.code; codeBox.dispatchEvent(new Event('input')); });
+$('solver-use-initial').addEventListener('click', () => { codeBox.value = info.code; codeBox.dispatchEvent(new Event('input')); });
 $('solver-use-position').addEventListener('click', () => { codeBox.value = info.position.code; codeBox.dispatchEvent(new Event('input')); });
 $('solver-solve').addEventListener('click', () => run(false));
 $('solver-certify').addEventListener('click', () => run(true));
