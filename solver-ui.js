@@ -40,7 +40,7 @@ function syncCode() {
   $('solver-code-error').hidden = !parsed.error;
   $('solver-code-error').textContent = parsed.error || '';
   const p = info?.position;
-  $('solver-code-help').textContent = parsed.error ? '' : isStart() ? 'Initial position.' : p && parsed.code === p.code ? `Position after move ${p.at} of ${p.total}.` : 'Custom board' + (parsed.hadRoute ? '; the route in the code is ignored.' : '.');
+  $('solver-code-help').textContent = parsed.error ? '' : isStart() ? `${info.title} · initial position · ` + (info.route ? `current route: ${info.route.moves} moves, score ${info.route.score}` : 'no complete route') : p && parsed.code === p.code ? `${info.title} · position after move ${p.at} of ${p.total}` : 'Custom board' + (parsed.hadRoute ? ' · the route in the code is ignored' : '');
   $('solver-code-help').hidden = !!parsed.error;
   $('solver-use-position').disabled = !p || !$('solver-stop').hidden;
   refreshButtons();
@@ -99,7 +99,7 @@ function showResult(r, certifying) {
   }
   $('solver-progress').hidden = true;
   $('solver-result').hidden = false;
-  $('solver-verdict').textContent = v.title + (box ? `: score ${r.score}, ${r.moves} moves` : '');
+  $('solver-verdict').textContent = v.title + (box ? `: ${r.moves} moves, score ${r.score}` : '');
   $('solver-verdict').dataset.kind = v.kind;
   $('solver-note').textContent = v.note;
   $('solver-note').hidden = !v.note;
@@ -144,7 +144,6 @@ $('open-solver').addEventListener('click', () => {
   const previous = info;
   info = host().prepareSolver();
   const sameBoard = previous && previous.code === info.code;
-  $('solver-board').textContent = info.title + (info.route ? ` · current route: ${info.route.moves} moves, score ${info.route.score}` : ' · no complete route');
   // Closing only hides the dialog: code, fields, progress and result stay, unless the board changed meanwhile.
   if (!sameBoard) { codeBox.value = info.code; $('solver-result').hidden = true; $('solver-progress').hidden = true; }
   setRunning(false);

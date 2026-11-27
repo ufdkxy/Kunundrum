@@ -7,8 +7,8 @@ const root=path.join(__dirname,'..','..');
  const open=async (id,withRoute=false)=>{await page.goto('file://'+path.join(root,'index.html')+'#level='+id);await page.reload();await page.waitForSelector('#open-solver');if(withRoute)await page.keyboard.press('Shift+S');await page.click('#open-solver');await page.waitForSelector('#solver-dialog[open]');};
  const text=id=>page.textContent(id);
  // 1. open on 6.6 with its saved solution loaded as the current route; without a route Certify is disabled
- await open('6.6');assert(/no complete route/.test(await text('#solver-board')));assert(await page.isDisabled('#solver-certify'));await page.keyboard.press('Escape');
- await open('6.6',true);assert(/6\.6/.test(await text('#solver-board')),await text('#solver-board'));assert(/current route: 18 moves, score 18/.test(await text('#solver-board')));
+ await open('6.6');assert(/no complete route/.test(await text('#solver-code-help')));assert(await page.isDisabled('#solver-certify'));await page.keyboard.press('Escape');
+ await open('6.6',true);assert(/6\.6/.test(await text('#solver-code-help')),await text('#solver-code-help'));assert(/current route: 18 moves, score 18/.test(await text('#solver-code-help')));
  assert(await page.isEnabled('#solver-certify'));
  // 2. certify -> certified optimal
  await page.click('#solver-certify');await page.waitForSelector('#solver-result:not([hidden])',{timeout:60000});
@@ -16,7 +16,7 @@ const root=path.join(__dirname,'..','..');
  // 3. find best -> optimal, same score as saved, verified, solution present and copyable
  await page.click('#solver-solve');await page.waitForSelector('#solver-result:not([hidden])',{timeout:60000});
  const v=await text('#solver-verdict'),n=await text('#solver-note'),sol=await page.inputValue('#solver-solution');
- assert(/Optimal solution found: score 18, 18 moves/.test(v),v);assert(/Same score as the current route/.test(n)&&/Verified by replaying/.test(n),n);assert(/^[A-Za-z][A-Za-z0-9]*$/.test(sol),sol); // notation without separators since 4.5.0
+ assert(/Optimal solution found: 18 moves, score 18/.test(v),v);assert(/Same score as the current route/.test(n)&&/Verified by replaying/.test(n),n);assert(/^[A-Za-z][A-Za-z0-9]*$/.test(sol),sol); // notation without separators since 4.5.0
  await page.screenshot({path:process.argv[2]||'/tmp/solver-dialog.png'});
  await page.click('#solver-copy');await page.waitForTimeout(300);
  // 4. stop a long search
@@ -38,7 +38,7 @@ const root=path.join(__dirname,'..','..');
  // 5b. the board code box: default is the initial position; custom and invalid codes; "Current position" after stepping along the route
  await open('6.6',true);
  const startCode=await page.inputValue('#solver-code');assert(/^K4\./.test(startCode),startCode);
- assert(/Initial position/.test(await text('#solver-code-help')));assert(await page.isEnabled('#solver-certify'));await page.click('#solver-use-position');assert.equal(await page.inputValue('#solver-code'),startCode,'at move 0 the current position is the initial one');
+ assert(/initial position/.test(await text('#solver-code-help')));assert(await page.isEnabled('#solver-certify'));await page.click('#solver-use-position');assert.equal(await page.inputValue('#solver-code'),startCode,'at move 0 the current position is the initial one');
  await page.fill('#solver-code','garbage');assert(await page.isVisible('#solver-code-error'));assert(await page.isDisabled('#solver-solve'));
  const other=await page.evaluate(()=>window.KUNUNDRUM_LEVEL_CODES.split('\n').find(l=>l.startsWith('1.1 = ')).slice(6));
  await page.fill('#solver-code',other);assert(await page.isHidden('#solver-code-error'));assert(/Custom board.*ignored/.test(await text('#solver-code-help')),await text('#solver-code-help'));
@@ -49,7 +49,7 @@ const root=path.join(__dirname,'..','..');
  await page.keyboard.press('Escape');await page.waitForSelector('#solver-dialog:not([open])',{state:'attached'});
  await page.click('#replay-next');await page.click('#replay-next');
  await page.click('#open-solver');await page.waitForSelector('#solver-dialog[open]');assert.equal(await page.inputValue('#solver-code'),startCode,'the box keeps its content while the start board is unchanged');
- await page.click('#solver-use-position');assert.notEqual(await page.inputValue('#solver-code'),startCode);assert(/Position after move 2 of/.test(await text('#solver-code-help')),await text('#solver-code-help'));assert(await page.isDisabled('#solver-certify'));
+ await page.click('#solver-use-position');assert.notEqual(await page.inputValue('#solver-code'),startCode);assert(/position after move 2 of/.test(await text('#solver-code-help')),await text('#solver-code-help'));assert(await page.isDisabled('#solver-certify'));
  await page.click('#solver-solve');await page.waitForSelector('#solver-result:not([hidden])',{timeout:60000});assert(/Optimal solution found/.test(await text('#solver-verdict')),await text('#solver-verdict'));
  await page.keyboard.press('Escape');
  // 6. editing disables the button
