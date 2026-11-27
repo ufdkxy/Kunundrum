@@ -139,8 +139,9 @@ const Generator = (() => {
     try {
       const valid = Core.validateBoard(board);
       let state = Core.createInitialState(valid);
+      const resolve = Core.createResolver();
       for (const t of Core.parseSolution(route)) {
-        const m = Core.applyMove(state, valid, Core.resolveBallId(state, t.identifier), t.direction, t.choices);
+        const m = Core.applyMove(state, valid, resolve(state, t), t.direction, t.choices);
         if (m.kind !== 'ok') return false;
         state = m.state;
       }

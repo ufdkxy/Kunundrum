@@ -1000,24 +1000,27 @@ SearchResult beamSearch(const Board&b,const Limits&lim,ClockLimit&timer,const Pa
  return out;
 }
 // Convert source-position moves to the specific, stable IDs of the original labeled balls.
-struct LabeledMove{int ball,dir;string choices;}; // choices: annotation letters, e.g. "ur" for (->ur)
+struct LabeledMove{int ball,dir;string choices,label;}; // choices: annotation letters, e.g. "ur" for (->ur)
 vector<LabeledMove> labelAndVerify(const Board&b,const vector<Move>& path,int& finalScore){
  State st=initial(b);vector<int> labeledPositions;for(auto x:b.balls)labeledPositions.push_back(x.p);
  vector<LabeledMove> result;int depth=0;
  for(const Move &m:path){
   int bi=-1;for(int i=0;i<b.n;i++)if(b.balls[i].color==m.color&&labeledPositions[i]==m.source){bi=i;break;}
   if(bi<0)throw runtime_error("internal route error: missing source ball");
+  // Label relative to the position before the move: the color letter alone if it is the only unlocked ball of its color, else letter + rank by cell among them (v0.26).
+  int same=0,rank=0;for(int j=0;j<b.n;j++){if(b.balls[j].color!=b.balls[bi].color)continue;bool locked=false;for(int v:b.goals)if(v/MAX_CELLS==b.balls[j].color&&v%MAX_CELLS==st.p[j])locked=true;if(locked)continue;same++;if(st.p[j]<=st.p[bi])rank++;}
+  string label(1,COLORS[b.balls[bi].color]);if(same>1)label+=to_string(rank);
   State next;int delta=0;string ann;
   int status=simulate(b,st,bi,m.dir,m.phase,next,delta,ann);
   if(status!=1)throw runtime_error("internal route error: illegal move");
   labeledPositions[bi]=next.p[bi];st=std::move(next);depth++;
-  result.push_back({bi,m.dir,ann});
+  result.push_back({bi,m.dir,ann,label});
  }
  finalScore=scoreHex(b,st,depth);
  if(!complete(b,st))throw runtime_error("internal route error: unfinished");
  return result;
 }
-string formatMoves(const Board&b,const vector<LabeledMove>& path){string out;int last=-1;for(const auto& m:path){if(last!=m.ball){out+=b.balls[m.ball].name;last=m.ball;}out+=DIR[m.dir];if(!m.choices.empty())out+="(->"+m.choices+")";}return out;}
+string formatMoves(const Board&,const vector<LabeledMove>& path){string out;int last=-1;for(const auto& m:path){if(last!=m.ball){out+=m.label;last=m.ball;}out+=DIR[m.dir];if(!m.choices.empty())out+="(->"+m.choices+")";}return out;}
 // ---- K4 board code (see K4.md): canonical alphanumeric text; board data only (no id, title or solution) ----
 static const string K4_N62="0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",K4_LETTERS="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 static const int K4_HEX[8]={-20,-15,-10,-5,5,10,15,20};
@@ -1141,7 +1144,7 @@ Board parseCode(string code){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open catalog: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0){string rest=trim(line.substr(prefix.size()));return rest.substr(0,rest.find_first_of(" \t"));}}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.25"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.26"; // Solver's own version, independent of the web app's APP_VERSION.
 // ---- Core entry point (shared by the CLI and the WebAssembly build) ----
 struct Cli{Limits lim;string input,level,catalog="levels.js";bool version=false,help=false,json=false;};
 static const char* HELP_TEXT="Kunundrum exact C++ solver (K4)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--split-depth P] [--reverse-depth R] [--disk-dir DIR] [--disk-buckets N] [--threads N] [--max-states N] [--seconds N] [--max-memory MB] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and its K4 board code.\nauto = bidirectional search when applicable (no hexes, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic: certifies optimality (exit 0) only on hex-free boards when no state was ever dropped by the beam width, otherwise an upper bound (exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";

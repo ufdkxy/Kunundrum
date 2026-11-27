@@ -1,7 +1,7 @@
 /* K4 text board code (K4.md), compact binary routes, and share links. */
 'use strict';
 const Codec = (() => {
-const { validateBoard,parseSolution,resolveBallId,createInitialState,applyMove,formatSolution } = Core;
+const { validateBoard,parseSolution,createResolver,unlockedBalls,createInitialState,applyMove,formatSolution } = Core;
 
 /** A code identifies a board, independent of any later moves made on it. */
 const MAX_BOARD_CODE_LENGTH = 1_000;
@@ -14,7 +14,7 @@ const MAX_REPLAY_POSITION = 10_000;
  * indices (ball index * 4 + direction, ceil(log2(ballCount*4)) bits each).
  * Choice mode 0: no rotating-arrow annotations. Choice mode 1: uint choice
  * count for each move, followed by 2-bit packed choices. All pads are zero.
- * Ball indices refer to Core.validateBoard's stable color/position ordering.
+ * A ball index is the ball's position in Core.unlockedBalls(state) (unlocked balls ordered by color R,G,B,Y, then y, then x) in the position before the move.
  */
 function compactSolution(board, notation) {
   const tokens = parseSolution(notation);
@@ -34,13 +34,12 @@ function compactSolution(board, notation) {
     }
     if(used) out.push(current<<(8-used));
   };
-  // Resolve abbreviated names against the live replay state, so numeric/short
-  // identifiers retain exactly the same meaning as the full solution parser.
+  // Labels are relative to the live replay state, so they are resolved while replaying.
   let state=createInitialState(board);
-  const records=[],moves=[],choices=[];
+  const records=[],moves=[],choices=[],resolve=createResolver();
   for(const token of tokens) {
-    const id=resolveBallId(state,token.identifier);
-    const bi=board.balls.findIndex(b=>b.id===id);
+    const id=resolve(state,token);
+    const bi=unlockedBalls(state).findIndex(b=>b.id===id);
     if(bi<0) throw new Error('Unknown ball.');
     moves.push(bi*4+directionIndex.indexOf(token.direction));
     choices.push(token.choices.map(c=>directionIndex.indexOf(c)));
@@ -94,9 +93,10 @@ function expandSolution(board, bytes) {
   const records=[];
   for(let i=0;i<count;i++) {
     const value=values[i],bi=Math.floor(value/4),direction='udlr'[value%4];
-    if(bi>=board.balls.length)throw new Error('Invalid compact route ball index.');
+    const movable=unlockedBalls(state);
+    if(bi>=movable.length)throw new Error('Invalid compact route ball index.');
     const choices=allChoices.slice(ci,ci+counts[i]).map(v=>'udlr'[v]);ci+=counts[i];
-    const result=applyMove(state,board,board.balls[bi].id,direction,choices);
+    const result=applyMove(state,board,movable[bi].id,direction,choices);
     if(result.kind!=='ok')throw new Error(`Invalid compact route saved solution at move ${i+1}: ${result.message}`);
     records.push(result.record);state=result.state;
   }

@@ -286,11 +286,26 @@ function createInitialState(board       )            {
 function isComplete(state           )          { return state.balls.length > 0 && state.balls.every(b => b.locked); }
 
 /** A move either returns a complete new snapshot, or leaves the input untouched. */
+/** Unlocked balls in the canonical order: color (R, G, B, Y), then y, then x. Labels and the route codec are relative to this order. */
+function unlockedBalls(state           )               {
+  return state.balls.filter(b => !b.locked).sort((a, b) => COLORS.indexOf(a.color) - COLORS.indexOf(b.color) || a.y - b.y || a.x - b.x);
+}
+/** Display label of every unlocked ball, relative to the current position: the color letter alone when it is the only unlocked ball of its color, otherwise the letter plus its 1-based rank among them (by y, then x). Docked balls have no label. */
+function ballLabels(state           )                         {
+  const list = unlockedBalls(state), labels                         = {}, seen                         = {};
+  for (const b of list) {
+    const rank = (seen[b.color] = (seen[b.color] || 0) + 1);
+    labels[b.id] = list.filter(o => o.color === b.color).length === 1 ? b.color : `${b.color}${rank}`;
+  }
+  return labels;
+}
+
 function applyMove(state           , board       , ballId        , direction           , choices              = [])             {
   const ball = state.balls.find(b => b.id === ballId);
   const fail = (kind                              , message        , path              = [])             => ({ kind, message, path });
   if (!ball) return fail("error", `There is no ball named ${ballId}.`);
-  if (ball.locked) return fail("blocked", `${ballId} is docked and cannot move.`);
+  if (ball.locked) return fail("blocked", `That ${COLOR_NAMES[ball.color].toLowerCase()} ball is docked and cannot move.`);
+  const label = ballLabels(state)[ballId];
   if (!DIRECTIONS.includes(direction) || choices.some(c => !DIRECTIONS.includes(c))) return fail("error", "Directions must be u, d, l, or r.");
   if (choices.length > 2) return fail("error", "A move takes at most two rotating-arrow orientations.");
   const path              = [{ x: ball.x, y: ball.y }];
@@ -357,7 +372,7 @@ function applyMove(state           , board       , ballId        , direction    
       events.push(`${COLOR_NAMES[ball.color]} teleported.`);
     }
   }
-  if (!entered) return fail("blocked", `${ballId} cannot move ${DIRECTION_NAMES[direction]} from here.`, path);
+  if (!entered) return fail("blocked", `${label} cannot move ${DIRECTION_NAMES[direction]} from here.`, path);
   if (choicesUsed !== choices.length) return fail("error", `This move needs ${choicesUsed} rotating-arrow ${choicesUsed === 1 ? "orientation" : "orientations"}, but ${choices.length} ${choices.length === 1 ? "was" : "were"} supplied.`, path);
   const end = { x, y };
   const locked = board.goals.some(g => g.color === ball.color && samePos(g, end));
@@ -367,7 +382,7 @@ function applyMove(state           , board       , ballId        , direction    
     switchOn: { ...state.switchOn },
     consumedHexIds: [...consumed], moves: state.moves + 1, score: state.score + scoreDelta,
   };
-  if (locked) events.push(`${ballId} docked.`);
+  if (locked) events.push(`${label} docked.`);
   const sw = board.switches.find(s => samePos(s, end));
   if (sw) {
     const allOccupied = new Set(nextState.balls.map(posKey));
@@ -387,7 +402,7 @@ function applyMove(state           , board       , ballId        , direction    
     }
   }
   const record             = {
-    ballId, direction, choices: choices.slice(), scoreDelta,
+    ballId, label, direction, choices: choices.slice(), scoreDelta,
     from: { x: ball.x, y: ball.y }, to: end, notation: "",
   };
   record.notation = formatMove(record);
@@ -409,7 +424,7 @@ function applyMoveAtPhase(state, board, ballId, direction, phase) {
 function parseSolution(text        )              {
   if (typeof text !== "string") throw new Error("A solution must be text.");
   if (text.length > 100000) throw new Error("The solution is too long (100,000 character maximum).");
-  // Notation: ball id + directions, groups written back to back (a new group starts at a capital letter or digit); commas and spaces are ignored.
+  // Notation: ball label + directions, groups written back to back (a new group starts at a capital letter or digit); commas and spaces are ignored. Every move of a group is made by the same physical ball; its label is relative to the position before the group.
   const compact = text.replace(/[\s,]+/g, "");
   if (!compact) return [];
   const tokens              = [];
@@ -432,7 +447,7 @@ function parseSolution(text        )              {
         choices.push(...choice[1].split("")); index += choice[0].length;
         if (compact[index] === "(") throw new Error(`Group ${groupIndex} has two annotations on one move; write the letters together, e.g. (->ur).`);
       }
-      tokens.push({ identifier, direction, choices });
+      tokens.push({ identifier, direction, choices, group: groupIndex });
       if (tokens.length > 10000) throw new Error("A replay can contain at most 10,000 moves.");
     }
     if (!moveCount) throw new Error(`Ball ${identifier} needs at least one direction in group ${groupIndex}${index < compact.length ? `; found '${compact[index]}'` : ""}.`);
@@ -441,37 +456,40 @@ function parseSolution(text        )              {
 }
 
 function resolveBallId(state           , identifier        )         {
-  const available = state.balls.filter(b => !b.locked);
+  // Labels are relative to the current position (see ballLabels): R is the only unlocked red ball, R2 the second of several, a bare number n the n-th ball of the one color that has one.
+  const list = unlockedBalls(state);
+  const ofColor = (c        ) => list.filter(b => b.color === c);
   if (/^[RGBY]$/.test(identifier)) {
-    const matches = available.filter(b => b.color === identifier);
+    const matches = ofColor(identifier);
     if (matches.length === 1) return matches[0].id;
     if (!matches.length) throw new Error(`There are no unlocked ${COLOR_NAMES[identifier         ].toLowerCase()} balls.`);
-    throw new Error(`${identifier} is ambiguous; use ${matches.map(b => b.id).join(" or ")}.`);
+    throw new Error(`${identifier} is ambiguous; use ${matches.map((_, i) => identifier + (i + 1)).join(" or ")}.`);
   }
   if (/^[RGBY][1-9]\d*$/.test(identifier)) {
-    const exact = state.balls.find(b => b.id === identifier);
-    if (exact) {
-      if (exact.locked) throw new Error(`${identifier} is already docked.`);
-      return exact.id;
-    }
-    // A lone ball is normally written R; accept R1 as its explicit original number.
-    if (identifier.slice(1) === "1") {
-      const lone = state.balls.filter(b => b.color === identifier[0]);
-      if (lone.length === 1 && lone[0].id.length === 1 && !lone[0].locked) return lone[0].id;
-    }
-    throw new Error(`There is no unlocked ball named ${identifier}.`);
+    const matches = ofColor(identifier[0]), n = Number(identifier.slice(1));
+    if (matches.length === 1 && n === 1) return matches[0].id; // a lone ball is normally written R; R1 is accepted
+    if (matches.length > 1 && n <= matches.length) return matches[n - 1].id;
+    throw new Error(`There is no unlocked ball labelled ${identifier}.`);
   }
   if (/^[1-9]\d*$/.test(identifier)) {
-    const matches = available.filter(b => b.id.slice(1) === identifier);
-    if (matches.length === 1) return matches[0].id;
-    if (!matches.length) throw new Error(`No unlocked ball has the fixed number ${identifier}; include its color.`);
-    throw new Error(`Number ${identifier} is ambiguous; use ${matches.map(b => b.id).join(" or ")}.`);
+    const n = Number(identifier), colors = COLORS.filter(c => ofColor(c).length >= n);
+    if (colors.length === 1) return ofColor(colors[0])[n - 1].id;
+    if (!colors.length) throw new Error(`No color has ${n} unlocked balls; include the color.`);
+    throw new Error(`Number ${identifier} is ambiguous; use ${colors.map(c => c + n).join(" or ")}.`);
   }
-  throw new Error(`Invalid ball ID '${identifier}'.`);
+  throw new Error(`Invalid ball label '${identifier}'.`);
+}
+/** Resolver for the tokens of parseSolution: the first token of a group resolves its label against the current position, the rest of the group is the same ball. */
+function createResolver()                                              {
+  let group = -1, id = "";
+  return (state           , token                                    ) => {
+    if (token.group !== group) { id = resolveBallId(state, token.identifier); group = token.group; }
+    return id;
+  };
 }
 
 function formatMove(record                                                      )         {
-  return `${record.ballId}${record.direction}${record.choices.length ? `(->${record.choices.join("")})` : ""}`;
+  return `${record.label ?? record.ballId}${record.direction}${record.choices.length ? `(->${record.choices.join("")})` : ""}`;
 }
 function formatSolution(records                                                             )         {
   const groups           = [];
@@ -479,11 +497,11 @@ function formatSolution(records                                                 
   for (const record of records) {
     const directions = `${record.direction}${record.choices.length ? `(->${record.choices.join("")})` : ""}`;
     if (record.ballId === previousId) groups[groups.length - 1] += directions;
-    else groups.push(`${record.ballId}${directions}`);
+    else groups.push(`${record.label ?? record.ballId}${directions}`);
     previousId = record.ballId;
   }
   return groups.join("");
 }
 
-return {validateBoard,HEX_VALUES,arrowOrientation,applyMoveAtPhase,teleportExit,createInitialState,applyMove,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES};
+return {validateBoard,HEX_VALUES,arrowOrientation,applyMoveAtPhase,teleportExit,createInitialState,applyMove,isComplete,parseSolution,resolveBallId,createResolver,unlockedBalls,ballLabels,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES};
 })();

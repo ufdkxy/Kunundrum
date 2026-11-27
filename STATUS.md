@@ -2,14 +2,15 @@
 
 *Living document: keep it current, delete resolved items instead of appending history (Git has the history). See [RULES.md](RULES.md) and [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-**Last updated:** 2026-11-26 · **App** `APP_VERSION = '4.5.0'` in `app.js` (single source; bump it with every app change) · **Solver** v0.25 (`SOLVER_VERSION` in `Solver/solver.cpp`) · **Parser** `parser.js` v0.13.17-js.1. Parser and solver versions change only when that component changes, never with the app.
+**Last updated:** 2026-11-26 · **App** `APP_VERSION = '4.8.0'` in `app.js` (single source; bump it with every app change) · **Solver** v0.26 (`SOLVER_VERSION` in `Solver/solver.cpp`) · **Parser** `parser.js` v0.13.17-js.1. Parser and solver versions change only when that component changes, never with the app.
 
 ## 1. Where the project stands
 
 - **Catalog complete.** `levels.js` holds all 300 levels (1.1–30.10), each with an embedded solution. Every embedded solution replays through `engine.js` to a completed board (checked 2026-11-22).
+- **Ball labels are relative (app 4.8.0, solver v0.26).** Labels of same-colored balls follow the current position (docked balls drop out), a notation group is one physical ball, and the route codec stores the rank among unlocked balls; RULES.md §4/§5. `levels.js` was migrated once (all 300 routes replay to the same scores).
 - **Parser development is concluded.** `parser.js` (+ generated `parser_data.js`) is the definitive parser and was used to build the catalog; the Python `parse.py` is frozen and historical. The parser is kept for importing future screenshots, but no further work is planned.
 - **Web app is essentially done.** All game mechanics are implemented (RULES.md), including teleport endpoints, tunnels, rotating arrows and wall colors. Only bug fixes are expected.
-- **Solver:** exact forward and bidirectional search, beam search, `--max-depth` / `--max-score` certificates, tunnels and rotating arrows, multi-threaded forward and bidirectional search (v0.19), `--split-depth` (v0.24) and `--disk-dir` (v0.25, forward layers on disk) for bidirectional searches beyond RAM; in the browser through the WASM bundle (`kunsolve-bundle.js`, built from v0.23: **rebuild pending**, it still has the predecessor bug fixed in v0.24, see SOLVER-024). The remaining ideas are a local optimizer and a better disk search (section 4).
+- **Solver:** exact forward and bidirectional search, beam search, `--max-depth` / `--max-score` certificates, tunnels and rotating arrows, multi-threaded forward and bidirectional search (v0.19), `--split-depth` (v0.24) and `--disk-dir` (v0.25, forward layers on disk) for bidirectional searches beyond RAM; in the browser through the WASM bundle (`kunsolve-bundle.js`, built from v0.23: **rebuild pending and now required**: it still has the predecessor bug fixed in v0.24 (SOLVER-024) and writes solutions with the old fixed ball ids, which the app (4.8.0) no longer reads; rebuild it from v0.26 before using the Solver dialog). The remaining ideas are a local optimizer and a better disk search (section 4).
 
 ## 2. Catalog statistics (embedded solutions, 2026-11-26, after 9.9 was lowered from 42 to 38)
 

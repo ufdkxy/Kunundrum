@@ -1,14 +1,14 @@
 /* Kunundrum interface/controller. Engine, codec and catalog load separately. */
 'use strict';
 (() => {
-const {validateBoard,createInitialState,applyMove,applyMoveAtPhase,isComplete,parseSolution,resolveBallId,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES}=Core;
+const {validateBoard,createInitialState,applyMove,applyMoveAtPhase,isComplete,parseSolution,createResolver,ballLabels,formatMove,formatSolution,COLOR_NAMES,DIRECTION_NAMES}=Core;
 const {entries:CATALOG_ENTRIES}=Collection;
 const {encodeBoard,decodeBoard,encodeRoute,decodeRouteCode,readShareUrl,makeShareUrl}=Codec;
 
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '4.7.5'; // Single source of truth; the footer reads it.
+const APP_VERSION = '4.8.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -219,12 +219,12 @@ function buildReplay(nextBoard, notation) {
   const tokens = parseSolution(notation);
   if (tokens.length > MAX_REPLAY_MOVES) throw new Error(`A replay can contain at most ${MAX_REPLAY_MOVES.toLocaleString()} moves.`);
   if (!tokens.length) throw new Error('Enter a solution string first, for example Rur,G3ld,Bu.');
-  const result = [initialFrame(nextBoard)];
+  const result = [initialFrame(nextBoard)], resolve = createResolver();
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
     try {
       const previous = result[result.length - 1].state;
-      const id = resolveBallId(previous, token.identifier);
+      const id = resolve(previous, token);
       const move = applyMove(previous, nextBoard, id, token.direction, token.choices);
       if (move.kind === 'choose-direction') throw new Error(`Add the rotating arrow's orientation to this move, e.g. (->u), for the arrow at ${pos(move.position)}.`);
       if (move.kind !== 'ok') throw new Error(move.message);
@@ -420,11 +420,12 @@ function renderSvg(b, s, options = {}) {
     const a=xy(trace.path[0]);
     svg += `<circle cx="${a.x}" cy="${a.y}" r="5" fill="#051019" stroke="${color}" stroke-width="2.5"/><circle cx="${a.x}" cy="${a.y}" r="2.2" fill="#fff"/>`;
   }
+  const ballLabelMap=ballLabels(s); // labels are relative to this position: docked balls have none, a lone ball of a color is unnumbered
   for (const ball of s.balls) {
     const p=xy(ball), color=PALETTE[ball.color], active=!mini && settings.outline && options.outlinedBallId===ball.id;
-    const number=showLabels&&b.balls.filter(original=>original.color===ball.color).length>1?ball.id.slice(1):'';
+    const ballLabel=ballLabelMap[ball.id]||'', number=showLabels&&ballLabel.length>1?ballLabel.slice(1):'';
     const numberSize=number.length===1?14:number.length===2?12:10;
-    svg += `<g ${mini?'':`id="ball-${ball.id}" data-ball="${ball.id}" role="button" tabindex="${ball.locked?-1:0}" aria-disabled="${ball.locked}" aria-label="${COLOR_NAMES[ball.color]} ${ball.id}, ${pos(ball)}${ball.locked?', docked':', select ball'}"`} class="ball-hit${ball.locked?' locked':''}" style="outline:none;filter:none" transform="translate(${p.x},${p.y})"><circle r="31" fill="transparent"/>${active?`<circle class="selected-ring selected-glow" r="28" fill="none" stroke="${color}" stroke-width="6.5" stroke-opacity=".65" filter="url(#${prefix}-glow)"/><circle class="selected-ring selected-dash" r="27.5" fill="none" stroke="#f5ffff" stroke-width="3" stroke-opacity=".98" stroke-dasharray="5 4"/><circle class="selected-ring selected-inner" r="23.5" fill="none" stroke="${color}" stroke-width="1.5" stroke-opacity=".95" stroke-dasharray="5 4"/>`:''}<circle r="27" fill="${color}" opacity="${ball.locked?'.24':'.58'}" filter="url(#${prefix}-orb-aura)" pointer-events="none"/><circle r="20" fill="${color}" opacity="${ball.locked?'.22':'.48'}" filter="url(#${prefix}-glow)" pointer-events="none"/><circle r="19" fill="${color}" opacity=".16" pointer-events="none"/><circle r="16" fill="none" stroke="${color}" stroke-opacity=".48" stroke-width="1.5" pointer-events="none"/><circle class="orb-core" r="${ball.locked?13:15}" fill="url(#${prefix}-orb-${ball.color})" style="stroke:${color};stroke-width:1"/>${number?`<text class="ball-number" x="0" y="0" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="${numberSize}" font-weight="700" fill="#fff" aria-hidden="true" pointer-events="none" style="paint-order:stroke;stroke:#08131b;stroke-width:2.5;stroke-linejoin:round">${number}</text>`:ball.locked?'<path d="m-6 0 4 4 8-8" fill="none" stroke="#10202a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>':''}</g>`;
+    svg += `<g ${mini?'':`id="ball-${ball.id}" data-ball="${ball.id}" role="button" tabindex="${ball.locked?-1:0}" aria-disabled="${ball.locked}" aria-label="${COLOR_NAMES[ball.color]}${ballLabel.length>1?' '+ballLabel.slice(1):''}, ${pos(ball)}${ball.locked?', docked':', select ball'}"`} class="ball-hit${ball.locked?' locked':''}" style="outline:none;filter:none" transform="translate(${p.x},${p.y})"><circle r="31" fill="transparent"/>${active?`<circle class="selected-ring selected-glow" r="28" fill="none" stroke="${color}" stroke-width="6.5" stroke-opacity=".65" filter="url(#${prefix}-glow)"/><circle class="selected-ring selected-dash" r="27.5" fill="none" stroke="#f5ffff" stroke-width="3" stroke-opacity=".98" stroke-dasharray="5 4"/><circle class="selected-ring selected-inner" r="23.5" fill="none" stroke="${color}" stroke-width="1.5" stroke-opacity=".95" stroke-dasharray="5 4"/>`:''}<circle r="27" fill="${color}" opacity="${ball.locked?'.24':'.58'}" filter="url(#${prefix}-orb-aura)" pointer-events="none"/><circle r="20" fill="${color}" opacity="${ball.locked?'.22':'.48'}" filter="url(#${prefix}-glow)" pointer-events="none"/><circle r="19" fill="${color}" opacity=".16" pointer-events="none"/><circle r="16" fill="none" stroke="${color}" stroke-opacity=".48" stroke-width="1.5" pointer-events="none"/><circle class="orb-core" r="${ball.locked?13:15}" fill="url(#${prefix}-orb-${ball.color})" style="stroke:${color};stroke-width:1"/>${number?`<text class="ball-number" x="0" y="0" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="${numberSize}" font-weight="700" fill="#fff" aria-hidden="true" pointer-events="none" style="paint-order:stroke;stroke:#08131b;stroke-width:2.5;stroke-linejoin:round">${number}</text>`:ball.locked?'<path d="m-6 0 4 4 8-8" fill="none" stroke="#10202a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>':''}</g>`;
   }
   return svg+'</svg>';
 }
@@ -506,7 +507,7 @@ function renderControls() {
   const ball=current.balls.find(b=>b.id===selected);
   const playbackLocked=busy||isPlaying;
   const routeComplete=frames.length>1&&isComplete(frames[frames.length-1].state);
-  $('selected-name').textContent=ball?`${COLOR_NAMES[ball.color]}${ball.id.length>1?' '+ball.id.slice(1):''}${ball.locked?' docked':' selected'}`:'All balls docked';
+  $('selected-name').textContent=ball?`${COLOR_NAMES[ball.color]}${(ballLabels(state())[ball.id]||'').length>1?' '+ballLabels(state())[ball.id].slice(1):''}${ball.locked?' docked':' selected'}`:'All balls docked';
   $('selected-position').textContent=ball?pos(ball):'';
   $('sel-dot').style.setProperty('--ball-color',ball?PALETTE[ball.color]:'#73808a');
   $('undo').disabled=playbackLocked||cursor===0||cursor!==frames.length-1;
@@ -548,7 +549,7 @@ function renderHistory() {
   const keepScroll=$('move-history').scrollTop;
   $('move-history').innerHTML=frames.slice(1).map((frame,index)=>{
     const n=index+1,record=frame.record,adjustment=record.scoreDelta-1;
-    return `<button class="history-chip${n===cursor?' active':''}" data-jump="${n}" style="--ball-color:${PALETTE[record.ballId[0]]}" title="Move ${n}: ${escape(formatMove(record))}. Score ${frame.state.score}. ${escape(frame.events.join(' '))}" aria-label="Go to move ${n}: ${escape(formatMove(record))}, score ${frame.state.score}" ${n===cursor?'aria-current="step"':''}><span class="move-number">${n}</span><span class="move-code">${record.ballId}${GLYPHS[record.direction]}${record.choices.map(d=>`<small>↱${GLYPHS[d]}</small>`).join('')}</span>${adjustment?`<span class="score-adjust">${adjustment>0?'+':'−'}${Math.abs(adjustment)}</span>`:''}</button>`;
+    return `<button class="history-chip${n===cursor?' active':''}" data-jump="${n}" style="--ball-color:${PALETTE[record.ballId[0]]}" title="Move ${n}: ${escape(formatMove(record))}. Score ${frame.state.score}. ${escape(frame.events.join(' '))}" aria-label="Go to move ${n}: ${escape(formatMove(record))}, score ${frame.state.score}" ${n===cursor?'aria-current="step"':''}><span class="move-number">${n}</span><span class="move-code">${record.label}${GLYPHS[record.direction]}${record.choices.map(d=>`<small>↱${GLYPHS[d]}</small>`).join('')}</span>${adjustment?`<span class="score-adjust">${adjustment>0?'+':'−'}${Math.abs(adjustment)}</span>`:''}</button>`;
   }).join('');
   $('move-history').scrollTop=keepScroll;
   revealActiveMove();

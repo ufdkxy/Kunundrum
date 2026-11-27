@@ -10,7 +10,7 @@ let n=0;const ok=(name)=>{n++;console.log('ok',name);};
 for(const {id,code} of Collection.entries){assert(code.startsWith('K4.'),id);const extra={},b=Codec.decodeBoard(code,undefined,extra);assert(extra.route,id);
  const solution=Codec.decodeRouteCode(b,extra.route);assert(!/[,\s]/.test(solution),id);assert.equal(Codec.encodeBoard(b)+Codec.encodeRoute(b,solution),code,id);
  const full=Core.validateBoard({...b,id,title:'Level '+id,solution});let st=Core.createInitialState(full);
- for(const t of Core.parseSolution(solution)){const m=Core.applyMove(st,full,Core.resolveBallId(st,t.identifier),t.direction,t.choices);assert.equal(m.kind,'ok',id);st=m.state;}assert(Core.isComplete(st),id);}
+ const resolve=Core.createResolver();for(const t of Core.parseSolution(solution)){const m=Core.applyMove(st,full,resolve(st,t),t.direction,t.choices);assert.equal(m.kind,'ok',id);st=m.state;}assert(Core.isComplete(st),id);}
 ok(`catalog: ${Collection.entries.length} levels canonical (board + route) and solved`);
 // 2. Fixtures.
 const round=(name,board)=>{const code=Codec.encodeBoard(board),back=Codec.decodeBoard(code);assert.equal(Codec.encodeBoard(back),code,name);return {code,back};};
@@ -27,6 +27,19 @@ assert.equal(rot.back.arrows[0].type,'flip');ok('rotating arrow types');
 assert.equal(Core.formatSolution([{ballId:'R',direction:'u',choices:[]},{ballId:'R',direction:'l',choices:[]},{ballId:'G2',direction:'d',choices:[]},{ballId:'B',direction:'r',choices:['u']}]),'RulG2dBr(->u)');
 assert.deepEqual(Core.parseSolution('RulG2dBr(->u)'),Core.parseSolution('Rul, G2d,B r(->u)'));
 assert.deepEqual(Core.parseSolution('1l2u').map(t=>t.identifier+t.direction),['1l','2u']);ok('notation without commas');
+// 2c. Relative labels (RULES.md section 4): labels follow the current position; a group is one physical ball.
+{const b=Core.validateBoard({id:'rel',title:'rel',width:3,height:3,walls:[{x:2,y:3}],balls:[{x:2,y:1,color:'R'},{x:1,y:2,color:'R'}],goals:[{x:3,y:3,color:'R'},{x:3,y:1,color:'R'}]});
+ const play=text=>{let st=Core.createInitialState(b);const res=Core.createResolver(),recs=[];for(const t of Core.parseSolution(text)){const m=Core.applyMove(st,b,res(st,t),t.direction,t.choices);assert.equal(m.kind,'ok',text+' '+m.message);st=m.state;recs.push(m.record);}return recs;};
+ const swap=play('R1uR1d'); // R1 moves up beside the other red ball and becomes R2, so the next R1 is the other ball
+ assert.notEqual(swap[0].ballId,swap[1].ballId);assert.deepEqual(swap.map(r=>r.label),['R1','R1']);assert.equal(Core.formatSolution(swap),'R1uR1d');
+ const same=play('R1uR2r'); // R2 names the same ball after the swap, so the two groups merge into one
+ assert.equal(same[0].ballId,same[1].ballId);assert.equal(Core.formatSolution(same),'R1ur');
+ assert.deepEqual(play('R1ur').map(r=>r.ballId),same.map(r=>r.ballId)); // a group stays on one ball whatever its label becomes
+ assert.deepEqual(Object.values(Core.ballLabels(Core.createInitialState(b))),['R1','R2']);
+ assert.throws(()=>play('Ru'),/ambiguous/);assert.throws(()=>play('R3u'),/no unlocked ball/);
+ // the route codec stores the rank among unlocked balls, so it round-trips through swaps
+ for(const text of ['R1uR1d','R1ur']){assert.equal(Codec.decodeRouteCode(b,Codec.encodeRoute(b,text)),text);}
+ ok('relative labels, physical-ball groups, route codec');}
 // 3. Rejections.
 const base='K4.'+Codec.encodeBoard({width:2,height:1,walls:[],balls:[{x:1,y:1,color:'R'}],goals:[{x:2,y:1,color:'R'}]}).slice(3);
 const bad=(name,fn)=>{assert.throws(fn);ok('rejects '+name);};

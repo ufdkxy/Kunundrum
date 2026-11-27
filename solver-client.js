@@ -51,7 +51,7 @@ function solve(code,options,onProgress){
 function verifyResult(result,code){if(!result||!result.hasSolution)return {ok:true,checked:false};
  try{
   const board=Codec.decodeBoard(code);let state=Core.createInitialState(board);
-  for(const t of Core.parseSolution(result.solution)){const m=Core.applyMove(state,board,Core.resolveBallId(state,t.identifier),t.direction,t.choices);if(m.kind!=='ok')throw new Error('The solver returned a route that does not replay: '+m.message);state=m.state;}
+  const resolve=Core.createResolver();for(const t of Core.parseSolution(result.solution)){const m=Core.applyMove(state,board,resolve(state,t),t.direction,t.choices);if(m.kind!=='ok')throw new Error('The solver returned a route that does not replay: '+m.message);state=m.state;}
   if(!Core.isComplete(state))throw new Error('The solver returned a route that does not finish the board.');
   return {ok:true,checked:true};
  }catch(e){return {ok:false,checked:true,error:e.message};}}

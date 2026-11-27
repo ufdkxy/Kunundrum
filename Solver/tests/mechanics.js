@@ -17,7 +17,7 @@ function oracle(board){ // fewest moves by BFS over (ball positions, locks, gate
   frontier=next;}
  return null;}
 function solverRun(code,algo,extra=[]){const p=spawnSync(path.join(root,'kunsolve'),[code,'--algorithm',algo,'--quiet','--seconds','20',...extra],{encoding:'utf8',timeout:40000});return {status:p.status,out:p.stdout,err:p.stderr};}
-function replay(code,sol){const board=Codec.decodeBoard(code);let st=Core.createInitialState(board);for(const t of Core.parseSolution(sol)){const m=Core.applyMove(st,board,Core.resolveBallId(st,t.identifier),t.direction,t.choices);assert.equal(m.kind,'ok','solver route must replay in the engine: '+sol+' '+(m.message||''));st=m.state;}assert(Core.isComplete(st),'route must finish the board');}
+function replay(code,sol){const board=Codec.decodeBoard(code);let st=Core.createInitialState(board);const resolve=Core.createResolver();for(const t of Core.parseSolution(sol)){const m=Core.applyMove(st,board,resolve(st,t),t.direction,t.choices);assert.equal(m.kind,'ok','solver route must replay in the engine: '+sol+' '+(m.message||''));st=m.state;}assert(Core.isComplete(st),'route must finish the board');}
 const R=(x,y)=>({x,y,color:'R'});
 const base=(id,w,h,extra)=>({version:1,width:w,height:h,id,title:id,...extra});
 const boards=[

@@ -5,7 +5,7 @@
 ## 1. Board, coordinates, and objects
 
 - The board is a rectangular grid. Game coordinates are **1-based Cartesian** `(x, y)`: `(1, 1)` is bottom-left; `x` increases rightward and `y` increases upward. Screenshot row indices are top-down and are converted by `y = boardHeight - screenshotRow` for zero-based rows.
-- **Lexicographic order.** Cells are ordered `(1,1) < (2,1) < ... < (n,1) < (1,2) < ...`: left to right (`x` ascending), then bottom to top (`y` ascending). This is the one order used for every labelling and numbering in the project (auto-assigned ids, ternary arrow-type strings, tie-breaks, binary cell offsets); "reading order" (top to bottom) is not used.
+- **Lexicographic order.** Cells are ordered row by row: `y` ascending (bottom to top) is the major key and `x` ascending (left to right) the minor key within a row, i.e. `(1,1) < (2,1) < ... < (n,1) < (1,2) < ...`. This is the one order used for every labelling and numbering in the project (ball labels, auto-assigned ids, ternary arrow-type strings, tie-breaks, K4 cell indices); "reading order" (top to bottom) is not used.
 - Board JSON has `id`, `title`, `width`, `height`, and optional `description`, `wallColor` (`R` or `G`; cosmetic, blue when omitted) and `solution`. Supported feature arrays are `walls`, `balls`, `goals`, `arrows`, `gates`, `switches`, `teleports`, `tunnels`, and `hexes`; missing arrays default to empty.
 - Ball/goal colors are `R` (red), `G` (green), `B` (blue), and `Y` (yellow). Each ball needs a goal of its own color; extra goals are allowed. A goal is not an obstacle and may be crossed by another ball; only the **stopping** cell can lock a ball.
 - A floor cell may carry **at most one** of: permanent wall, goal, arrow, gate, switch, teleport endpoint, or hexagon. A ball may coexist with a floor feature, subject to the initial-wall restrictions. Distinct balls cannot share a cell.
@@ -44,21 +44,24 @@ After a legal move finishes at its **final** cell:
 
 `Core.isComplete(state)` means every ball is locked, and the puzzle is solved exactly then. There is no score threshold: the score may be zero or negative. **Objective:** each puzzle is solved for the **lowest possible score**: the number of moves plus the one-time hex bonuses and penalties collected along the route (lower is better, so a negative hex is a bonus and a positive hex a penalty). The solver minimizes the score, and among equal scores the number of moves. On boards without hexes the score equals the move count.
 
-## 4. Ball identifiers and ordering
+## 4. Ball labels and ordering
 
-`Core.validateBoard` sorts balls by color in **R, G, B, Y order**, then by ascending `y`, then ascending `x` within each color. A unique ball of a color has ID `R`, `G`, etc.; multiple same-colored balls have `R1`, `R2`, etc., in that fixed initial order. IDs do **not** renumber when balls move or lock.
+Balls of one color are interchangeable, so labels are **relative to the current position** and are never fixed from the start. `Core.ballLabels(state)` gives each **unlocked** ball of a color the label `R1`, `R2`, ... by its rank in the cell order of section 1 (`y` ascending, then `x` ascending); when only one unlocked ball of a color remains its label is just `R`, `G`, etc. A docked ball has no label and drops out of the numbering, so the other balls of its color renumber. Labels may also change when two same-colored balls pass each other in that order.
 
-`Core.resolveBallId` accepts:
+`Core.validateBoard` still assigns each ball a **stable internal id** (color order R, G, B, Y, then `y`, then `x` of the board's own position; `R`, or `R1`, `R2`, ... for several of one color). Internal ids are used for selection, animation and `applyMove`, never in notation. A board loaded from any position (a K4 code, the editor, a replay start) is labelled from that position.
 
-- Exact IDs such as `G3`, or a color abbreviation such as `G` **only when exactly one unlocked ball of that color remains**.
-- `R1` as an alias for the single red ball `R` (and analogously for other colors).
-- An unprefixed ordinal such as `3` **only when exactly one unlocked ball's fixed numbered ID ends in `3`**. It is *not* a global ball index, and single-letter IDs have no such ordinal.
+`Core.resolveBallId(state, label)` turns a label into the internal id against the given position:
 
-The serializer's zero-based binary **ball index** is a different concept: it uses the complete validated board's stable color/position ordering, including locked balls.
+- `R2`, `G1`, ... the n-th unlocked ball of that color; `R` only when exactly one unlocked ball of that color remains, and `R1` is accepted as an alias for it.
+- An unprefixed number such as `3` only when exactly one color has at least three unlocked balls (it names that color's third ball). Otherwise it is ambiguous.
+
+The serializer's **ball index** in a route is the ball's position in `Core.unlockedBalls(state)` (unlocked balls ordered by color R, G, B, Y, then `y`, then `x`) in the position before the move.
 
 ## 5. Solution notation
 
-A solution is a sequence of **ball groups** written back to back, with no separators. A group starts with a ball identifier (a capital letter, optionally with digits, or an unambiguous number) followed by one or more direction letters; consecutive moves of the same ball are concatenated, so the next group always starts at a capital letter or digit. The parser ignores spaces, newlines and commas on input; the app, the solver and the catalog never write them.
+A solution is a sequence of **ball groups** written back to back, with no separators. A group starts with a ball label (a capital letter, optionally with digits, or an unambiguous number) followed by one or more direction letters; the next group starts at a capital letter or digit. The parser ignores spaces, newlines and commas on input; the app, the solver and the catalog never write them.
+
+**A group is one physical ball.** Its label is resolved against the position before the group's first move; every later move of the group is made by that same ball, whatever its label has become. Encoders start a new group exactly when the moving ball changes, so two adjacent groups always name different balls, and `R1uR1d` can occur: after the first move the ball has become `R2`, so the second `R1` is the other red ball. On input, a group that resolves to the ball moved by the previous group is merged into it (`R1uR2r` becomes `R1ur`). The history chips show the same label for every move without grouping: each move's label is relative to the position before that move.
 
 ```text
 RurG3ldBu
@@ -120,7 +123,7 @@ Tunnels and rotating arrows are implemented in `solver.cpp` (v0.17) with the sem
 ## 7. Invariants to preserve when editing mechanics
 
 1. `Core.applyMove` is immutable: failed/incomplete moves do not modify the supplied state.
-2. Initial IDs and geometry are deterministic and stable across JSON, K4, replay, and the solver.
+2. Internal ids and geometry are deterministic and stable across JSON, K4, replay, and the solver; notation labels are relative to the position (section 4).
 3. The switch's `on` indicator is **display state**, distinct from actual gate/teleport active flags; it is derived on load (see §3).
 4. Locked balls remain on the board and block movement; locking only occurs at the **end** of a move (or at initialization).
 5. Teleport exits occupied by other balls block jumps, not entry; arrow, hex, teleport, then final switch/goal processing must keep the documented order.
