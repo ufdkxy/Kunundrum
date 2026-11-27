@@ -16,7 +16,7 @@ const root=path.join(__dirname,'..','..');
  // 3. find best -> optimal, same score as saved, verified, solution present and copyable
  await page.click('#solver-solve');await page.waitForSelector('#solver-result:not([hidden])',{timeout:60000});
  const v=await text('#solver-verdict'),n=await text('#solver-note'),sol=await page.inputValue('#solver-solution');
- assert(/Optimal solution found: 18 moves, score 18/.test(v),v);assert(/Same score as the current route/.test(n)&&/Verified by replaying/.test(n),n);assert(/^[A-Za-z][A-Za-z0-9]*$/.test(sol),sol); // notation without separators since 4.5.0
+ assert(/Optimal solution found: 18 moves, score 18/.test(v),v);assert(/Same score as the current route/.test(n),n);assert(/^[A-Za-z][A-Za-z0-9]*$/.test(sol),sol); // notation without separators since 4.5.0
  await page.screenshot({path:process.argv[2]||'/tmp/solver-dialog.png'});
  await page.click('#solver-copy');await page.waitForTimeout(300);
  // 4. stop a long search

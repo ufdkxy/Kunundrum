@@ -95,7 +95,7 @@ function showResult(r, certifying) {
   if (r.hasSolution) {
     const check = window.KunSolver.verifyResult(r, lastCode);
     if (!check.ok) { v.kind = 'bad'; v.title = 'The solver returned a route that does not replay'; v.note = 'Do not use it. ' + (check.error || ''); }
-    else { box = true; v.note += (v.note ? ' ' : '') + 'Verified by replaying the route in the game.'; }
+    else box = true;
   }
   $('solver-progress').hidden = true;
   $('solver-result').hidden = false;

@@ -552,7 +552,7 @@ body.edit-mode .selected-info { display:none; }
 .section-heading .next-puzzle, .solution-actions .next-puzzle { margin-left: 0; padding: 4px 11px; font-size: 11px; }
 .next-puzzle:disabled { opacity: .4; cursor: default; background: #203d36; color: #98e8c7; }
 .solver-modal { max-width: 640px; }
-.solver-code-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
+.solver-code-head { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 4px; gap: 10px; }
 .solver-code-head .input-label { margin-bottom: 8px; }
 .solver-code-buttons { display: flex; gap: 8px; margin-bottom: 4px; }
 .solver-modal textarea.code-input { min-height: 0; resize: vertical; }
@@ -560,6 +560,7 @@ body.edit-mode .selected-info { display:none; }
 #solver-code-help { margin: 8px 0 12px; }
 .solver-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
 .solver-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0 14px; }
+.solver-fields + .solver-code-head { margin-top: 14px; }
 .solver-modal input.code-input, .solver-modal select { width: 100%; min-height: 36px; padding: 7px 10px; border: 1px solid #344753; border-radius: 6px; background: #0c161e; color: #d3dfe4; font: 12px var(--mono); }
 .solver-modal input:disabled, .solver-modal select:disabled { opacity: .5; }
 .solver-advanced { margin-top: 14px; }
