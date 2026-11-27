@@ -302,6 +302,7 @@ function editAt(x,y,eraser=false){
  if(!E.active||x<1||y<1||x>E.draft.width||y>E.draft.height)return false;
  const b=E.draft,t=eraser?'erase':E.tool;
  if(t==='select') {const hit=E.hitTunnel;E.hitTunnel=null;E.selected=hit?{type:'tunnels',...hit}:find(x,y,E.preferFloor);refresh();renderDraft();setStatus('');return false;}
+ if(t==='tunnel'&&(b.tunnels||[]).some(p=>openingAt(p,x,y,E.clickSide||'r'))){setStatus('There is already a tunnel opening here. Use Erase to remove it.',true);return false;}
  const previous=snapshot();
  if(t!=='select')delete b.solution;
  if(t==='erase') eraseAt(x,y);
@@ -309,9 +310,8 @@ function editAt(x,y,eraser=false){
  else if(t==='tunnel'){
   const side=E.clickSide||'r',pend=E.pendingTunnel;
   if(b.walls.some(p=>at(p,x,y))){setStatus('A tunnel opening cannot be in a fixed wall cell.',true);return false;}
-  const list=b.tunnels||(b.tunnels=[]),hit=list.findIndex(p=>openingAt(p,x,y,side));
-  if(hit>=0){list.splice(hit,1);E.pendingTunnel=null;}
-  else if(!pend||(pend.x===x&&pend.y===y&&pend.side===side)){E.pendingTunnel=pend?null:{x,y,side};renderDraft();setStatus(pend?'':`First opening: ${sideNames[side]} side of (${x}, ${y}). Click the partner opening.`);}
+  const list=b.tunnels||(b.tunnels=[]);
+  if(!pend||(pend.x===x&&pend.y===y&&pend.side===side)){E.pendingTunnel=pend?null:{x,y,side};renderDraft();setStatus(pend?'':`First opening: ${sideNames[side]} side of (${x}, ${y}). Click the partner opening.`);}
   else{list.push({a:{...pend},b:{x,y,side}});E.pendingTunnel=null;}
   normTunnels(b);
  }else if(t==='teleport'){
