@@ -1,4 +1,6 @@
-// Solver dialog: opened from the "Solver" button in the Replay panel. Runs the WebAssembly solver (kunsolve-bundle.js) in a worker.
+// Solver dialog: opened from the "Solver" button in the Replay panel. The board code that will be solved is shown in an editable box
+// (default: the start board of the current run; "Current position" fills in the position at the replay cursor; any K4 code can be pasted).
+// Runs the WebAssembly solver (kunsolve-bundle.js) in a worker.
 // The dialog is modal and the global key handler ignores input while a dialog is open, so no moves can be made while it runs;
 // closing the dialog (button or Escape) stops the search. The button is disabled while the board editor is active (editor.js).
 (() => {
@@ -6,7 +8,8 @@
 const $ = id => document.getElementById(id);
 const host = () => window.KunundrumHost;
 const dialog = $('solver-dialog');
-let info = null, job = null, runToken = 0, clientPromise = null;
+let info = null, job = null, runToken = 0, clientPromise = null, parsed = { error: 'No board.' }, lastRoute = null;
+const codeBox = $('solver-code');
 const fmt = n => Number(n).toLocaleString('en-US');
 
 function loadClient() {
@@ -21,12 +24,40 @@ function loadClient() {
   return clientPromise;
 }
 
+// The box's content as a canonical K4 board code (a trailing route, a link or JSON are accepted; only the board is used).
+function parseCode() {
+  const text = codeBox.value.trim();
+  if (!text) return { error: 'Paste a K4 board code.' };
+  try {
+    const problems = [], extra = {}, board = Codec.decodeBoard(text, problems, extra);
+    if (problems.length) return { error: problems.join(' ') };
+    return { code: Codec.encodeBoard(board), hadRoute: !!extra.route };
+  } catch (e) { return { error: e.message }; }
+}
+const isStart = () => !!parsed.code && parsed.code === info?.code;
+function syncCode() {
+  parsed = parseCode();
+  $('solver-code-error').hidden = !parsed.error;
+  $('solver-code-error').textContent = parsed.error || '';
+  const p = info?.position;
+  $('solver-code-help').textContent = parsed.error ? '' : isStart() ? 'Start board.' : p && parsed.code === p.code ? `Position after move ${p.at} of ${p.total}.` : 'Custom board' + (parsed.hadRoute ? '; the route in the code is ignored.' : '.');
+  $('solver-code-help').hidden = !!parsed.error;
+  $('solver-use-position').disabled = !p || p.at === 0 || !$('solver-stop').hidden;
+  $('solver-use-position').title = p?.at ? `The board as it is now, after move ${p.at} of ${p.total} (the score so far is not included)` : 'The replay is at its start: this is the start board';
+  refreshButtons();
+}
+function refreshButtons() {
+  const running = !$('solver-stop').hidden;
+  $('solver-solve').disabled = running || !!parsed.error;
+  $('solver-certify').disabled = running || !info?.route || !isStart();
+  $('solver-certify').title = !info?.route ? 'The current route is not a solution' : isStart() ? 'Prove that no route scores below the current route' : 'Only available for the start board of the current route';
+}
 function setRunning(running) {
-  $('solver-solve').disabled = running;
-  $('solver-certify').disabled = running || !info?.route;
   $('solver-stop').hidden = !running;
+  codeBox.disabled = running; $('solver-use-start').disabled = running;
   for (const el of dialog.querySelectorAll('.solver-fields input, .solver-fields select')) el.disabled = running;
   $('solver-algorithm').dispatchEvent(new Event('change'));
+  syncCode();
 }
 
 function readOptions(certifying) {
@@ -39,7 +70,7 @@ function readOptions(certifying) {
 }
 
 function interpret(r, certifying) {
-  const saved = info.route, st = r.status || '';
+  const saved = lastRoute, st = r.status || '';
   if (r.error) return { kind: 'bad', title: 'The solver could not finish', note: r.error === 'out of memory' ? 'It ran out of memory. Lower the max states or the memory limit, or use the beam search.' : r.error };
   if (r.hasSolution) {
     const optimal = st === 'OPTIMAL';
@@ -79,7 +110,10 @@ function showResult(r, certifying) {
 }
 
 async function run(certifying) {
-  if (!info || (certifying && !info.route)) return;
+  syncCode();
+  if (!info || parsed.error || (certifying && (!info.route || !isStart()))) return;
+  const code = parsed.code;
+  lastRoute = isStart() ? info.route : null; // the saved route only belongs to the start board
   const token = ++runToken;
   $('solver-result').hidden = true;
   $('solver-progress').hidden = false;
@@ -89,8 +123,8 @@ async function run(certifying) {
     const options = readOptions(certifying);
     await loadClient();
     if (token !== runToken) return;
-    lastCode = info.code;
-    job = window.KunSolver.solve(info.code, options, p => {
+    lastCode = code;
+    job = window.KunSolver.solve(code, options, p => {
       if (token !== runToken) return;
       const parts = [p.revDepth != null ? `forward depth ${p.fwdDepth ?? '?'} · reverse depth ${p.revDepth}` : p.depth != null ? `depth ${p.depth}` : '', p.states != null ? `${fmt(p.states)} states` : '', p.elapsed != null ? `${p.elapsed.toFixed(1)} s` : ''].filter(Boolean);
       $('solver-progress').textContent = 'Searching… ' + (parts.join(' · ') || p.line);
@@ -112,14 +146,16 @@ $('open-solver').addEventListener('click', () => {
   info = host().prepareSolver();
   const sameBoard = previous && previous.code === info.code;
   $('solver-board').textContent = info.title + (info.route ? ` · current route: ${info.route.moves} moves, score ${info.route.score}` : ' · no complete route');
-  $('solver-certify').title = info.route ? 'Prove that no route scores below the current route' : 'The current route is not a solution';
-  // Closing only hides the dialog: fields, progress and result stay, unless the board changed meanwhile.
-  if (!sameBoard) { $('solver-result').hidden = true; $('solver-progress').hidden = true; }
+  // Closing only hides the dialog: code, fields, progress and result stay, unless the start board changed meanwhile.
+  if (!sameBoard) { codeBox.value = info.code; $('solver-result').hidden = true; $('solver-progress').hidden = true; }
   setRunning(false);
   dialog.showModal();
   // The bundle's own stamp, i.e. the solver that will actually run (it may be older than the native kunsolve).
   loadClient().then(() => window.KunSolver.loadSource()).then(() => { $('solver-version').textContent = window.KUNSOLVE_VERSION ? 'v' + window.KUNSOLVE_VERSION : ''; }, () => {});
 });
+codeBox.addEventListener('input', () => { syncCode(); $('solver-result').hidden = true; $('solver-progress').hidden = true; });
+$('solver-use-start').addEventListener('click', () => { codeBox.value = info.code; codeBox.dispatchEvent(new Event('input')); });
+$('solver-use-position').addEventListener('click', () => { codeBox.value = info.position.code; codeBox.dispatchEvent(new Event('input')); });
 $('solver-solve').addEventListener('click', () => run(false));
 $('solver-certify').addEventListener('click', () => run(true));
 $('solver-stop').addEventListener('click', () => { if (job) job.cancel(); });

@@ -8,7 +8,7 @@ const {encodeBoard,decodeBoard,encodeRoute,decodeRouteCode,readShareUrl,makeShar
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const APP_VERSION = '4.6.0'; // Single source of truth; the footer reads it.
+const APP_VERSION = '4.7.0'; // Single source of truth; the footer reads it.
 const versionLabel = document.getElementById('app-version');
 if (versionLabel) versionLabel.textContent = 'v' + APP_VERSION;
 const brandLink = document.querySelector('.brand');
@@ -1153,6 +1153,8 @@ window.KunundrumHost = {
   prepareSolver:()=>{
     stopPlayback();
     const {solution,...bare}=board,info={code:encodeBoard(bare),title:board.title,id:currentPresetId,route:null};
+    // The position at the replay cursor as a board of its own (the score so far is not part of it); at move 0 it equals the start board.
+    const {solution:_s,...here}=boardAtCursor();info.position={code:encodeBoard(here),at:cursor,total:frames.length-1};
     if(frames.length>1){const s=frames[frames.length-1].state;if(isComplete(s))info.route={score:s.score,moves:frames.length-1};}
     return info;
   },
