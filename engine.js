@@ -217,8 +217,8 @@ function validateBoard(raw         , problems         , notes         )        {
     occupiedBalls.add(key);
   }
   for (const c of COLORS) {
-    if (goals.filter(g => g.color === c).length < balls.filter(b => b.color === c).length) {
-      fail(`There must be at least one ${COLOR_NAMES[c].toLowerCase()} goal per ${COLOR_NAMES[c].toLowerCase()} ball.`);
+    if (goals.filter(g => g.color === c).length !== balls.filter(b => b.color === c).length) {
+      fail(`There must be exactly one ${COLOR_NAMES[c].toLowerCase()} goal per ${COLOR_NAMES[c].toLowerCase()} ball.`);
     }
   }
   const board        = {

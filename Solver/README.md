@@ -42,7 +42,7 @@ The solver reads `levels.js` from the current directory by default. In this repo
 
 Options:
 
-- `--algorithm auto|forward|bidirectional|beam` — `bidirectional` is the [bidirectional search](#bidirectional-search) (needs no hexes, equal goals/balls and an affordable terminal-state enumeration); **`auto` chooses it** for applicable boards with at least 3 balls, else forward. (v0.17: the former `balanced` is now simply `bidirectional`; the old forward-heavy version was removed.)
+- `--algorithm auto|forward|bidirectional|beam` — `bidirectional` is the [bidirectional search](#bidirectional-search) (needs no hexes and an affordable terminal-state enumeration); **`auto` chooses it** for every applicable board, else forward. (v0.17: the former `balanced` is now simply `bidirectional`; the old forward-heavy version was removed.)
 - `--max-states N` — maximum combined stored states (forward + reverse), default 3,000,000; `0` = unlimited.
 - `--threads N` — worker threads for forward and bidirectional search (default 0 = all cores; beam search and the WASM build are single-threaded). Results (route, states, transitions) do not depend on N; only the speed does.
 - `--max-memory MB` — cap on the stored state bytes (default none). With no limits the memory of the machine is the real limit: v0.7/v0.8 stored roughly 20-30 bytes per state; since v0.18 a state costs its packed key (about 8 bytes for 8 balls) plus a 4-byte index-table slot at load 0.25-0.5, roughly 40% less. Routes are rebuilt after the search instead of being stored.
@@ -113,7 +113,7 @@ The reverse search enumerates **genuine predecessor transitions** for static wal
 
 The starting reverse frontier includes **all possible terminal gate configurations**, using one bit per gate *group* (gates controlled by exactly the same switches), not one bit per individual wall. This works because all gates in a group always flip together. Controlled teleports are similarly enumerated, while uncontrolled teleports retain their initial state. States differing only in the switch's visual on/off indicator are safely merged: the indicator never affects move legality or switch behavior, only the actual gate/teleport flags do.
 
-- Equal numbers of goals and balls are required for bidirectional mode.
+- Boards always have exactly one goal per ball of the same color (the parser rejects anything else since v0.27).
 - **Switches are supported**, including simultaneous toggling of multiple gates and dynamic teleports.
 - **Consumable hexagons** still need forward search (or beam). Fixed/rotating arrows, tunnels, active and inactive teleports are supported by the bidirectional search too (the reverse search treats each clock phase as a static arrow layout and tunnels as extra edges).
 - If enumerating terminal configurations exceeds a conservative limit (16 bits or one quarter of the state budget), auto mode falls back to forward BFS.

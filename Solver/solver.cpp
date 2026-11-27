@@ -447,7 +447,7 @@ void backReach(const Board&b,const State&s,int i,int dest,int phase,vector<int>&
 // fd+rd moves has been found, so the best candidate is optimal once fd+rd >= best-1 (or no route exists within fd+rd moves).
 SearchResult bidirectional(const Board&b,const Limits&lim,ClockLimit&timer,const Packer&pk){
  SearchResult out;out.algorithm="bidirectional BFS";int D=lim.maxDepth>0?lim.maxDepth:INT32_MAX; // D: only paths of at most D moves matter
- if(!b.staticReverse||b.goals.size()!=b.balls.size())return out;
+ if(!b.staticReverse)return out;
  State start=initial(b),target=start;
  for(int c=0;c<4;c++){
   vector<int> loc;for(int v:b.goals)if(v/MAX_CELLS==c)loc.push_back(v%MAX_CELLS);sort(loc.begin(),loc.end());
@@ -1137,6 +1137,7 @@ Board parseCode(string code){
  // Core.validateBoard sorts balls by color, then (y,x).
  stable_sort(b.balls.begin(),b.balls.end(),[](const Ball&a,const Ball&z){return a.color!=z.color?a.color<z.color:a.p<z.p;});
  for(int i=0;i<(int)b.balls.size();i++){int count=0,k=0;for(int j=0;j<(int)b.balls.size();j++)if(b.balls[j].color==b.balls[i].color){count++;if(j<=i)k++;}b.balls[i].ordinal=k;b.balls[i].name=string(1,COLORS[b.balls[i].color])+(count==1?"":to_string(k));}
+ {int gc[4]={0,0,0,0},bc[4]={0,0,0,0};for(int g:b.goals)gc[g/MAX_CELLS]++;for(const Ball&x:b.balls)bc[x.color]++;for(int c=0;c<4;c++)if(gc[c]!=bc[c])throw runtime_error(string("invalid K4 board code: need exactly one ")+COLORS[c]+" goal per "+COLORS[c]+" ball");} // v0.27: no extra goals
  b.initialize();
  string again;try{again=codeK4(b);}catch(const exception&e){throw runtime_error(string("invalid K4 board code: ")+e.what());}
  if(again!=code)throw runtime_error("invalid K4 board code: not in canonical form");
@@ -1144,7 +1145,7 @@ Board parseCode(string code){
 }
 string readInput(const string& argument){ifstream f(argument,ios::binary);if(f.good()){string s((istreambuf_iterator<char>(f)),{});return trim(s);}return argument;}
 string catalogCode(const string& id,const string& filename){ifstream file(filename);if(!file)throw runtime_error("cannot open catalog: "+filename);string line;while(getline(file,line)){line=trim(line);string prefix=id+" = ";if(line.rfind(prefix,0)==0){string rest=trim(line.substr(prefix.size()));return rest.substr(0,rest.find_first_of(" \t"));}}throw runtime_error("level not found: "+id);}
-static const char* SOLVER_VERSION="0.26"; // Solver's own version, independent of the web app's APP_VERSION.
+static const char* SOLVER_VERSION="0.27"; // Solver's own version, independent of the web app's APP_VERSION.
 // ---- Core entry point (shared by the CLI and the WebAssembly build) ----
 struct Cli{Limits lim;string input,level,catalog="levels.js";bool version=false,help=false,json=false;};
 static const char* HELP_TEXT="Kunundrum exact C++ solver (K4)\nUsage: kunsolve BOARD_CODE_OR_FILE [--algorithm auto|forward|bidirectional|beam] [--beam-width N] [--beam-heuristic static|dynamic] [--seed N] [--split-depth P] [--reverse-depth R] [--disk-dir DIR] [--disk-buckets N] [--threads N] [--max-states N] [--seconds N] [--max-memory MB] [--max-depth N] [--max-score N] [--quiet] [--version]\n       kunsolve --level ID [--catalog levels.js] [options]\nOutput: lowest-score route (fewest moves among equal scores), its score and move count, and its K4 board code.\nauto = bidirectional search when applicable (no hexes, equal goals/balls, at least 3 balls), else forward.\nbeam = heuristic: certifies optimality (exit 0) only on hex-free boards when no state was ever dropped by the beam width, otherwise an upper bound (exit 2).\n0 = unlimited for --max-states, --seconds and --max-memory (memory is then the real limit).\nExit codes: 0 optimal, 2 inconclusive, 3 exhausted/unsolvable, 4 no solution within --max-depth or --max-score (proved bound), 1 error.\n";
@@ -1186,10 +1187,10 @@ static Outcome solveBoard(const string&input,Limits lim){
   Packer pk;pk.init(b);
   int terminalBits=(int)(pk.groups.size()+pk.teles.size());
   bool feasibleSeeds=terminalBits<=16&&(1ULL<<terminalBits)<=lim.maxStates/4;
-  bool canBi=b.staticReverse&&b.goals.size()==b.balls.size()&&feasibleSeeds;
-  if(lim.algorithm=="bidirectional"&&!canBi)throw runtime_error("bidirectional search requires no hexagons, equal goals/balls and an affordable terminal-state enumeration");
-  if((lim.splitDepth>0||!lim.diskDir.empty())&&!(lim.algorithm=="bidirectional"||(lim.algorithm=="auto"&&canBi&&b.n>=3)))throw runtime_error("--split-depth and --disk-dir require the bidirectional search");
-  if(lim.algorithm=="bidirectional"||(lim.algorithm=="auto"&&canBi&&b.n>=3))res=bidirectional(b,lim,timer,pk);
+  bool canBi=b.staticReverse&&feasibleSeeds;
+  if(lim.algorithm=="bidirectional"&&!canBi)throw runtime_error("bidirectional search requires no hexagons and an affordable terminal-state enumeration");
+  if((lim.splitDepth>0||!lim.diskDir.empty())&&!(lim.algorithm=="bidirectional"||(lim.algorithm=="auto"&&canBi)))throw runtime_error("--split-depth and --disk-dir require the bidirectional search");
+  if(lim.algorithm=="bidirectional"||(lim.algorithm=="auto"&&canBi))res=bidirectional(b,lim,timer,pk);
   else if(lim.algorithm=="beam")res=beamSearch(b,lim,timer,pk);
   else if(lim.algorithm=="auto"||lim.algorithm=="forward")res=forwardBFS(b,lim,timer,pk);
   else throw runtime_error("unknown algorithm");
